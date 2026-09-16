@@ -1,0 +1,84 @@
+// 로그인·OAuth·세션·워크스페이스 담당 boot 앱 (포트 8081).
+plugins {
+	id 'java'
+	id 'io.spring.dependency-management' version '1.1.7'
+	id 'org.springframework.boot' version '3.5.14'
+}
+
+group = 'fruition'
+version = '0.0.1-SNAPSHOT'
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+repositories { mavenCentral() }
+
+dependencies {
+	// ErrorResponse/BaseExceptionHandler(web), JwtAuthenticationFilter(security),
+	// Idempotency entity·repository(data-jpa)가 컴파일에 필요하다.
+	// JwtTokenProvider (access는 발급까지, document는 검증만)
+	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+	// MinioConfig/StorageProperties (document만 스캔하지만 컴파일은 여기서 한다)
+	implementation 'io.minio:minio:8.5.7'
+	// OpenApiConfig
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.16'
+	implementation 'me.paulschwarz:spring-dotenv:4.0.0'
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	// /actuator/prometheus 노출용 registry. 버전은 Spring Boot BOM이 관리한다.
+	implementation 'io.micrometer:micrometer-registry-prometheus'
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+	implementation 'org.springframework.boot:spring-boot-starter-mail'
+	// TOTP(RFC 6238) 코드 생성. 의존성 없는 소형 라이브러리라 HMAC 계산만 맡기고
+	// 시간 창·재사용 방지 정책은 MfaService가 직접 다룬다.
+	implementation 'com.eatthepath:java-otp:0.4.0'
+	implementation 'org.springframework.session:spring-session-jdbc'
+	// 다중 인스턴스 공유 store: OAuth 교환 코드
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+	runtimeOnly 'org.postgresql:postgresql'
+	// access_db 스키마는 access-svc가 자체 Flyway migration으로 소유한다 (MSA DB 분리).
+	implementation 'org.flywaydb:flyway-core'
+	implementation 'org.flywaydb:flyway-database-postgresql'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+	// api-specs/openapi.yaml 스냅샷 생성·비교
+	testImplementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
+	testImplementation 'org.testcontainers:junit-jupiter'
+	testImplementation 'org.testcontainers:postgresql'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+	// 운영 기본값을 두지 않는 설정이라 테스트에서만 고정값을 준다.
+	environment('INTERNAL_CALLBACK_TOKEN', 'test-internal-callback')
+	// MFA secret 암호화 키(base64 32바이트). 없으면 부팅이 실패하도록 만들어 둬서 테스트에도 필요하다.
+	environment('MFA_ENCRYPTION_KEY', 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=')
+	// OpenAPI 스냅샷 위치. 각 서비스 저장소가 API 계약을 소유한다.
+	// 스냅샷 파일을 input으로 선언한다. systemProperty는 경로 문자열이라, 이것이 없으면
+	// api-specs/openapi.yaml을 손으로 고쳐도 태스크가 UP-TO-DATE로 판정돼 비교가 다시 돌지 않는다.
+	inputs.file(file("$rootDir/api-specs/openapi.yaml")).withPropertyName('openApiSnapshot')
+	systemProperty 'openapi.snapshot.path', file("$rootDir/api-specs/openapi.yaml").absolutePath
+	// Gradle은 -D를 테스트 JVM으로 자동 전달하지 않는다 — 갱신 플래그를 명시적으로 넘긴다.
+	systemProperty 'updateOpenApiSnapshot', System.getProperty('updateOpenApiSnapshot') ?: 'false'
+}
+
+tasks.named('bootRun') {
+	doFirst {
+		environment('SPRING_PROFILES_ACTIVE', System.getenv('SPRING_PROFILES_ACTIVE') ?: 'local')
+		environment('SERVER_PORT', System.getenv('SERVER_PORT') ?: '8081')
+		def envFile = file("${System.getenv('SERVICE_ENV_FILE') ?: "$projectDir/.env"}")
+		// Docker 빌드처럼 상위 경로가 없는 환경에서는 경로가 디렉터리로 정규화될 수 있어 isFile로 가드한다.
+		if (envFile.isFile()) {
+			envFile.readLines().each { line ->
+				if (line && !line.startsWith('#') && line.contains('=')) {
+					def parts = line.split('=', 2)
+					environment(parts[0].trim(), parts[1].trim())
+				}
+			}
+		}
+	}
+}

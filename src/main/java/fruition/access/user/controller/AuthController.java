@@ -1,0 +1,427 @@
+package fruition.access.user.controller;
+
+import fruition.access.user.dto.EmailAvailabilityRequest;
+import fruition.access.user.dto.EmailAvailabilityResponse;
+import fruition.access.user.dto.EmailVerificationRequest;
+import fruition.access.user.dto.EmailVerificationResponse;
+import fruition.access.user.dto.LoginRequest;
+import fruition.access.user.dto.MfaCodeRequest;
+import fruition.access.user.dto.MfaLoginRequest;
+import fruition.access.user.dto.MfaRegistrationResponse;
+import fruition.access.user.dto.MfaStatusResponse;
+import fruition.access.user.dto.LoginResponse;
+import fruition.access.user.dto.MeResponse;
+import fruition.access.user.dto.OAuthExchangeRequest;
+import fruition.access.user.dto.DisplayNameUpdateRequest;
+import fruition.access.user.dto.EmailChangeRequest;
+import fruition.access.user.dto.PasswordChangeRequest;
+import fruition.access.user.dto.PasswordResetRequest;
+import fruition.access.user.dto.RefreshRequest;
+import fruition.access.user.dto.SessionListResponse;
+import fruition.access.user.dto.SignupRequest;
+import fruition.access.user.dto.SignupResponse;
+import fruition.access.user.dto.VerificationConfirmRequest;
+import fruition.access.user.dto.VerificationConfirmResponse;
+import fruition.access.user.exception.InvalidRefreshTokenException;
+import fruition.access.user.mfa.MfaService;
+import fruition.access.user.service.AuthService;
+import fruition.access.user.service.EmailAvailabilityRateLimiter;
+import fruition.access.user.service.EmailVerificationService;
+import fruition.access.user.service.UserService;
+import fruition.shared.util.ErrorResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
+import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.CookieValue;
+
+@RestController
+@RequestMapping("/api/auth")
+@Tag(name = "Auth", description = "회원가입 및 인증 API")
+public class AuthController {
+
+    private static final String REFRESH_COOKIE_NAME = "fruition_refresh_token";
+
+    private final UserService userService;
+    private final AuthService authService;
+    private final MfaService mfaService;
+    private final EmailAvailabilityRateLimiter emailAvailabilityRateLimiter;
+    private final EmailVerificationService emailVerificationService;
+    private final boolean refreshCookieSecure;
+    private final long refreshTokenExpirationSeconds;
+
+    public AuthController(UserService userService, AuthService authService,
+                          MfaService mfaService,
+                          EmailAvailabilityRateLimiter emailAvailabilityRateLimiter,
+                          EmailVerificationService emailVerificationService,
+                          @Value("${app.auth.refresh-cookie-secure}") boolean refreshCookieSecure,
+                          @Value("${app.jwt.refresh-token-expiration-seconds}") long refreshTokenExpirationSeconds) {
+        this.userService = userService;
+        this.authService = authService;
+        this.mfaService = mfaService;
+        this.emailAvailabilityRateLimiter = emailAvailabilityRateLimiter;
+        this.emailVerificationService = emailVerificationService;
+        this.refreshCookieSecure = refreshCookieSecure;
+        this.refreshTokenExpirationSeconds = refreshTokenExpirationSeconds;
+    }
+
+    @Operation(summary = "회원가입 이메일 중복 확인", description = "이메일로 신규 가입할 수 있는지 확인합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "가입 가능 여부",
+            content = @Content(schema = @Schema(implementation = EmailAvailabilityResponse.class))),
+        @ApiResponse(responseCode = "400", description = "잘못된 요청",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "429", description = "요청 횟수 제한 초과",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/email-availability")
+    public ResponseEntity<EmailAvailabilityResponse> checkEmailAvailability(
+            @Valid @RequestBody EmailAvailabilityRequest request,
+            HttpServletRequest servletRequest) {
+        emailAvailabilityRateLimiter.check(request.email(), servletRequest.getRemoteAddr());
+        return ResponseEntity.ok(userService.checkEmailAvailability(request));
+    }
+
+    @Operation(summary = "이메일 인증번호 발급", description = "회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "202", description = "인증번호 발급",
+            content = @Content(schema = @Schema(implementation = EmailVerificationResponse.class))),
+        @ApiResponse(responseCode = "400", description = "잘못된 요청",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "409", description = "이미 가입된 이메일(purpose=signup)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "429", description = "재요청 제한 초과",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/email-verifications")
+    public ResponseEntity<EmailVerificationResponse> requestEmailVerification(
+            @Valid @RequestBody EmailVerificationRequest request) {
+        EmailVerificationResponse response = emailVerificationService.request(request);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
+    }
+
+    @Operation(summary = "이메일 인증번호 검증", description = "인증번호를 검증하고 1회용 verification_token을 발급합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "검증 성공",
+            content = @Content(schema = @Schema(implementation = VerificationConfirmResponse.class))),
+        @ApiResponse(responseCode = "400", description = "인증번호 불일치·만료·시도 초과",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "404", description = "인증 요청을 찾을 수 없음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/email-verifications/{verification_id}/confirm")
+    public ResponseEntity<VerificationConfirmResponse> confirmEmailVerification(
+            @PathVariable("verification_id") String verificationId,
+            @Valid @RequestBody VerificationConfirmRequest request) {
+        return ResponseEntity.ok(emailVerificationService.confirm(verificationId, request));
+    }
+
+    @Operation(summary = "비밀번호 재설정", description = "verification_token으로 본인 확인 후 비밀번호를 변경하고 기존 세션을 폐기합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "재설정 성공"),
+        @ApiResponse(responseCode = "400", description = "잘못된 요청 또는 유효하지 않은 토큰",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/password-reset")
+    public ResponseEntity<Void> resetPassword(@Valid @RequestBody PasswordResetRequest request) {
+        authService.resetPassword(request);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "회원가입", description = "이메일/비밀번호로 신규 사용자를 생성합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "201", description = "회원가입 성공",
+            content = @Content(schema = @Schema(implementation = SignupResponse.class))),
+        @ApiResponse(responseCode = "400", description = "잘못된 요청",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "409", description = "이미 가입된 이메일",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/signup")
+    public ResponseEntity<SignupResponse> signup(@Valid @RequestBody SignupRequest request) {
+        SignupResponse response = userService.signup(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @Operation(summary = "로그인", description = "이메일/비밀번호를 검증하고 access token과 HttpOnly refresh 쿠키를 발급합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "로그인 성공",
+            content = @Content(schema = @Schema(implementation = LoginResponse.class))),
+        @ApiResponse(responseCode = "401", description = "이메일 또는 비밀번호 불일치",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/login")
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
+        return authenticatedResponse(authService.login(request));
+    }
+
+    @Operation(summary = "토큰 재발급", description = "HttpOnly refresh 쿠키를 검증하고 access token과 refresh 쿠키를 회전합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "재발급 성공",
+            content = @Content(schema = @Schema(implementation = LoginResponse.class))),
+        @ApiResponse(responseCode = "401", description = "유효하지 않거나 만료된 refresh token",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/refresh")
+    public ResponseEntity<LoginResponse> refresh(
+            @Parameter(required = true, description = "HttpOnly refresh token 쿠키")
+            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new InvalidRefreshTokenException();
+        }
+        return authenticatedResponse(authService.refresh(new RefreshRequest(refreshToken)));
+    }
+
+    @Operation(summary = "로그아웃", description = "HttpOnly refresh 쿠키를 폐기하고 제거합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "로그아웃 성공")
+    })
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(
+            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshToken) {
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            authService.logout(new RefreshRequest(refreshToken));
+        }
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, refreshCookie("", 0).toString())
+                .build();
+    }
+
+    @Operation(summary = "OAuth code 교환", description = "OAuth 로그인 성공 후 발급된 1회용 code를 access token과 HttpOnly refresh 쿠키로 교환합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "교환 성공",
+            content = @Content(schema = @Schema(implementation = LoginResponse.class))),
+        @ApiResponse(responseCode = "401", description = "유효하지 않거나 만료된 code",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/oauth/exchange")
+    public ResponseEntity<LoginResponse> exchangeOAuthCode(@Valid @RequestBody OAuthExchangeRequest request) {
+        return authenticatedResponse(authService.exchangeOAuthCode(request));
+    }
+
+    @Operation(summary = "내 정보 조회", description = "access token으로 인증된 사용자의 프로필을 반환합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "조회 성공",
+            content = @Content(schema = @Schema(implementation = MeResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @GetMapping("/me")
+    public ResponseEntity<MeResponse> me(@AuthenticationPrincipal String userId) {
+        return ResponseEntity.ok(authService.me(userId));
+    }
+
+    @Operation(summary = "표시 이름 변경", description = "인증된 사용자의 표시 이름을 변경합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "변경 성공",
+            content = @Content(schema = @Schema(implementation = MeResponse.class))),
+        @ApiResponse(responseCode = "400", description = "잘못된 요청",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PatchMapping("/me")
+    public ResponseEntity<MeResponse> updateDisplayName(
+            @AuthenticationPrincipal String userId,
+            @Valid @RequestBody DisplayNameUpdateRequest request) {
+        return ResponseEntity.ok(authService.updateDisplayName(userId, request));
+    }
+
+    @Operation(summary = "비밀번호 변경",
+            description = "현재 비밀번호를 확인하고 새 비밀번호로 바꿉니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "변경 성공"),
+        @ApiResponse(responseCode = "400", description = "잘못된 요청이거나 비밀번호를 쓰지 않는 계정",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않았거나 현재 비밀번호가 다름",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PutMapping("/me/password")
+    public ResponseEntity<Void> changePassword(
+            @AuthenticationPrincipal String userId,
+            @Valid @RequestBody PasswordChangeRequest request,
+            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshToken) {
+        authService.changePassword(userId, request, refreshToken);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "이메일 변경",
+            description = "새 이메일로 받은 인증번호 토큰으로 본인 확인 후 계정 이메일을 바꿉니다."
+                    + " 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "변경 성공",
+            content = @Content(schema = @Schema(implementation = MeResponse.class))),
+        @ApiResponse(responseCode = "400", description = "잘못된 요청이거나 유효하지 않은 verification_token",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "409", description = "같은 provider에 이미 그 이메일 계정이 있음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PutMapping("/me/email")
+    public ResponseEntity<MeResponse> changeEmail(
+            @AuthenticationPrincipal String userId,
+            @Valid @RequestBody EmailChangeRequest request,
+            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshToken) {
+        return ResponseEntity.ok(authService.changeEmail(userId, request, refreshToken));
+    }
+
+    @Operation(summary = "로그인 세션 목록",
+            description = "폐기되지 않은 로그인 세션을 최근 로그인 순으로 반환합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "조회 성공",
+            content = @Content(schema = @Schema(implementation = SessionListResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @GetMapping("/me/sessions")
+    public ResponseEntity<SessionListResponse> sessions(
+            @AuthenticationPrincipal String userId,
+            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshToken) {
+        return ResponseEntity.ok(authService.sessions(userId, refreshToken));
+    }
+
+    @Operation(summary = "특정 기기 로그아웃",
+            description = "지정한 세션의 refresh token을 폐기합니다. 현재 세션도 지정할 수 있습니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "폐기 성공"),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "404", description = "세션을 찾을 수 없음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @DeleteMapping("/me/sessions/{session_id}")
+    public ResponseEntity<Void> revokeSession(
+            @AuthenticationPrincipal String userId,
+            @Parameter(description = "세션 ID", example = "42")
+            @PathVariable("session_id") Long sessionId) {
+        authService.revokeSession(userId, sessionId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "로그인 2단계(다단계 인증)",
+            description = "일반 또는 OAuth 로그인이 mfa_required를 돌려줬을 때 코드로 로그인을 마칩니다."
+                    + " code에는 인증 앱의 6자리 코드 또는 복구 코드를 넣습니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "429", description = "사용자별 MFA 검증 횟수 초과",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "200", description = "로그인 성공",
+            content = @Content(schema = @Schema(implementation = LoginResponse.class))),
+        @ApiResponse(responseCode = "400", description = "mfa_token이 만료되었거나 이미 사용됨",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "401", description = "코드가 올바르지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/login/mfa")
+    public ResponseEntity<LoginResponse> loginMfa(@Valid @RequestBody MfaLoginRequest request) {
+        return authenticatedResponse(authService.loginMfa(request));
+    }
+
+    @Operation(summary = "다단계 인증 상태 조회")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "조회 성공",
+            content = @Content(schema = @Schema(implementation = MfaStatusResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @GetMapping("/me/mfa")
+    public ResponseEntity<MfaStatusResponse> mfaStatus(@AuthenticationPrincipal String userId) {
+        return ResponseEntity.ok(mfaService.status(userId));
+    }
+
+    @Operation(summary = "다단계 인증 등록(1단계)",
+            description = "secret과 복구 코드를 발급합니다. 아직 켜지지 않으며 로그인을 막지 않습니다."
+                    + " 복구 코드는 이 응답에서만 볼 수 있습니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "발급 성공",
+            content = @Content(schema = @Schema(implementation = MfaRegistrationResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "409", description = "이미 켜져 있음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/me/mfa")
+    public ResponseEntity<MfaRegistrationResponse> registerMfa(@AuthenticationPrincipal String userId) {
+        return ResponseEntity.ok(mfaService.register(userId));
+    }
+
+    @Operation(summary = "다단계 인증 활성화(2단계)",
+            description = "인증 앱의 코드를 확인하고 실제로 켭니다. 이 단계를 통과해야 로그인에 코드가 요구됩니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "429", description = "사용자별 MFA 검증 횟수 초과",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "204", description = "활성화 성공"),
+        @ApiResponse(responseCode = "401", description = "인증되지 않았거나 코드가 올바르지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "404", description = "등록된 다단계 인증이 없음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "409", description = "이미 켜져 있음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/me/mfa/activate")
+    public ResponseEntity<Void> activateMfa(
+            @AuthenticationPrincipal String userId,
+            @Valid @RequestBody MfaCodeRequest request) {
+        mfaService.activate(userId, request.code());
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "다단계 인증 해제",
+            description = "인증 앱의 코드 또는 복구 코드로 본인을 확인한 뒤 해제합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "429", description = "사용자별 MFA 검증 횟수 초과",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "204", description = "해제 성공"),
+        @ApiResponse(responseCode = "401", description = "인증되지 않았거나 코드가 올바르지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "404", description = "켜져 있지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @DeleteMapping("/me/mfa")
+    public ResponseEntity<Void> disableMfa(
+            @AuthenticationPrincipal String userId,
+            @Valid @RequestBody MfaCodeRequest request) {
+        mfaService.disable(userId, request.code());
+        return ResponseEntity.noContent().build();
+    }
+
+    private ResponseEntity<LoginResponse> authenticatedResponse(LoginResponse response) {
+        if (Boolean.TRUE.equals(response.mfaRequired())) {
+            return ResponseEntity.ok(response);
+        }
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE,
+                        refreshCookie(response.refreshToken(), refreshTokenExpirationSeconds).toString())
+                .body(response);
+    }
+
+    private ResponseCookie refreshCookie(String value, long maxAgeSeconds) {
+        return ResponseCookie.from(REFRESH_COOKIE_NAME, value)
+                .httpOnly(true)
+                .secure(refreshCookieSecure)
+                .sameSite("Strict")
+                .path("/api/auth")
+                .maxAge(maxAgeSeconds)
+                .build();
+    }
+}

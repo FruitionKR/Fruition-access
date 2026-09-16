@@ -1,0 +1,1654 @@
+# Workspaces API
+
+[서비스 문서](../README.md) / [access-svc](README.md)
+
+워크스페이스 관리와 서비스 간 인가·AI 모델 설정 API다.
+
+활성 워크스페이스명은 같은 소유자 안에서 고유해야 한다. 앞뒤 공백·대소문자·한글 조합 방식만 다른 이름도 중복이다. 생성·이름 변경·복구·OWNER 추가/승격 시 충돌하면 `409 DUPLICATE_NAME`을 반환하며 요청 전체를 취소한다. 소유자가 겹치지 않는 워크스페이스는 같은 이름을 사용할 수 있다. 삭제하면 이름 점유가 해제된다.
+
+- API 수: 16
+
+## API 목차
+
+| API | 목적 |
+|---|---|
+| [`GET /api/workspaces`](#summary-get-api-workspaces) | 로그인한 사용자가 소유한 워크스페이스 목록을 반환합니다. |
+| [`POST /api/workspaces`](#summary-post-api-workspaces) | 로그인한 사용자 소유의 워크스페이스를 생성합니다. |
+| [`GET /api/workspaces/trash`](#summary-get-api-workspaces-trash) | 소유자가 삭제한 워크스페이스를 반환합니다. |
+| [`PATCH /api/workspaces/{workspace_id}`](#summary-patch-api-workspaces-workspace-id) | 로그인한 사용자가 소유한 워크스페이스의 이름을 변경합니다. |
+| [`DELETE /api/workspaces/{workspace_id}`](#summary-delete-api-workspaces-workspace-id) | 소유한 워크스페이스를 하위 데이터 변경 없이 소프트 삭제합니다. |
+| [`PUT /api/workspaces/{workspace_id}/icon`](#summary-put-api-workspaces-workspace-id-icon) | 소유한 워크스페이스의 아이콘 이모지를 설정하거나 지웁니다. |
+| [`PUT /api/workspaces/{workspace_id}/icon/image`](#summary-put-api-workspaces-workspace-id-icon-image) | 아이콘으로 쓸 이미지를 업로드합니다. |
+| [`GET /api/workspaces/{workspace_id}/icon/image`](#summary-get-api-workspaces-workspace-id-icon-image) | 멤버에게 아이콘 이미지 bytes를 반환합니다. |
+| [`GET /api/workspaces/{workspace_id}/members`](#summary-get-api-workspaces-workspace-id-members) | 워크스페이스의 활성 멤버를 합류 순으로 반환합니다. 멤버만 조회할 수 있습니다. |
+| [`PATCH /api/workspaces/{workspace_id}/members/{user_id}`](#summary-patch-api-workspaces-workspace-id-members-user-id) | 멤버의 역할을 OWNER 또는 MEMBER로 변경합니다. OWNER만 호출할 수 있습니다. |
+| [`DELETE /api/workspaces/{workspace_id}/members/{user_id}`](#summary-delete-api-workspaces-workspace-id-members-user-id) | OWNER는 다른 멤버를 제거할 수 있고, 멤버는 자신을 제거해 탈퇴할 수 있습니다. |
+| [`POST /api/workspaces/{workspace_id}/restore`](#summary-post-api-workspaces-workspace-id-restore) | 소프트 삭제한 워크스페이스와 기존 하위 데이터의 접근을 복구합니다. |
+| [`GET /internal/authz/workspaces/{workspace_id}/users/{user_id}`](#summary-get-internal-authz-workspaces-workspace-id-users-user-id) | 워크스페이스에서 사용자의 활성 역할을 조회합니다. |
+| [`GET /internal/users/{user_id}`](#summary-get-internal-users-user-id) | 워크스페이스에서 사용자의 활성 역할을 조회합니다. |
+| [`GET /internal/workspaces/{workspace_id}/ai-model-settings`](#summary-get-internal-workspaces-workspace-id-ai-model-settings) | 내부 서비스가 사용자의 표시 이름을 조회합니다. |
+| [`PUT /internal/workspaces/{workspace_id}/ai-model-settings`](#summary-put-internal-workspaces-workspace-id-ai-model-settings) | 내부 서비스가 사용자의 표시 이름을 조회합니다. |
+
+## 한눈에 보기
+
+<a id="summary-get-api-workspaces"></a>
+### `GET /api/workspaces`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 로그인한 사용자가 소유한 워크스페이스 목록을 반환합니다. |
+| 입력 | 없음 |
+| 출력 | `200` 조회 성공 — `WorkspaceListResponse` |
+| 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다.<br>인증된 사용자만 호출할 수 있다. |
+| 주요 오류 | 공통 오류 계약 적용 |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-get-api-workspaces"></a>
+### `GET /api/workspaces` 상세
+
+#### 1. Method + Path
+
+`GET /api/workspaces`
+
+#### 2. 목적
+
+로그인한 사용자가 소유한 워크스페이스 목록을 반환합니다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+- 없음
+
+- Body: 없음
+
+#### 5. Response body
+
+- HTTP `200`: 조회 성공
+- Content-Type: `*/*` (`WorkspaceListResponse`)
+
+```json
+{
+  "workspaces": [
+    {
+      "created_at": "2026-08-13T04:25:24.371948Z",
+      "id": "ws_9d47a0e9a6324341b47562553b75f92a",
+      "name": "내 워크스페이스",
+      "updated_at": "2026-08-13T04:25:24.371948Z"
+    }
+  ]
+}
+```
+
+#### 6. Error response
+
+- 명세에 별도 오류 응답이 정의되어 있지 않다.
+
+#### 7. Pagination / filtering
+
+- 페이지네이션: 지원하지 않음
+- 필터링: 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 인증된 사용자만 호출할 수 있다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X GET "$ACCESS/api/workspaces" \
+  -H 'Authorization: Bearer <access_token>'
+```
+
+```json
+{
+  "workspaces": [
+    {
+      "created_at": "2026-08-13T04:25:24.371948Z",
+      "id": "ws_9d47a0e9a6324341b47562553b75f92a",
+      "name": "내 워크스페이스",
+      "updated_at": "2026-08-13T04:25:24.371948Z"
+    }
+  ]
+}
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: list`)
+
+[↑ 요약으로 돌아가기](#summary-get-api-workspaces)
+
+</details>
+
+<a id="summary-post-api-workspaces"></a>
+### `POST /api/workspaces`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 로그인한 사용자 소유의 워크스페이스를 생성합니다. |
+| 입력 | **Body** — `WorkspaceCreateRequest` |
+| 출력 | `201` 생성 성공 — `WorkspaceResponse` |
+| 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다.<br>인증된 사용자만 호출할 수 있다. |
+| 주요 오류 | `400` 잘못된 요청 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-post-api-workspaces"></a>
+### `POST /api/workspaces` 상세
+
+#### 1. Method + Path
+
+`POST /api/workspaces`
+
+#### 2. 목적
+
+로그인한 사용자 소유의 워크스페이스를 생성합니다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+- Parameters: 없음
+
+- Content-Type: `application/json` (`WorkspaceCreateRequest`)
+
+```json
+{
+  "name": "내 워크스페이스"
+}
+```
+
+#### 5. Response body
+
+- HTTP `201`: 생성 성공
+- Content-Type: `*/*` (`WorkspaceResponse`)
+
+```json
+{
+  "created_at": "2026-08-13T04:25:24.371948Z",
+  "id": "ws_9d47a0e9a6324341b47562553b75f92a",
+  "name": "내 워크스페이스",
+  "updated_at": "2026-08-13T04:25:24.371948Z"
+}
+```
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 응답 스키마 |
+|---|---|---|
+| `400` | 잘못된 요청 | `ErrorResponse` |
+
+```json
+{
+  "error": {
+    "code": "INVALID_REQUEST",
+    "details": [
+      {
+        "field": "email",
+        "reason": "email은 필수입니다."
+      }
+    ],
+    "message": "요청 형식이 올바르지 않습니다."
+  }
+}
+```
+
+#### 7. Pagination / filtering
+
+- 페이지네이션: 지원하지 않음
+- 필터링: 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 인증된 사용자만 호출할 수 있다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X POST "$ACCESS/api/workspaces" \
+  -H 'Authorization: Bearer <access_token>' \
+  -H 'Content-Type: application/json' \
+  --data '{"name":"내 워크스페이스"}'
+```
+
+```json
+{
+  "created_at": "2026-08-13T04:25:24.371948Z",
+  "id": "ws_9d47a0e9a6324341b47562553b75f92a",
+  "name": "내 워크스페이스",
+  "updated_at": "2026-08-13T04:25:24.371948Z"
+}
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: create`)
+
+[↑ 요약으로 돌아가기](#summary-post-api-workspaces)
+
+</details>
+
+<a id="summary-get-api-workspaces-trash"></a>
+### `GET /api/workspaces/trash`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 소유자가 삭제한 워크스페이스를 반환합니다. |
+| 입력 | 없음 |
+| 출력 | `200` 성공 — `WorkspaceTrashResponse` |
+| 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다.<br>인증된 사용자만 호출할 수 있다. |
+| 주요 오류 | 공통 오류 계약 적용 |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-get-api-workspaces-trash"></a>
+### `GET /api/workspaces/trash` 상세
+
+#### 1. Method + Path
+
+`GET /api/workspaces/trash`
+
+#### 2. 목적
+
+소유자가 삭제한 워크스페이스를 반환합니다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+- 없음
+
+- Body: 없음
+
+#### 5. Response body
+
+- HTTP `200`: OK
+- Content-Type: `*/*` (`WorkspaceTrashResponse`)
+
+```json
+{
+  "workspaces": [
+    {
+      "deleted_at": "2026-08-13T04:25:24.371948Z",
+      "deleted_by": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081",
+      "id": "ws_9d47a0e9a6324341b47562553b75f92a",
+      "name": "내 워크스페이스"
+    }
+  ]
+}
+```
+
+#### 6. Error response
+
+- 명세에 별도 오류 응답이 정의되어 있지 않다.
+
+#### 7. Pagination / filtering
+
+- 페이지네이션: 지원하지 않음
+- 필터링: 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 인증된 사용자만 호출할 수 있다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X GET "$ACCESS/api/workspaces/trash" \
+  -H 'Authorization: Bearer <access_token>'
+```
+
+```json
+{
+  "workspaces": [
+    {
+      "deleted_at": "2026-08-13T04:25:24.371948Z",
+      "deleted_by": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081",
+      "id": "ws_9d47a0e9a6324341b47562553b75f92a",
+      "name": "내 워크스페이스"
+    }
+  ]
+}
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: trash`)
+
+[↑ 요약으로 돌아가기](#summary-get-api-workspaces-trash)
+
+</details>
+
+<a id="summary-patch-api-workspaces-workspace-id"></a>
+### `PATCH /api/workspaces/{workspace_id}`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 로그인한 사용자가 소유한 워크스페이스의 이름을 변경합니다. |
+| 입력 | **Path** — `workspace_id`: `string`<br>**Body** — `WorkspaceRenameRequest` |
+| 출력 | `200` 변경 성공 — `WorkspaceResponse` |
+| 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다.<br>인증된 사용자만 호출할 수 있다.<br>path의 `workspace_id`에 대한 활성 멤버십을 검증한다. |
+| 주요 오류 | `404` 워크스페이스를 찾을 수 없음 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-patch-api-workspaces-workspace-id"></a>
+### `PATCH /api/workspaces/{workspace_id}` 상세
+
+#### 1. Method + Path
+
+`PATCH /api/workspaces/{workspace_id}`
+
+#### 2. 목적
+
+로그인한 사용자가 소유한 워크스페이스의 이름을 변경합니다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| path | `workspace_id` | `string` | 예 | 워크스페이스 ID |
+
+- Content-Type: `application/json` (`WorkspaceRenameRequest`)
+
+```json
+{
+  "name": "이름 바꾼 워크스페이스"
+}
+```
+
+#### 5. Response body
+
+- HTTP `200`: 변경 성공
+- Content-Type: `*/*` (`WorkspaceResponse`)
+
+```json
+{
+  "created_at": "2026-08-13T04:25:24.371948Z",
+  "id": "ws_9d47a0e9a6324341b47562553b75f92a",
+  "name": "내 워크스페이스",
+  "updated_at": "2026-08-13T04:25:24.371948Z"
+}
+```
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 응답 스키마 |
+|---|---|---|
+| `404` | 워크스페이스를 찾을 수 없음 | `ErrorResponse` |
+
+```json
+{
+  "error": {
+    "code": "INVALID_REQUEST",
+    "message": "요청 형식이 올바르지 않습니다."
+  }
+}
+```
+
+#### 7. Pagination / filtering
+
+- 페이지네이션: 지원하지 않음
+- 필터링: 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 인증된 사용자만 호출할 수 있다.
+- path의 `workspace_id`에 대한 활성 멤버십을 검증한다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X PATCH "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a" \
+  -H 'Authorization: Bearer <access_token>' \
+  -H 'Content-Type: application/json' \
+  --data '{"name":"이름 바꾼 워크스페이스"}'
+```
+
+```json
+{
+  "created_at": "2026-08-13T04:25:24.371948Z",
+  "id": "ws_9d47a0e9a6324341b47562553b75f92a",
+  "name": "내 워크스페이스",
+  "updated_at": "2026-08-13T04:25:24.371948Z"
+}
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: rename`)
+
+[↑ 요약으로 돌아가기](#summary-patch-api-workspaces-workspace-id)
+
+</details>
+
+<a id="summary-delete-api-workspaces-workspace-id"></a>
+### `DELETE /api/workspaces/{workspace_id}`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 소유한 워크스페이스를 하위 데이터 변경 없이 소프트 삭제합니다. |
+| 입력 | **Path** — `workspace_id`: `string`<br>**Header** — `Idempotency-Key`(선택): `string` |
+| 출력 | `200` 삭제 성공 — `WorkspaceLifecycleResponse` |
+| 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다.<br>인증된 사용자만 호출할 수 있다.<br>path의 `workspace_id`에 대한 활성 멤버십을 검증한다. |
+| 주요 오류 | `400` 잘못된 Idempotency-Key — `ErrorResponse`<br>`404` 워크스페이스를 찾을 수 없음 — `ErrorResponse`<br>`409` Idempotency-Key 충돌 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-delete-api-workspaces-workspace-id"></a>
+### `DELETE /api/workspaces/{workspace_id}` 상세
+
+#### 1. Method + Path
+
+`DELETE /api/workspaces/{workspace_id}`
+
+#### 2. 목적
+
+소유한 워크스페이스를 하위 데이터 변경 없이 소프트 삭제합니다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| path | `workspace_id` | `string` | 예 | 워크스페이스 ID |
+| header | `Idempotency-Key` | `string` | 아니요 | - |
+
+- Body: 없음
+
+#### 5. Response body
+
+- HTTP `200`: 삭제 성공
+- Content-Type: `*/*` (`WorkspaceLifecycleResponse`)
+
+```json
+{
+  "deleted": true,
+  "deleted_at": "2026-08-13T04:25:24.371948Z",
+  "id": "ws_9d47a0e9a6324341b47562553b75f92a"
+}
+```
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 응답 스키마 |
+|---|---|---|
+| `400` | 잘못된 Idempotency-Key | `ErrorResponse` |
+| `404` | 워크스페이스를 찾을 수 없음 | `ErrorResponse` |
+| `409` | Idempotency-Key 충돌 | `ErrorResponse` |
+
+```json
+{
+  "error": {
+    "code": "INVALID_REQUEST",
+    "details": [
+      {
+        "field": "email",
+        "reason": "email은 필수입니다."
+      }
+    ],
+    "message": "요청 형식이 올바르지 않습니다."
+  }
+}
+```
+
+#### 7. Pagination / filtering
+
+- 페이지네이션: 지원하지 않음
+- 필터링: 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 인증된 사용자만 호출할 수 있다.
+- path의 `workspace_id`에 대한 활성 멤버십을 검증한다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X DELETE "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a" \
+  -H 'Authorization: Bearer <access_token>' \
+  -H 'Idempotency-Key: <value>'
+```
+
+```json
+{
+  "deleted": true,
+  "deleted_at": "2026-08-13T04:25:24.371948Z",
+  "id": "ws_9d47a0e9a6324341b47562553b75f92a"
+}
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: delete`)
+
+[↑ 요약으로 돌아가기](#summary-delete-api-workspaces-workspace-id)
+
+</details>
+
+<a id="summary-put-api-workspaces-workspace-id-icon"></a>
+### `PUT /api/workspaces/{workspace_id}/icon`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 소유한 워크스페이스의 아이콘 이모지를 설정하거나 지웁니다. |
+| 입력 | **Path** — `workspace_id`: `string`<br>**Body** — `WorkspaceIconUpdateRequest` |
+| 출력 | `200` 변경 성공 — `WorkspaceResponse` |
+| 조건 | 인증 필요<br>호출자의 역할이 `OWNER`여야 한다. |
+| 주요 오류 | `400` 잘못된 요청 — `ErrorResponse`<br>`404` 워크스페이스를 찾을 수 없음 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-put-api-workspaces-workspace-id-icon"></a>
+### `PUT /api/workspaces/{workspace_id}/icon` 상세
+
+#### 1. Method + Path
+
+`PUT /api/workspaces/{workspace_id}/icon`
+
+#### 2. 목적
+
+워크스페이스 아이콘을 이모지로 설정한다. 이미지 업로드는 아직 지원하지 않는다 —
+도입하면 응답에 `icon_url`이 더해지며, 지금의 `icon_emoji` 계약은 그대로 유지된다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| path | `workspace_id` | `string` | 예 | 워크스페이스 ID |
+| body | `icon_emoji` | `string` | 아니오 | 아이콘 이모지(32자 이하, 공백 불가). `null`이면 아이콘을 지운다 |
+
+```json
+{
+  "icon_emoji": "📁"
+}
+```
+
+지우려면 `null`을 명시한다. 빈 문자열은 `400`이다 — 지우는 방법을 하나로 둔다.
+이모지와 이미지는 배타적이라, 이모지를 설정하면 기존 이미지가 지워지고 `null`은 둘 다 지운다.
+
+```json
+{
+  "icon_emoji": null
+}
+```
+
+32자를 허용하는 이유: 가족 이모지처럼 ZWJ로 이어 붙는 시퀀스는 코드포인트를 여러 개 쓴다.
+이모지인지 자체를 정규식으로 판별하지는 않는다. 유니코드 개정마다 표가 늘어 유지비가 크고,
+자기 워크스페이스의 아이콘이라 위험도가 낮다. 공백만 막는다.
+
+#### 5. Response body
+
+- HTTP `200`: 변경 성공 — `WorkspaceResponse`
+
+```json
+{
+  "id": "ws_9d47a0e9a6324341b47562553b75f92a",
+  "name": "내 워크스페이스",
+  "icon_emoji": "📁",
+  "created_at": "2026-08-13T04:25:24.371948Z",
+  "updated_at": "2026-09-07T21:10:02.118374Z"
+}
+```
+
+`icon_emoji`는 `GET /api/workspaces`, `POST /api/workspaces`,
+`PATCH /api/workspaces/{workspace_id}` 응답에도 함께 실린다. 설정하지 않았으면 생략된다.
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 코드 |
+|---|---|---|
+| `400` | 32자를 넘거나 공백을 포함함 | `INVALID_REQUEST` |
+| `404` | 워크스페이스를 찾을 수 없거나 소유자가 아님 | `WORKSPACE_NOT_FOUND` |
+
+#### 7. Pagination / filtering
+
+- 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 인증된 사용자만 호출할 수 있다.
+- 소유(`OWNER`)한 워크스페이스만 대상이다. 이름 변경(`PATCH /api/workspaces/{workspace_id}`)과 같은 기준이다.
+- 소프트 삭제된 워크스페이스는 대상이 아니다(`404`).
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X PUT "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/icon" \
+  -H 'Authorization: Bearer <access_token>' \
+  -H 'Content-Type: application/json' \
+  --data '{"icon_emoji":"📁"}'
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: updateIcon`)
+
+[↑ 요약으로 돌아가기](#summary-put-api-workspaces-workspace-id-icon)
+
+</details>
+
+<a id="summary-put-api-workspaces-workspace-id-icon-image"></a>
+### `PUT /api/workspaces/{workspace_id}/icon/image`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 아이콘으로 쓸 이미지를 업로드합니다. 이모지가 설정돼 있었다면 함께 사라집니다. |
+| 입력 | **Path** — `workspace_id`: `string`<br>**Multipart** — `file` |
+| 출력 | `200` 업로드 성공 — `WorkspaceResponse` |
+| 조건 | 인증 필요<br>호출자의 역할이 `OWNER`여야 한다. |
+| 주요 오류 | `400` 지원하지 않는 이미지 형식 — `ErrorResponse`<br>`404` 워크스페이스를 찾을 수 없음 — `ErrorResponse`<br>`413` 이미지가 너무 큼 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+#### 1. Method + Path
+
+`PUT /api/workspaces/{workspace_id}/icon/image`
+
+#### 2. 목적
+
+아이콘 이미지를 올린다. 이모지와 이미지는 배타적이라, 업로드에 성공하면 기존 이모지는 지워진다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| path | `workspace_id` | `string` | 예 | 워크스페이스 ID |
+| multipart | `file` | binary | 예 | PNG·JPEG·WebP·GIF, 1MB 이하 |
+
+- Content-Type: `multipart/form-data`
+
+형식은 **매직 바이트로 판별한다.** 선언된 Content-Type은 클라이언트가 정하는 값이라 믿지 않는다.
+픽셀 크기는 보지 않는다 — 서버가 이미지를 디코딩하지 않고 그대로 저장·스트리밍하므로 디코딩 폭탄이
+서버에 영향을 주지 않고, 바이트 상한만으로 저장량이 묶인다.
+
+#### 5. Response body
+
+- HTTP `200`: 업로드 성공 — `WorkspaceResponse`
+
+```json
+{
+  "id": "ws_9d47a0e9a6324341b47562553b75f92a",
+  "name": "내 워크스페이스",
+  "icon_url": "/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/icon/image",
+  "created_at": "2026-08-13T04:25:24.371948Z",
+  "updated_at": "2026-09-07T21:40:11.204813Z"
+}
+```
+
+`icon_emoji`는 지워져 응답에서 빠진다.
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 코드 |
+|---|---|---|
+| `400` | PNG·JPEG·WebP·GIF가 아니거나 파일이 비어 있음 | `UNSUPPORTED_WORKSPACE_ICON` |
+| `400` | multipart 요청이 아니거나 `file` part가 없음 | `INVALID_REQUEST` |
+| `404` | 워크스페이스를 찾을 수 없거나 소유자가 아님 | `WORKSPACE_NOT_FOUND` |
+| `413` | 1MB를 넘음 | `WORKSPACE_ICON_TOO_LARGE` |
+
+2MB를 넘는 요청은 Spring multipart 한도(`spring.servlet.multipart.max-file-size`)에서 먼저 잘려
+`400 INVALID_REQUEST`가 된다. 의미 있는 경계인 1MB에서는 `413`이 나간다.
+
+#### 7. Pagination / filtering
+
+- 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 소유(`OWNER`)한 워크스페이스만 대상이다. 소프트 삭제된 워크스페이스는 `404`다.
+- 재업로드는 기존 바이너리 row를 덮어쓴다. 고아 이미지가 남지 않는다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X PUT "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/icon/image" \
+  -H 'Authorization: Bearer <access_token>' \
+  -F 'file=@icon.png'
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: updateIconImage`)
+
+[↑ 요약으로 돌아가기](#summary-put-api-workspaces-workspace-id-icon-image)
+
+</details>
+
+<a id="summary-get-api-workspaces-workspace-id-icon-image"></a>
+### `GET /api/workspaces/{workspace_id}/icon/image`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 멤버에게 아이콘 이미지 bytes를 반환합니다. |
+| 입력 | **Path** — `workspace_id`: `string` |
+| 출력 | `200` 이미지 bytes / `304` 캐시된 이미지 사용 |
+| 조건 | 인증 필요<br>역할과 무관하게 멤버면 조회할 수 있다. |
+| 주요 오류 | `404` 워크스페이스 또는 아이콘 이미지를 찾을 수 없음 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+#### 1. Method + Path
+
+`GET /api/workspaces/{workspace_id}/icon/image`
+
+#### 2. 목적
+
+`WorkspaceResponse.icon_url`이 가리키는 경로다. 아이콘은 모든 멤버가 화면에서 보므로
+설정과 달리 조회는 역할을 가리지 않는다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| path | `workspace_id` | `string` | 예 | 워크스페이스 ID |
+
+- 요청 본문 없음
+
+#### 5. Response body
+
+- HTTP `200`: 이미지 bytes. `Content-Type`은 업로드 시 판별한 형식이다
+- HTTP `304`: `If-None-Match`가 현재 `ETag`와 같을 때
+
+응답 헤더:
+
+| 헤더 | 값 |
+|---|---|
+| `ETag` | 이미지 SHA-256 |
+| `Cache-Control` | `no-cache, private` |
+| `X-Content-Type-Options` | `nosniff` |
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 코드 |
+|---|---|---|
+| `404` | 워크스페이스를 찾을 수 없거나 멤버가 아님 | `WORKSPACE_NOT_FOUND` |
+| `404` | 이미지를 설정하지 않음(이모지만 있거나 아이콘 없음) | `WORKSPACE_ICON_NOT_FOUND` |
+
+#### 7. Pagination / filtering
+
+- 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 멤버면 역할과 무관하게 조회할 수 있다. 비멤버는 `404`로 존재를 숨긴다.
+- `private` 캐시라 공유 캐시에 남지 않는다. 고정 URL이므로 `no-cache`로 매번 서버에 재검증하고, 이미지가 같을 때만 `304`로 캐시를 재사용한다. `200`과 `304` 모두 이 정책을 반환한다.
+- 이미지 조회는 `REPEATABLE_READ` 트랜잭션에서 메타데이터와 바이너리를 같은 스냅샷으로 읽는다. 조회 중 교체·삭제되어도 응답의 Content-Type·ETag·바이너리가 서로 다른 버전으로 섞이지 않으며, 다음 요청은 변경된 상태를 조회한다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/icon/image" \
+  -H 'Authorization: Bearer <access_token>' \
+  -o icon.png
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: getIconImage`)
+
+[↑ 요약으로 돌아가기](#summary-get-api-workspaces-workspace-id-icon-image)
+
+</details>
+
+<a id="summary-get-api-workspaces-workspace-id-members"></a>
+### `GET /api/workspaces/{workspace_id}/members`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 워크스페이스의 활성 멤버를 합류 순으로 반환합니다. 멤버만 조회할 수 있습니다. |
+| 입력 | **Path** — `workspace_id`: `string` |
+| 출력 | `200` 조회 성공 — `WorkspaceMemberListResponse` |
+| 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다.<br>인증된 사용자만 호출할 수 있다.<br>path의 `workspace_id`에 대한 활성 멤버십을 검증한다. |
+| 주요 오류 | `404` 워크스페이스를 찾을 수 없거나 멤버가 아님 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-get-api-workspaces-workspace-id-members"></a>
+### `GET /api/workspaces/{workspace_id}/members` 상세
+
+#### 1. Method + Path
+
+`GET /api/workspaces/{workspace_id}/members`
+
+#### 2. 목적
+
+워크스페이스의 활성 멤버를 합류 순으로 반환합니다. 멤버만 조회할 수 있습니다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| path | `workspace_id` | `string` | 예 | 워크스페이스 ID |
+
+- 요청 본문 없음
+
+#### 5. Response body
+
+- HTTP `200`: 조회 성공
+- Content-Type: `*/*` (`WorkspaceMemberListResponse`)
+
+```json
+{
+  "members": [
+    {
+      "user_id": "user_1f9a74af",
+      "email": "owner@example.com",
+      "display_name": "홍길동",
+      "provider": "local",
+      "role": "OWNER",
+      "joined_at": "2026-08-13T04:25:24.371948Z"
+    },
+    {
+      "user_id": "user_8b21c530",
+      "email": "member@example.com",
+      "display_name": "김철수",
+      "provider": "google",
+      "role": "MEMBER",
+      "joined_at": "2026-08-20T09:11:03.882014Z"
+    }
+  ]
+}
+```
+
+`provider`는 계정을 만든 수단이다. 계정은 `(email, provider)` 단위로 분리돼 있어, 같은 이메일이라도 `provider`가 다르면 서로 다른 계정이고 멤버 목록에 각각 나타날 수 있다.
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 응답 스키마 |
+|---|---|---|
+| `404` | 워크스페이스를 찾을 수 없거나 멤버가 아님 | `ErrorResponse` |
+
+비멤버에게도 `404`를 준다. `403`을 주면 워크스페이스의 존재 자체가 드러나기 때문이다.
+
+```json
+{
+  "error": {
+    "code": "WORKSPACE_NOT_FOUND",
+    "message": "워크스페이스를 찾을 수 없습니다: id=ws_9d47a0e9a6324341b47562553b75f92a"
+  }
+}
+```
+
+#### 7. Pagination / filtering
+
+- 페이지네이션: 지원하지 않음
+- 필터링: 지원하지 않음
+- 정렬: `joined_at` 오름차순 고정
+
+#### 8. 권한 규칙
+
+- 인증된 사용자만 호출할 수 있다.
+- path의 `workspace_id`에 대한 활성 멤버십을 검증한다.
+- 역할과 무관하게 모든 멤버가 조회할 수 있다.
+- 소프트 삭제된 워크스페이스는 조회 대상이 아니다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members" \
+  -H 'Authorization: Bearer <access_token>'
+```
+
+```json
+{
+  "members": [
+    {
+      "user_id": "user_1f9a74af",
+      "email": "owner@example.com",
+      "display_name": "홍길동",
+      "provider": "local",
+      "role": "OWNER",
+      "joined_at": "2026-08-13T04:25:24.371948Z"
+    }
+  ]
+}
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceMemberController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: listMembers`)
+
+[↑ 요약으로 돌아가기](#summary-get-api-workspaces-workspace-id-members)
+
+</details>
+
+<a id="summary-patch-api-workspaces-workspace-id-members-user-id"></a>
+### `PATCH /api/workspaces/{workspace_id}/members/{user_id}`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 멤버의 역할을 OWNER 또는 MEMBER로 변경합니다. OWNER만 호출할 수 있습니다. |
+| 입력 | **Path** — `workspace_id`: `string`, `user_id`: `string`<br>**Body** — `WorkspaceMemberRoleUpdateRequest` |
+| 출력 | `200` 변경 성공 — `WorkspaceMemberResponse` |
+| 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다.<br>호출자의 역할이 `OWNER`여야 한다. |
+| 주요 오류 | `403` OWNER 권한 없음 — `ErrorResponse`<br>`404` 워크스페이스 또는 대상 멤버를 찾을 수 없음 — `ErrorResponse`<br>`409` 마지막 OWNER는 강등할 수 없음 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-patch-api-workspaces-workspace-id-members-user-id"></a>
+### `PATCH /api/workspaces/{workspace_id}/members/{user_id}` 상세
+
+#### 1. Method + Path
+
+`PATCH /api/workspaces/{workspace_id}/members/{user_id}`
+
+#### 2. 목적
+
+멤버의 역할을 OWNER 또는 MEMBER로 변경합니다. OWNER만 호출할 수 있습니다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| path | `workspace_id` | `string` | 예 | 워크스페이스 ID |
+| path | `user_id` | `string` | 예 | 대상 멤버 사용자 ID |
+| body | `role` | `string` | 예 | 새 역할. `OWNER` 또는 `MEMBER` |
+
+- Content-Type: `application/json` (`WorkspaceMemberRoleUpdateRequest`)
+
+```json
+{
+  "role": "OWNER"
+}
+```
+
+#### 5. Response body
+
+- HTTP `200`: 변경 성공
+- Content-Type: `*/*` (`WorkspaceMemberResponse`)
+
+```json
+{
+  "user_id": "user_8b21c530",
+  "email": "member@example.com",
+  "display_name": "김철수",
+  "provider": "google",
+  "role": "OWNER",
+  "joined_at": "2026-08-20T09:11:03.882014Z"
+}
+```
+
+이미 같은 역할이면 아무것도 바꾸지 않고 현재 상태를 그대로 돌려준다.
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 응답 스키마 |
+|---|---|---|
+| `403` | OWNER 권한 없음 (`WORKSPACE_ACCESS_DENIED`) | `ErrorResponse` |
+| `404` | 워크스페이스를 찾을 수 없거나 호출자가 멤버가 아님 (`WORKSPACE_NOT_FOUND`), 대상이 멤버가 아님 (`WORKSPACE_MEMBER_NOT_FOUND`) | `ErrorResponse` |
+| `409` | 마지막 OWNER는 강등할 수 없음 (`LAST_OWNER`) | `ErrorResponse` |
+
+```json
+{
+  "error": {
+    "code": "LAST_OWNER",
+    "message": "워크스페이스의 마지막 OWNER는 변경하거나 제거할 수 없습니다: workspaceId=ws_9d47a0e9a6324341b47562553b75f92a"
+  }
+}
+```
+
+#### 7. Pagination / filtering
+
+- 페이지네이션: 지원하지 않음
+- 필터링: 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 인증된 사용자만 호출할 수 있다.
+- 호출자가 멤버가 아니면 `404`, 멤버지만 `OWNER`가 아니면 `403`이다.
+- 워크스페이스에 `OWNER`가 하나뿐이면 그 `OWNER`를 `MEMBER`로 강등할 수 없다(`409`). 승격은 언제나 허용한다.
+- 변경에 성공하면 대상 사용자의 인가 projection(`authz:role:{workspaceId}:{userId}`)을 무효화한다. 그렇지 않으면 document-svc가 TTL이 만료될 때까지 옛 역할로 판정한다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X PATCH "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members/user_8b21c530" \
+  -H 'Authorization: Bearer <access_token>' \
+  -H 'Content-Type: application/json' \
+  --data '{"role":"OWNER"}'
+```
+
+```json
+{
+  "user_id": "user_8b21c530",
+  "email": "member@example.com",
+  "display_name": "김철수",
+  "provider": "google",
+  "role": "OWNER",
+  "joined_at": "2026-08-20T09:11:03.882014Z"
+}
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceMemberController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: changeRole`)
+
+[↑ 요약으로 돌아가기](#summary-patch-api-workspaces-workspace-id-members-user-id)
+
+</details>
+
+<a id="summary-delete-api-workspaces-workspace-id-members-user-id"></a>
+### `DELETE /api/workspaces/{workspace_id}/members/{user_id}`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | OWNER는 다른 멤버를 제거할 수 있고, 멤버는 자신을 제거해 탈퇴할 수 있습니다. |
+| 입력 | **Path** — `workspace_id`: `string`, `user_id`: `string` |
+| 출력 | `204` 제거 성공 — 본문 없음 |
+| 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다.<br>호출자가 `OWNER`이거나 대상이 호출자 자신이어야 한다. |
+| 주요 오류 | `403` 다른 멤버를 제거할 OWNER 권한 없음 — `ErrorResponse`<br>`404` 워크스페이스 또는 대상 멤버를 찾을 수 없음 — `ErrorResponse`<br>`409` 마지막 OWNER는 제거할 수 없음 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-delete-api-workspaces-workspace-id-members-user-id"></a>
+### `DELETE /api/workspaces/{workspace_id}/members/{user_id}` 상세
+
+#### 1. Method + Path
+
+`DELETE /api/workspaces/{workspace_id}/members/{user_id}`
+
+#### 2. 목적
+
+OWNER는 다른 멤버를 제거할 수 있고, 멤버는 자신을 제거해 탈퇴할 수 있습니다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| path | `workspace_id` | `string` | 예 | 워크스페이스 ID |
+| path | `user_id` | `string` | 예 | 대상 멤버 사용자 ID |
+
+- 요청 본문 없음
+
+#### 5. Response body
+
+- HTTP `204`: 제거 성공
+- 본문 없음
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 응답 스키마 |
+|---|---|---|
+| `403` | 다른 멤버를 제거할 OWNER 권한 없음 (`WORKSPACE_ACCESS_DENIED`) | `ErrorResponse` |
+| `404` | 워크스페이스를 찾을 수 없거나 호출자가 멤버가 아님 (`WORKSPACE_NOT_FOUND`), 대상이 멤버가 아님 (`WORKSPACE_MEMBER_NOT_FOUND`) | `ErrorResponse` |
+| `409` | 마지막 OWNER는 제거할 수 없음 (`LAST_OWNER`) | `ErrorResponse` |
+
+```json
+{
+  "error": {
+    "code": "WORKSPACE_ACCESS_DENIED",
+    "message": "다른 멤버를 제거하려면 OWNER 권한이 필요합니다."
+  }
+}
+```
+
+#### 7. Pagination / filtering
+
+- 페이지네이션: 지원하지 않음
+- 필터링: 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 인증된 사용자만 호출할 수 있다.
+- `user_id`가 호출자 자신이면 역할과 무관하게 탈퇴로 처리한다.
+- 다른 멤버를 제거하려면 호출자가 `OWNER`여야 한다.
+- 워크스페이스에 `OWNER`가 하나뿐이면 그 `OWNER`는 제거할 수 없다(`409`). 탈퇴하려면 먼저 다른 멤버를 `OWNER`로 승격해야 한다.
+- 제거에 성공하면 대상 사용자의 인가 projection(`authz:role:{workspaceId}:{userId}`)을 무효화한다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X DELETE "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members/user_8b21c530" \
+  -H 'Authorization: Bearer <access_token>' \
+  -i
+```
+
+```
+HTTP/1.1 204 No Content
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceMemberController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: remove`)
+
+[↑ 요약으로 돌아가기](#summary-delete-api-workspaces-workspace-id-members-user-id)
+
+</details>
+
+<a id="summary-post-api-workspaces-workspace-id-restore"></a>
+### `POST /api/workspaces/{workspace_id}/restore`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 소프트 삭제한 워크스페이스와 기존 하위 데이터의 접근을 복구합니다. |
+| 입력 | **Path** — `workspace_id`: `string`<br>**Header** — `Idempotency-Key`(선택): `string` |
+| 출력 | `200` 복구 성공 — `WorkspaceLifecycleResponse` |
+| 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다.<br>인증된 사용자만 호출할 수 있다.<br>path의 `workspace_id`에 대한 활성 멤버십을 검증한다. |
+| 주요 오류 | `400` 잘못된 Idempotency-Key — `ErrorResponse`<br>`404` 삭제 workspace 또는 소유권을 찾을 수 없음 — `ErrorResponse`<br>`409` Idempotency-Key 충돌 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-post-api-workspaces-workspace-id-restore"></a>
+### `POST /api/workspaces/{workspace_id}/restore` 상세
+
+#### 1. Method + Path
+
+`POST /api/workspaces/{workspace_id}/restore`
+
+#### 2. 목적
+
+소프트 삭제한 워크스페이스와 기존 하위 데이터의 접근을 복구합니다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| path | `workspace_id` | `string` | 예 | - |
+| header | `Idempotency-Key` | `string` | 아니요 | - |
+
+- Body: 없음
+
+#### 5. Response body
+
+- HTTP `200`: 복구 성공
+- Content-Type: `*/*` (`WorkspaceLifecycleResponse`)
+
+```json
+{
+  "deleted": true,
+  "deleted_at": "2026-08-13T04:25:24.371948Z",
+  "id": "ws_9d47a0e9a6324341b47562553b75f92a"
+}
+```
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 응답 스키마 |
+|---|---|---|
+| `400` | 잘못된 Idempotency-Key | `ErrorResponse` |
+| `404` | 삭제 workspace 또는 소유권을 찾을 수 없음 | `ErrorResponse` |
+| `409` | Idempotency-Key 충돌 | `ErrorResponse` |
+
+```json
+{
+  "error": {
+    "code": "INVALID_REQUEST",
+    "details": [
+      {
+        "field": "email",
+        "reason": "email은 필수입니다."
+      }
+    ],
+    "message": "요청 형식이 올바르지 않습니다."
+  }
+}
+```
+
+#### 7. Pagination / filtering
+
+- 페이지네이션: 지원하지 않음
+- 필터링: 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 인증된 사용자만 호출할 수 있다.
+- path의 `workspace_id`에 대한 활성 멤버십을 검증한다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X POST "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/restore" \
+  -H 'Authorization: Bearer <access_token>' \
+  -H 'Idempotency-Key: <value>'
+```
+
+```json
+{
+  "deleted": true,
+  "deleted_at": "2026-08-13T04:25:24.371948Z",
+  "id": "ws_9d47a0e9a6324341b47562553b75f92a"
+}
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: restore`)
+
+[↑ 요약으로 돌아가기](#summary-post-api-workspaces-workspace-id-restore)
+
+</details>
+
+<a id="summary-get-internal-authz-workspaces-workspace-id-users-user-id"></a>
+### `GET /internal/authz/workspaces/{workspace_id}/users/{user_id}`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 워크스페이스의 AI 모델 설정을 조회합니다. |
+| 입력 | **Path** — `workspace_id`: `string`, `user_id`: `string`<br>**Header** — `X-Internal-Token`(필수, 인증 계층 검증): `string` |
+| 출력 | `200` 성공 — `object` |
+| 조건 | 인증 필요<br>서비스 간 내부 인증 토큰을 검증한다.<br>올바른 내부 서비스 토큰을 가진 서비스만 호출할 수 있다.<br>요청에 포함된 workspace/user scope는 해당 route의 서비스 계층에서 추가 검증한다. |
+| 주요 오류 | `401` 내부 인증 토큰 누락 또는 불일치 |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-get-internal-authz-workspaces-workspace-id-users-user-id"></a>
+### `GET /internal/authz/workspaces/{workspace_id}/users/{user_id}` 상세
+
+#### 1. Method + Path
+
+`GET /internal/authz/workspaces/{workspace_id}/users/{user_id}`
+
+#### 2. 목적
+
+워크스페이스의 AI 모델 설정을 조회합니다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- 서비스 간 내부 인증 토큰을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| path | `workspace_id` | `string` | 예 | - |
+| path | `user_id` | `string` | 예 | - |
+| header | `X-Internal-Token` | `string` | 예 (인증 계층 검증) | - |
+
+- Body: 없음
+
+#### 5. Response body
+
+- HTTP `200`: OK
+- Content-Type: `*/*`
+
+```json
+{
+}
+```
+
+#### 6. Error response
+
+- HTTP `401`: 내부 인증 토큰 누락 또는 불일치
+
+- 명세에 별도 오류 응답이 정의되어 있지 않다.
+
+#### 7. Pagination / filtering
+
+- 페이지네이션: 지원하지 않음
+- 필터링: 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 올바른 내부 서비스 토큰을 가진 서비스만 호출할 수 있다.
+- 요청에 포함된 workspace/user scope는 해당 route의 서비스 계층에서 추가 검증한다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X GET "$ACCESS/internal/authz/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/users/<value>" \
+  -H 'X-Internal-Token: <value>'
+```
+
+```json
+{
+}
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/workspace/controller/InternalAuthzController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: role`)
+
+[↑ 요약으로 돌아가기](#summary-get-internal-authz-workspaces-workspace-id-users-user-id)
+
+</details>
+
+<a id="summary-get-internal-users-user-id"></a>
+### `GET /internal/users/{user_id}`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 워크스페이스의 AI 모델 설정을 조회합니다. |
+| 입력 | **Path** — `user_id`: `string`<br>**Header** — `X-Internal-Token`(필수, 인증 계층 검증): `string` |
+| 출력 | `200` 성공 — `object` |
+| 조건 | 인증 필요<br>서비스 간 내부 인증 토큰을 검증한다.<br>올바른 내부 서비스 토큰을 가진 서비스만 호출할 수 있다.<br>요청에 포함된 workspace/user scope는 해당 route의 서비스 계층에서 추가 검증한다. |
+| 주요 오류 | `401` 내부 인증 토큰 누락 또는 불일치 |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-get-internal-users-user-id"></a>
+### `GET /internal/users/{user_id}` 상세
+
+#### 1. Method + Path
+
+`GET /internal/users/{user_id}`
+
+#### 2. 목적
+
+워크스페이스의 AI 모델 설정을 조회합니다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- 서비스 간 내부 인증 토큰을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| path | `user_id` | `string` | 예 | - |
+| header | `X-Internal-Token` | `string` | 예 (인증 계층 검증) | - |
+
+- Body: 없음
+
+#### 5. Response body
+
+- HTTP `200`: OK
+- Content-Type: `*/*`
+
+```json
+{
+}
+```
+
+#### 6. Error response
+
+- HTTP `401`: 내부 인증 토큰 누락 또는 불일치
+
+- 명세에 별도 오류 응답이 정의되어 있지 않다.
+
+#### 7. Pagination / filtering
+
+- 페이지네이션: 지원하지 않음
+- 필터링: 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 올바른 내부 서비스 토큰을 가진 서비스만 호출할 수 있다.
+- 요청에 포함된 workspace/user scope는 해당 route의 서비스 계층에서 추가 검증한다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X GET "$ACCESS/internal/users/<value>" \
+  -H 'X-Internal-Token: <value>'
+```
+
+```json
+{
+}
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: user`)
+
+[↑ 요약으로 돌아가기](#summary-get-internal-users-user-id)
+
+</details>
+
+<a id="summary-get-internal-workspaces-workspace-id-ai-model-settings"></a>
+### `GET /internal/workspaces/{workspace_id}/ai-model-settings`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 워크스페이스의 AI 모델 설정을 변경합니다. |
+| 입력 | **Path** — `workspace_id`: `string`<br>**Header** — `X-Internal-Token`(필수, 인증 계층 검증): `string` |
+| 출력 | `200` 성공 — `object` |
+| 조건 | 인증 필요<br>서비스 간 내부 인증 토큰을 검증한다.<br>올바른 내부 서비스 토큰을 가진 서비스만 호출할 수 있다.<br>요청에 포함된 workspace/user scope는 해당 route의 서비스 계층에서 추가 검증한다. |
+| 주요 오류 | `401` 내부 인증 토큰 누락 또는 불일치 |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-get-internal-workspaces-workspace-id-ai-model-settings"></a>
+### `GET /internal/workspaces/{workspace_id}/ai-model-settings` 상세
+
+#### 1. Method + Path
+
+`GET /internal/workspaces/{workspace_id}/ai-model-settings`
+
+#### 2. 목적
+
+워크스페이스의 AI 모델 설정을 변경합니다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- 서비스 간 내부 인증 토큰을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| path | `workspace_id` | `string` | 예 | - |
+| header | `X-Internal-Token` | `string` | 예 (인증 계층 검증) | - |
+
+- Body: 없음
+
+#### 5. Response body
+
+- HTTP `200`: OK
+- Content-Type: `*/*`
+
+```json
+{
+}
+```
+
+#### 6. Error response
+
+- HTTP `401`: 내부 인증 토큰 누락 또는 불일치
+
+- 명세에 별도 오류 응답이 정의되어 있지 않다.
+
+#### 7. Pagination / filtering
+
+- 페이지네이션: 지원하지 않음
+- 필터링: 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 올바른 내부 서비스 토큰을 가진 서비스만 호출할 수 있다.
+- 요청에 포함된 workspace/user scope는 해당 route의 서비스 계층에서 추가 검증한다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X GET "$ACCESS/internal/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/ai-model-settings" \
+  -H 'X-Internal-Token: <value>'
+```
+
+```json
+{
+}
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/workspace/controller/InternalWorkspaceAiModelController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: get`)
+
+[↑ 요약으로 돌아가기](#summary-get-internal-workspaces-workspace-id-ai-model-settings)
+
+</details>
+
+<a id="summary-put-internal-workspaces-workspace-id-ai-model-settings"></a>
+### `PUT /internal/workspaces/{workspace_id}/ai-model-settings`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 워크스페이스의 AI 모델 설정을 변경합니다. |
+| 입력 | **Path** — `workspace_id`: `string`<br>**Header** — `X-Internal-Token`(필수, 인증 계층 검증): `string`<br>**Body** — `WorkspaceAiModelRequest` |
+| 출력 | `200` 성공 — `object` |
+| 조건 | 인증 필요<br>서비스 간 내부 인증 토큰을 검증한다.<br>올바른 내부 서비스 토큰을 가진 서비스만 호출할 수 있다.<br>요청에 포함된 workspace/user scope는 해당 route의 서비스 계층에서 추가 검증한다. |
+| 주요 오류 | `401` 내부 인증 토큰 누락 또는 불일치 |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-put-internal-workspaces-workspace-id-ai-model-settings"></a>
+### `PUT /internal/workspaces/{workspace_id}/ai-model-settings` 상세
+
+#### 1. Method + Path
+
+`PUT /internal/workspaces/{workspace_id}/ai-model-settings`
+
+#### 2. 목적
+
+워크스페이스의 AI 모델 설정을 변경합니다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- 서비스 간 내부 인증 토큰을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| path | `workspace_id` | `string` | 예 | - |
+| header | `X-Internal-Token` | `string` | 예 (인증 계층 검증) | - |
+
+- Content-Type: `application/json` (`WorkspaceAiModelRequest`)
+
+```json
+{
+  "ingest_lint": {
+    "model": "gpt-5-nano",
+    "provider": "openai"
+  }
+}
+```
+
+#### 5. Response body
+
+- HTTP `200`: OK
+- Content-Type: `*/*`
+
+```json
+{
+}
+```
+
+#### 6. Error response
+
+- HTTP `401`: 내부 인증 토큰 누락 또는 불일치
+
+- 명세에 별도 오류 응답이 정의되어 있지 않다.
+
+#### 7. Pagination / filtering
+
+- 페이지네이션: 지원하지 않음
+- 필터링: 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 올바른 내부 서비스 토큰을 가진 서비스만 호출할 수 있다.
+- 요청에 포함된 workspace/user scope는 해당 route의 서비스 계층에서 추가 검증한다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X PUT "$ACCESS/internal/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/ai-model-settings" \
+  -H 'X-Internal-Token: <value>' \
+  -H 'Content-Type: application/json' \
+  --data '{"ingest_lint":{"model":"gpt-5-nano","provider":"openai"}}'
+```
+
+```json
+{
+}
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/workspace/controller/InternalWorkspaceAiModelController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: update`)
+
+[↑ 요약으로 돌아가기](#summary-put-internal-workspaces-workspace-id-ai-model-settings)
+
+</details>
