@@ -74,6 +74,26 @@ class WorkspaceServiceTest {
     }
 
     @Test
+    void create_nameAlreadyVisible_appendsNextNumber() {
+        when(workspaceRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(workspaceMemberRepository.findAllWorkspacesByUserId("user_1f9a74af")).thenReturn(List.of(
+                new Workspace("ws_1", "새 워크스페이스"),
+                new Workspace("ws_2", "새 워크스페이스 2")));
+
+        assertThat(workspaceService.create("user_1f9a74af", new WorkspaceCreateRequest("새 워크스페이스")).name())
+                .isEqualTo("새 워크스페이스 3");
+    }
+
+    @Test
+    void create_blankName_fallsBackToDefaultName() {
+        when(workspaceRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(workspaceMemberRepository.findAllWorkspacesByUserId("user_1f9a74af")).thenReturn(List.of());
+
+        assertThat(workspaceService.create("user_1f9a74af", new WorkspaceCreateRequest("  ")).name())
+                .isEqualTo("새 워크스페이스");
+    }
+
+    @Test
     void create_validRequest_returnsResponse() {
         when(workspaceRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
