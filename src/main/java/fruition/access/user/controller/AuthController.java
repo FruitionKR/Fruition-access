@@ -27,6 +27,7 @@ import fruition.access.user.mfa.MfaService;
 import fruition.access.user.service.AuthService;
 import fruition.access.user.service.EmailAvailabilityRateLimiter;
 import fruition.access.user.service.EmailVerificationService;
+import fruition.access.user.service.LoginAttemptLimiter;
 import fruition.access.user.service.UserService;
 import fruition.shared.util.ErrorResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -66,6 +67,7 @@ public class AuthController {
     private final AuthService authService;
     private final MfaService mfaService;
     private final EmailAvailabilityRateLimiter emailAvailabilityRateLimiter;
+    private final LoginAttemptLimiter loginAttemptLimiter;
     private final EmailVerificationService emailVerificationService;
     private final boolean refreshCookieSecure;
     private final long refreshTokenExpirationSeconds;
@@ -73,6 +75,7 @@ public class AuthController {
     public AuthController(UserService userService, AuthService authService,
                           MfaService mfaService,
                           EmailAvailabilityRateLimiter emailAvailabilityRateLimiter,
+                          LoginAttemptLimiter loginAttemptLimiter,
                           EmailVerificationService emailVerificationService,
                           @Value("${app.auth.refresh-cookie-secure}") boolean refreshCookieSecure,
                           @Value("${app.jwt.refresh-token-expiration-seconds}") long refreshTokenExpirationSeconds) {
@@ -80,6 +83,7 @@ public class AuthController {
         this.authService = authService;
         this.mfaService = mfaService;
         this.emailAvailabilityRateLimiter = emailAvailabilityRateLimiter;
+        this.loginAttemptLimiter = loginAttemptLimiter;
         this.emailVerificationService = emailVerificationService;
         this.refreshCookieSecure = refreshCookieSecure;
         this.refreshTokenExpirationSeconds = refreshTokenExpirationSeconds;
@@ -168,10 +172,14 @@ public class AuthController {
         @ApiResponse(responseCode = "200", description = "로그인 성공",
             content = @Content(schema = @Schema(implementation = LoginResponse.class))),
         @ApiResponse(responseCode = "401", description = "이메일 또는 비밀번호 불일치",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "429", description = "로그인 시도 횟수 제한 초과",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request,
+                                               HttpServletRequest servletRequest) {
+        loginAttemptLimiter.check(request.email(), servletRequest.getRemoteAddr());
         return authenticatedResponse(authService.login(request));
     }
 

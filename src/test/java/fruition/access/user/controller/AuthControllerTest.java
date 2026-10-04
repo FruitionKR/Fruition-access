@@ -26,6 +26,7 @@ import fruition.access.user.dto.VerificationConfirmRequest;
 import fruition.access.user.dto.VerificationConfirmResponse;
 import fruition.access.user.exception.DuplicateEmailException;
 import fruition.access.user.exception.EmailAvailabilityRateLimitedException;
+import fruition.access.user.exception.LoginRateLimitedException;
 import fruition.access.user.exception.InvalidCredentialsException;
 import fruition.access.user.exception.InvalidOAuthCodeException;
 import fruition.access.user.exception.InvalidRefreshTokenException;
@@ -33,6 +34,7 @@ import fruition.access.user.exception.InvalidVerificationCodeException;
 import fruition.access.user.mfa.MfaService;
 import fruition.access.user.service.AuthService;
 import fruition.access.user.service.EmailAvailabilityRateLimiter;
+import fruition.access.user.service.LoginAttemptLimiter;
 import fruition.access.user.service.EmailVerificationService;
 import fruition.access.user.service.UserService;
 import fruition.access.AccessExceptionHandler;
@@ -78,6 +80,7 @@ class AuthControllerTest {
     @MockBean AuthService authService;
     @MockBean MfaService mfaService;
     @MockBean EmailAvailabilityRateLimiter emailAvailabilityRateLimiter;
+    @MockBean LoginAttemptLimiter loginAttemptLimiter;
     @MockBean EmailVerificationService emailVerificationService;
     @MockBean CustomOAuth2UserService customOAuth2UserService;
     // OAuthExchangeCodeStore가 Redis에 의존하므로 web slice에는 mock template을 채운다.
@@ -564,4 +567,20 @@ class AuthControllerTest {
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Retry-After", "120"));
     }
 
+
+    /** 비밀번호를 받는 엔드포인트에 제한이 없으면 자격증명 대입을 막는 장치가 하나도 없다. */
+    @Test
+    void login_rateLimited_returns429WithRetryAfter() throws Exception {
+        doThrow(new LoginRateLimitedException(300))
+                .when(loginAttemptLimiter).check(any(), any());
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new LoginRequest("test@example.com", "password123!"))))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.error.code").value("LOGIN_RATE_LIMITED"))
+                .andExpect(header().string("Retry-After", "300"));
+        verify(authService, org.mockito.Mockito.never()).login(any());
+    }
 }
