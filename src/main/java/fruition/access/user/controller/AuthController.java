@@ -30,6 +30,7 @@ import fruition.access.user.service.EmailVerificationService;
 import fruition.access.user.service.LoginAttemptLimiter;
 import fruition.access.user.service.UserService;
 import fruition.shared.util.ErrorResponse;
+import fruition.shared.web.ClientAddressResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -102,7 +103,7 @@ public class AuthController {
     public ResponseEntity<EmailAvailabilityResponse> checkEmailAvailability(
             @Valid @RequestBody EmailAvailabilityRequest request,
             HttpServletRequest servletRequest) {
-        emailAvailabilityRateLimiter.check(request.email(), servletRequest.getRemoteAddr());
+        emailAvailabilityRateLimiter.check(request.email(), ClientAddressResolver.of(servletRequest));
         return ResponseEntity.ok(userService.checkEmailAvailability(request));
     }
 
@@ -179,7 +180,7 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request,
                                                HttpServletRequest servletRequest) {
-        loginAttemptLimiter.check(request.email(), servletRequest.getRemoteAddr());
+        loginAttemptLimiter.check(request.email(), ClientAddressResolver.of(servletRequest));
         return authenticatedResponse(authService.login(request));
     }
 
