@@ -5,6 +5,7 @@
 이메일 주소로 워크스페이스에 초대하고, 받은 사람이 수락해 멤버가 되는 API다.
 
 - API 수: 5
+- 호출 연결: [access-svc 호출 연결 요약](README.md#호출-연결-요약) 참고
 
 ## 설계 전제
 
@@ -129,6 +130,8 @@ curl -X POST "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/invitat
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceInvitationController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: invite`)
+- 호출자: Fruition-frontend `src/entities/workspace/api/members.ts:34`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-post-invitations)
 
@@ -215,6 +218,8 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/invitations" \
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceInvitationController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: listPending`)
+- 호출자: 호출자 미확인 — frontend·document-svc·ai-svc 어디에서도 호출 지점을 찾지 못했다.
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-get-invitations)
 
@@ -288,6 +293,8 @@ curl -X DELETE "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/invit
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceInvitationController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: revoke`)
+- 호출자: 호출자 미확인 — frontend·document-svc·ai-svc 어디에서도 호출 지점을 찾지 못했다.
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-delete-invitations)
 
@@ -375,6 +382,8 @@ curl "$ACCESS/api/invitations/<token>"
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/InvitationController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: preview`)
+- 호출자: Fruition-frontend `src/entities/workspace/api/invitations.ts:14`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-get-invitation-preview)
 
@@ -461,6 +470,8 @@ curl -X POST "$ACCESS/api/invitations/<token>/accept" \
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/InvitationController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: accept`)
+- 호출자: Fruition-frontend `src/entities/workspace/api/invitations.ts:19`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-post-invitation-accept)
 

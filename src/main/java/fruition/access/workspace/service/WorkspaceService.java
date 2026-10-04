@@ -20,10 +20,14 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class WorkspaceService {
+
+    private static final String DEFAULT_NAME = "새 워크스페이스";
 
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
@@ -53,8 +57,25 @@ public class WorkspaceService {
 
     @Transactional
     public WorkspaceResponse create(String userId, WorkspaceCreateRequest request) {
-        Workspace workspace = createWorkspace(userId, request.name().trim());
+        String requested = request.name() == null ? "" : request.name().trim();
+        Workspace workspace = createWorkspace(userId, availableName(userId, requested.isEmpty() ? DEFAULT_NAME : requested));
         return toResponse(workspace);
+    }
+
+    /**
+     * 사용자에게 이미 보이는 이름이면 뒤에 번호를 붙인다. 이름 중복 자체는 허용하므로(V20)
+     * 번호는 제약이 아니라 목록에서 서로를 구분하기 위한 것이다. 이름 변경에는 적용하지 않는다.
+     */
+    private String availableName(String userId, String wanted) {
+        // ponytail: 동시에 만들면 같은 번호가 나올 수 있다. 이름이 겹칠 뿐 생성은 성공하므로 잠그지 않는다.
+        Set<String> taken = workspaceMemberRepository.findAllWorkspacesByUserId(userId).stream()
+                .map(Workspace::getName)
+                .collect(Collectors.toSet());
+        String name = wanted;
+        for (int suffix = 2; taken.contains(name); suffix++) {
+            name = wanted + " " + suffix;
+        }
+        return name;
     }
 
     public WorkspaceListResponse list(String userId) {

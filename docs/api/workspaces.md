@@ -4,9 +4,10 @@
 
 워크스페이스 관리와 서비스 간 인가·AI 모델 설정 API다.
 
-활성 워크스페이스명은 같은 소유자 안에서 고유해야 한다. 앞뒤 공백·대소문자·한글 조합 방식만 다른 이름도 중복이다. 생성·이름 변경·복구·OWNER 추가/승격 시 충돌하면 `409 DUPLICATE_NAME`을 반환하며 요청 전체를 취소한다. 소유자가 겹치지 않는 워크스페이스는 같은 이름을 사용할 수 있다. 삭제하면 이름 점유가 해제된다.
+워크스페이스명은 중복을 허용한다. 구분은 `workspace_id`로 한다. 다만 생성 시 요청한 이름이 사용자에게 이미 보이는 이름과 같으면 `내 워크스페이스 2`처럼 번호를 붙여 저장한다. `name`을 비우거나 공백만 보내면 `새 워크스페이스`를 기준으로 같은 규칙을 적용한다. 번호는 목록에서 서로를 구분하기 위한 것이라 동시 생성 시 같은 번호가 나올 수 있고, 이름 변경에는 적용하지 않는다.
 
 - API 수: 16
+- 호출 연결: [access-svc 호출 연결 요약](README.md#호출-연결-요약) 참고
 
 ## API 목차
 
@@ -122,6 +123,8 @@ curl -X GET "$ACCESS/api/workspaces" \
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: list`)
+- 호출자: Fruition-frontend `src/entities/workspace/api/workspace.ts:5`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-get-api-workspaces)
 
@@ -235,6 +238,8 @@ curl -X POST "$ACCESS/api/workspaces" \
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: create`)
+- 호출자: Fruition-frontend `src/entities/workspace/api/workspace.ts:19`
+- 하위 호출: document-svc `POST /internal/workspaces/{workspaceId}/initial-note` — `src/main/java/fruition/access/workspace/service/WorkspaceService.java:148` → `src/main/java/fruition/access/workspace/service/DocumentInternalClient.java:57` (`app.internal.document-base-url`)
 
 [↑ 요약으로 돌아가기](#summary-post-api-workspaces)
 
@@ -331,6 +336,8 @@ curl -X GET "$ACCESS/api/workspaces/trash" \
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: trash`)
+- 호출자: 호출자 미확인 — frontend·document-svc·ai-svc 어디에서도 호출 지점을 찾지 못했다.
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-get-api-workspaces-trash)
 
@@ -441,6 +448,8 @@ curl -X PATCH "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a" \
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: rename`)
+- 호출자: Fruition-frontend `src/entities/workspace/api/workspace.ts:10`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-patch-api-workspaces-workspace-id)
 
@@ -551,6 +560,8 @@ curl -X DELETE "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a" \
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: delete`)
+- 호출자: 호출자 미확인 — frontend·document-svc·ai-svc 어디에서도 호출 지점을 찾지 못했다.
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-delete-api-workspaces-workspace-id)
 
@@ -660,6 +671,8 @@ curl -X PUT "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/icon" \
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: updateIcon`)
+- 호출자: Fruition-frontend `src/entities/workspace/api/workspace.ts:28`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-put-api-workspaces-workspace-id-icon)
 
@@ -754,6 +767,8 @@ curl -X PUT "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/icon/ima
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: updateIconImage`)
+- 호출자: Fruition-frontend `src/entities/workspace/api/workspace.ts:39`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-put-api-workspaces-workspace-id-icon-image)
 
@@ -836,6 +851,8 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/icon/image" \
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: getIconImage`)
+- 호출자: Fruition-frontend `src/entities/workspace/api/workspace.ts:44`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-get-api-workspaces-workspace-id-icon-image)
 
@@ -965,6 +982,8 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members" \
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceMemberController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: listMembers`)
+- 호출자: Fruition-frontend `src/entities/workspace/api/members.ts:14`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-get-api-workspaces-workspace-id-members)
 
@@ -1087,6 +1106,8 @@ curl -X PATCH "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/member
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceMemberController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: changeRole`)
+- 호출자: Fruition-frontend `src/entities/workspace/api/members.ts:20`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-patch-api-workspaces-workspace-id-members-user-id)
 
@@ -1182,6 +1203,8 @@ HTTP/1.1 204 No Content
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceMemberController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: remove`)
+- 호출자: Fruition-frontend `src/entities/workspace/api/members.ts:29`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-delete-api-workspaces-workspace-id-members-user-id)
 
@@ -1292,6 +1315,8 @@ curl -X POST "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/restore
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: restore`)
+- 호출자: 호출자 미확인 — frontend·document-svc·ai-svc 어디에서도 호출 지점을 찾지 못했다.
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-post-api-workspaces-workspace-id-restore)
 
@@ -1379,6 +1404,8 @@ curl -X GET "$ACCESS/internal/authz/workspaces/ws_9d47a0e9a6324341b47562553b75f9
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/InternalAuthzController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: role`)
+- 호출자: document-svc `src/main/java/fruition/core/authz/WorkspaceAccessGuard.java:95`, ai-svc `pipeline/app/modules/skill/infrastructure/workspace_authorization.py:19`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-get-internal-authz-workspaces-workspace-id-users-user-id)
 
@@ -1465,6 +1492,8 @@ curl -X GET "$ACCESS/internal/users/<value>" \
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/WorkspaceController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: user`)
+- 호출자: document-svc `src/main/java/fruition/core/authz/AccessUserClient.java:58`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-get-internal-users-user-id)
 
@@ -1551,6 +1580,8 @@ curl -X GET "$ACCESS/internal/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/ai-
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/InternalWorkspaceAiModelController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: get`)
+- 호출자: document-svc `src/main/java/fruition/core/authz/WorkspaceAiModelClient.java:25`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-get-internal-workspaces-workspace-id-ai-model-settings)
 
@@ -1648,6 +1679,8 @@ curl -X PUT "$ACCESS/internal/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/ai-
 
 - 진입점: `src/main/java/fruition/access/workspace/controller/InternalWorkspaceAiModelController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: update`)
+- 호출자: document-svc `src/main/java/fruition/core/authz/WorkspaceAiModelClient.java:36`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-put-internal-workspaces-workspace-id-ai-model-settings)
 
