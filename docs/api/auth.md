@@ -5,6 +5,7 @@
 가입·이메일 인증·로그인·토큰 API다.
 
 - API 수: 20
+- 호출 연결: [access-svc 호출 연결 요약](README.md#호출-연결-요약) 참고
 
 ## API 목차
 
@@ -121,6 +122,8 @@ curl -X POST "$ACCESS/api/auth/email-availability" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: checkEmailAvailability`)
+- 호출자: Fruition-frontend `src/entities/user/api/emailVerification.ts:32`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-post-api-auth-email-availability)
 
@@ -234,6 +237,8 @@ curl -X POST "$ACCESS/api/auth/email-verifications" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: requestEmailVerification`)
+- 호출자: Fruition-frontend `src/entities/user/api/emailVerification.ts:22`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-post-api-auth-email-verifications)
 
@@ -345,6 +350,8 @@ curl -X POST "$ACCESS/api/auth/email-verifications/<value>/confirm" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: confirmEmailVerification`)
+- 호출자: Fruition-frontend `src/entities/user/api/emailVerification.ts:46`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-post-api-auth-email-verifications-verification-id-confirm)
 
@@ -453,6 +460,8 @@ curl -X POST "$ACCESS/api/auth/login" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: login`)
+- 호출자: Fruition-frontend `src/entities/user/api/login.ts:16`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-post-api-auth-login)
 
@@ -522,6 +531,8 @@ curl -X POST "$ACCESS/api/auth/logout" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: logout`)
+- 호출자: Fruition-frontend `src/entities/user/api/login.ts:11`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-post-api-auth-logout)
 
@@ -614,6 +625,8 @@ curl -X GET "$ACCESS/api/auth/me" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: me`)
+- 호출자: Fruition-frontend `src/entities/user/api/account.ts:6`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-get-api-auth-me)
 
@@ -699,6 +712,8 @@ curl -X PATCH "$ACCESS/api/auth/me" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: updateDisplayName`)
+- 호출자: Fruition-frontend `src/entities/user/api/account.ts:11`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-patch-api-auth-me)
 
@@ -714,16 +729,6 @@ curl -X PATCH "$ACCESS/api/auth/me" \
 | 출력 | `200` 변경 성공 — `MeResponse` |
 | 조건 | 인증 필요<br>`purpose=email_change`로 **새 주소에** 발급받은 토큰이어야 한다. |
 | 주요 오류 | `400` 유효하지 않은 `verification_token` — `ErrorResponse`<br>`401` 인증되지 않음 — `ErrorResponse`<br>`409` 같은 provider에 이미 그 이메일 계정이 있음 — `ErrorResponse` |
-<a id="summary-get-api-auth-me-sessions"></a>
-### `GET /api/auth/me/sessions`
-
-| 항목 | 내용 |
-|---|---|
-| 목적 | 폐기되지 않은 로그인 세션을 최근 로그인 순으로 반환합니다. |
-| 입력 | **Cookie** — `fruition_refresh_token`(선택) |
-| 출력 | `200` 조회 성공 — `SessionListResponse` |
-| 조건 | 인증 필요 |
-| 주요 오류 | `401` 인증되지 않음 — `ErrorResponse` |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -736,21 +741,17 @@ curl -X PATCH "$ACCESS/api/auth/me" \
 
 계정 이메일을 바꾼다. 인증번호는 **바꾸려는 새 주소로** 발송해, 그 메일함을 통제하는지 확인한다.
 
-흐름은 두 단계다.
+흐름은 세 단계다.
 
 1. `POST /api/auth/email-verifications` — `{"email": "<새 주소>", "purpose": "email_change"}`
 2. `POST /api/auth/email-verifications/{verification_id}/confirm` — 코드 검증, `verification_token` 발급
 3. `PUT /api/auth/me/email` — 토큰으로 확정
-`GET /api/auth/me/sessions`
-
-#### 2. 목적
-
-로그인된 기기 목록이다. refresh token 하나가 세션 하나에 대응한다.
 
 #### 3. Auth 필요 여부
 
 - 필요
-- refresh 쿠키(`fruition_refresh_token`)를 함께 읽어 현재 세션을 식별한다.
+- `Authorization: Bearer <access_token>`을 검증한다.
+- refresh 쿠키(`fruition_refresh_token`)를 함께 읽어 남길 세션을 식별한다.
 
 #### 4. Request body
 
@@ -780,13 +781,95 @@ curl -X PATCH "$ACCESS/api/auth/me" \
 }
 ```
 
-- refresh 쿠키를 함께 읽어 지금 요청을 보낸 세션에 `current: true`를 단다. 쿠키가 없으면 전부 `false`다.
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 코드 |
+|---|---|---|
+| `400` | `new_email` 형식 오류 등 | `INVALID_REQUEST` |
+| `400` | 토큰이 없거나 만료·소비됐거나 `new_email`과 다른 주소로 발급됨 | `INVALID_VERIFICATION_TOKEN` |
+| `401` | access token이 없거나 유효하지 않음 | — |
+| `409` | 같은 provider에 이미 그 이메일 계정이 있음 | `DUPLICATE_EMAIL` |
+
+사전 중복 조회 이후에 들어온 동시 요청도 커밋 전 `uq_users_email_provider` 제약 위반을 잡아
+같은 `409 DUPLICATE_EMAIL` 계약으로 반환한다.
+
+#### 7. Pagination / filtering
+
+- 페이지네이션: 지원하지 않음
+- 필터링: 지원하지 않음
+
+#### 8. 권한 규칙
+
+- access token의 사용자 본인 계정만 변경한다.
+- 계정은 `(email, provider)` 단위이므로 같은 provider에 그 이메일 계정이 이미 있으면 거부한다.
+- 변경에 성공하면 현재 세션만 남기고 나머지 refresh token을 폐기한다. refresh 쿠키가 없으면
+  남길 세션을 특정할 수 없어 전부 폐기한다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X PUT "$ACCESS/api/auth/me/email" \
+  -H 'Authorization: Bearer <access_token>' \
+  -H 'Content-Type: application/json' \
+  -b 'fruition_refresh_token=<refresh_token>' \
+  --data '{"new_email":"new@example.com","verification_token":"<verification_token>"}'
+```
+
+```json
+{
+  "id": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081",
+  "email": "new@example.com",
+  "display_name": "표시 이름",
+  "created_at": "2026-08-13T04:25:24.371948Z"
+}
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: changeEmail`)
+- 호출자: Fruition-frontend `src/entities/user/api/account.ts:29`
+- 하위 호출: 없음
+
+[↑ 요약으로 돌아가기](#summary-put-api-auth-me-email)
+
+</details>
+
+<a id="summary-get-api-auth-me-sessions"></a>
+### `GET /api/auth/me/sessions`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 폐기되지 않은 로그인 세션을 최근 로그인 순으로 반환합니다. |
+| 입력 | **Cookie** — `fruition_refresh_token`(선택) |
+| 출력 | `200` 조회 성공 — `SessionListResponse` |
+| 조건 | 인증 필요 |
+| 주요 오류 | `401` 인증되지 않음 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+#### 1. Method + Path
+
+`GET /api/auth/me/sessions`
+
+#### 2. 목적
+
+로그인된 기기 목록이다. refresh token 하나가 세션 하나에 대응한다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- refresh 쿠키(`fruition_refresh_token`)를 함께 읽어 현재 세션을 식별한다.
 
 #### 4. Request body
 
 - 요청 본문 없음
 
 #### 5. Response body
+
+- HTTP `200`: 조회 성공 — `SessionListResponse`
+- refresh 쿠키를 함께 읽어 지금 요청을 보낸 세션에 `current: true`를 단다. 쿠키가 없으면 전부 `false`다.
 
 ```json
 {
@@ -812,10 +895,6 @@ curl -X PATCH "$ACCESS/api/auth/me" \
 
 | HTTP 상태 | 설명 | 코드 |
 |---|---|---|
-| `400` | `new_email` 형식 오류 등 | `INVALID_REQUEST` |
-| `400` | 토큰이 없거나 만료·소비됐거나 `new_email`과 다른 주소로 발급됨 | `INVALID_VERIFICATION_TOKEN` |
-| `401` | access token이 없거나 유효하지 않음 | — |
-| `409` | 같은 provider에 이미 그 이메일 계정이 있음 | `DUPLICATE_EMAIL` |
 | `401` | access token이 없거나 유효하지 않음 | — |
 
 #### 7. Pagination / filtering
@@ -840,6 +919,8 @@ curl "$ACCESS/api/auth/me/sessions" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: sessions`)
+- 호출자: Fruition-frontend `src/entities/user/api/sessions.ts:14`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-get-api-auth-me-sessions)
 
@@ -900,26 +981,13 @@ curl "$ACCESS/api/auth/me/sessions" \
 
 #### 8. 권한 규칙
 
-- 토큰의 사용자 본인만 대상이다.
-- 계정은 `(email, provider)`로 유일하다. **같은 이메일이라도 provider가 다르면 충돌이 아니다** —
-  일반 가입 계정이 이미 쓰는 주소로 구글 계정의 이메일을 바꾸는 건 허용된다.
-- OAuth 계정도 바꿀 수 있다. OAuth 로그인은 `(provider, provider_user_id)`로 사용자를 찾으므로
-  이메일이 바뀌어도 로그인이 끊기지 않고, 다음 로그인이 provider 이메일로 되돌리지도 않는다.
-- 성공하면 현재 세션을 제외한 refresh token을 폐기한다. 비밀번호 변경과 같은 기준이다.
-- 인증번호 발송(`POST /api/auth/email-verifications`)은 인증이 필요 없는 엔드포인트라,
-  중복 확인은 여기 확정 시점에 한다. 발송 단계에서는 계정 존재 여부를 노출하지 않는다.
-- 본인 세션만 폐기할 수 있다.
+- 토큰의 사용자 본인 세션만 폐기할 수 있다.
 - 폐기된 세션의 refresh token으로는 더 이상 access token을 갱신할 수 없다. 이미 발급된
   access token은 만료(기본 900초)까지 유효하다.
 
 #### 9. 예시 요청/응답
 
 ```bash
-curl -X PUT "$ACCESS/api/auth/me/email" \
-  -H 'Authorization: Bearer <access_token>' \
-  -H 'Content-Type: application/json' \
-  -b 'fruition_refresh_token=<refresh_token>' \
-  --data '{"new_email":"new@example.com","verification_token":"<token>"}'
 curl -X DELETE "$ACCESS/api/auth/me/sessions/42" \
   -H 'Authorization: Bearer <access_token>' \
   -i
@@ -928,10 +996,9 @@ curl -X DELETE "$ACCESS/api/auth/me/sessions/42" \
 #### 10. 구현 파일
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
-- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: changeEmail`)
-
-[↑ 요약으로 돌아가기](#summary-put-api-auth-me-email)
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: revokeSession`)
+- 호출자: Fruition-frontend `src/entities/user/api/sessions.ts:20`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-delete-api-auth-me-sessions-session-id)
 
@@ -1029,6 +1096,8 @@ HTTP/1.1 204 No Content
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: changePassword`)
+- 호출자: Fruition-frontend `src/entities/user/api/account.ts:20`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-put-api-auth-me-password)
 
@@ -1127,6 +1196,8 @@ curl -X POST "$ACCESS/api/auth/login/mfa" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: loginMfa`)
+- 호출자: Fruition-frontend `src/entities/user/api/mfa.ts:5`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-post-api-auth-login-mfa)
 
@@ -1199,6 +1270,8 @@ curl "$ACCESS/api/auth/me/mfa" -H 'Authorization: Bearer <access_token>'
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: mfaStatus`)
+- 호출자: Fruition-frontend `src/entities/user/api/mfa.ts:18`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-get-api-auth-me-mfa)
 
@@ -1278,6 +1351,8 @@ curl -X POST "$ACCESS/api/auth/me/mfa" -H 'Authorization: Bearer <access_token>'
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: registerMfa`)
+- 호출자: Fruition-frontend `src/entities/user/api/mfa.ts:23`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-post-api-auth-me-mfa)
 
@@ -1357,6 +1432,8 @@ curl -X POST "$ACCESS/api/auth/me/mfa/activate" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: activateMfa`)
+- 호출자: Fruition-frontend `src/entities/user/api/mfa.ts:28`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-post-api-auth-me-mfa-activate)
 
@@ -1438,6 +1515,8 @@ curl -X DELETE "$ACCESS/api/auth/me/mfa" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: disableMfa`)
+- 호출자: Fruition-frontend `src/entities/user/api/mfa.ts:35`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-delete-api-auth-me-mfa)
 
@@ -1545,6 +1624,8 @@ curl -X POST "$ACCESS/api/auth/oauth/exchange" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: exchangeOAuthCode`)
+- 호출자: Fruition-frontend `src/entities/user/api/login.ts:32`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-post-api-auth-oauth-exchange)
 
@@ -1646,6 +1727,8 @@ curl -X POST "$ACCESS/api/auth/password-reset" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: resetPassword`)
+- 호출자: Fruition-frontend `src/entities/user/api/emailVerification.ts:82`
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-post-api-auth-password-reset)
 
@@ -1744,6 +1827,8 @@ curl -X POST "$ACCESS/api/auth/refresh" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: refresh`)
+- 호출자: Fruition-frontend `src/shared/api/client.ts:57` (`tryRefreshTokens`)
+- 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-post-api-auth-refresh)
 
@@ -1860,6 +1945,8 @@ curl -X POST "$ACCESS/api/auth/signup" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: signup`)
+- 호출자: Fruition-frontend `src/entities/user/api/emailVerification.ts:63`
+- 하위 호출: document-svc `POST /internal/workspaces/{workspaceId}/initial-note` — `src/main/java/fruition/access/workspace/service/WorkspaceService.java:148` → `src/main/java/fruition/access/workspace/service/DocumentInternalClient.java:57` (`app.internal.document-base-url`). 기본 워크스페이스 생성(`src/main/java/fruition/access/user/service/UserService.java:64`)을 거쳐 호출된다
 
 [↑ 요약으로 돌아가기](#summary-post-api-auth-signup)
 
