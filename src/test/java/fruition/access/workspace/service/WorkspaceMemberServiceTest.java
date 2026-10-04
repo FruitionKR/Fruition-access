@@ -119,7 +119,7 @@ class WorkspaceMemberServiceTest {
         actorRole(OWNER_ID, WorkspaceRole.OWNER);
         when(workspaceMemberRepository.findByWorkspace_IdAndUser_Id(WORKSPACE_ID, OWNER_ID))
                 .thenReturn(Optional.of(member(OWNER_ID, WorkspaceRole.OWNER)));
-        when(workspaceMemberRepository.countActiveByRole(WORKSPACE_ID, WorkspaceRole.OWNER)).thenReturn(1L);
+        owners(member(OWNER_ID, WorkspaceRole.OWNER));
 
         assertThatThrownBy(() -> workspaceMemberService.changeRole(
                 OWNER_ID, WORKSPACE_ID, OWNER_ID, new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER)))
@@ -133,7 +133,7 @@ class WorkspaceMemberServiceTest {
         WorkspaceMember target = member(MEMBER_ID, WorkspaceRole.OWNER);
         when(workspaceMemberRepository.findByWorkspace_IdAndUser_Id(WORKSPACE_ID, MEMBER_ID))
                 .thenReturn(Optional.of(target));
-        when(workspaceMemberRepository.countActiveByRole(WORKSPACE_ID, WorkspaceRole.OWNER)).thenReturn(2L);
+        owners(member(OWNER_ID, WorkspaceRole.OWNER), target);
 
         workspaceMemberService.changeRole(
                 OWNER_ID, WORKSPACE_ID, MEMBER_ID, new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER));
@@ -195,11 +195,17 @@ class WorkspaceMemberServiceTest {
         actorRole(OWNER_ID, WorkspaceRole.OWNER);
         when(workspaceMemberRepository.findByWorkspace_IdAndUser_Id(WORKSPACE_ID, OWNER_ID))
                 .thenReturn(Optional.of(member(OWNER_ID, WorkspaceRole.OWNER)));
-        when(workspaceMemberRepository.countActiveByRole(WORKSPACE_ID, WorkspaceRole.OWNER)).thenReturn(1L);
+        owners(member(OWNER_ID, WorkspaceRole.OWNER));
 
         assertThatThrownBy(() -> workspaceMemberService.remove(OWNER_ID, WORKSPACE_ID, OWNER_ID))
                 .isInstanceOf(LastOwnerException.class);
         verify(workspaceMemberRepository, never()).delete(org.mockito.ArgumentMatchers.any());
         verifyNoInteractions(authzProjectionStore);
+    }
+
+    /** OWNER 판정은 잠금 조회 결과를 쓴다 — 동시 요청이 각각 2명을 세고 둘 다 통과하지 않도록. */
+    private void owners(WorkspaceMember... owners) {
+        when(workspaceMemberRepository.findByRoleForUpdate(WORKSPACE_ID, WorkspaceRole.OWNER))
+                .thenReturn(java.util.List.of(owners));
     }
 }
