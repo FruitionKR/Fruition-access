@@ -59,7 +59,7 @@ public final class ClientAddressResolver {
     /**
      * @param forwardedFor      원본 {@code X-Forwarded-For} 헤더 값 (없으면 null)
      * @param remoteAddr        실제 TCP peer 주소
-     * @param trustedProxyCount XFF에 값을 덧붙이는 신뢰 프록시 수 (ALB 하나면 1, 프록시 없으면 0)
+     * @param trustedProxyCount XFF에 값을 덧붙이는 신뢰 프록시 수 (ALB 하나면 1. 설정은 1~5만 허용하며, 1 미만이면 헤더를 무시하고 TCP peer를 쓴다)
      */
     public static String resolve(String forwardedFor, String remoteAddr, int trustedProxyCount) {
         if (trustedProxyCount < 1 || forwardedFor == null || forwardedFor.isBlank()) {
