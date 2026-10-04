@@ -15,6 +15,16 @@ public class ProductionSettings {
     /** application.properties에서 제거했지만 손으로 다시 넣는 경우까지 막는다. */
     private static final String COMMITTED_DEV_JWT_SECRET = "dev-only-jwt-secret-change-me-please-32bytes-min";
 
+    /**
+     * 커밋해 두는 테스트·개발 전용 비밀값에 반드시 넣는 표식.
+     *
+     * <p>길이나 형식만 검사하면 git 이력에 있는 값이 그대로 운영을 통과한다. 리터럴을 하나씩
+     * denylist에 넣는 방식은 값을 새로 추가할 때마다 같이 늘려야 하고, 빠뜨리면 조용히 뚫린다.
+     * 대신 "커밋되는 비밀값은 이 표식을 달고, 표식이 붙은 값은 운영에서 거부한다"는 규칙 하나로
+     * 과거·미래의 모든 커밋된 값을 한 번에 막는다.
+     */
+    private static final String INSECURE_MARKER = "INSECURE-NOT-FOR-PRODUCTION";
+
     public ProductionSettings(Environment environment) {
         for (String key : new String[] {"spring.mail.host", "spring.mail.username", "spring.mail.password",
                 "app.auth.email-verification.from", "app.auth.mfa.encryption-key",
@@ -23,6 +33,10 @@ public class ProductionSettings {
             String value = environment.getProperty(key);
             if (value == null || value.isBlank() || value.contains("REPLACE_ME")) {
                 throw new IllegalArgumentException("필수 운영 설정 누락: " + key);
+            }
+            // 커밋된 테스트 전용 값으로 운영이 뜨면 공개된 비밀값을 쓰는 것과 같다.
+            if (value.contains(INSECURE_MARKER)) {
+                throw new IllegalArgumentException("커밋된 테스트 전용 값은 운영에서 쓸 수 없습니다: " + key);
             }
         }
         String key = environment.getRequiredProperty("app.auth.mfa.encryption-key");

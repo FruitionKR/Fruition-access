@@ -66,4 +66,25 @@ class ProductionSettingsTest {
         assertThrows(IllegalArgumentException.class, () -> new ProductionSettings(valid()
                 .withProperty("app.auth.refresh-cookie-secure", "false")));
     }
+
+    /**
+     * 커밋된 테스트 전용 값으로는 운영이 뜨지 못해야 한다. 길이 게이트만 두면 git 이력에 있는
+     * 36바이트 테스트 키가 그대로 통과해, 고치려던 결함(공개된 키로 토큰 서명)이 되돌아온다.
+     * 리터럴을 하나씩 denylist에 넣는 방식은 계속 늘어나므로 marker 규칙으로 막는다.
+     */
+    @Test
+    void rejectsSecretsCarryingInsecureTestMarker() {
+        for (String key : new String[] {"app.jwt.secret", "spring.mail.password"}) {
+            MockEnvironment environment = valid();
+            environment.setProperty(key, "value-INSECURE-NOT-FOR-PRODUCTION-padding-to-32-bytes");
+            assertThrows(IllegalArgumentException.class, () -> new ProductionSettings(environment), key);
+        }
+    }
+
+    /** build.gradle과 application-test.properties가 실제로 쓰는 값이 운영에서 거부되는지 고정한다. */
+    @Test
+    void rejectsTheCommittedTestJwtSecret() {
+        assertThrows(IllegalArgumentException.class, () -> new ProductionSettings(valid()
+                .withProperty("app.jwt.secret", "jwt-secret-INSECURE-NOT-FOR-PRODUCTION-test")));
+    }
 }

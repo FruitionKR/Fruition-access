@@ -14,7 +14,7 @@ Java 21과 Docker(Testcontainers)가 필요합니다.
 docker build -t fruition-access-svc:local .
 ```
 
-런타임 설정은 환경변수로 주입하거나 이 폴더의 `.env`에 둡니다. 다른 위치의 파일을 사용할 때는 `SERVICE_ENV_FILE=/절대/경로/.env ./gradlew bootRun`으로 지정합니다. 배포 컨테이너에는 환경변수로 주입합니다. 실제 설정 키와 기본값은 `src/main/resources/application*.properties`를 참고하세요.
+런타임 설정은 환경변수로 주입하거나 이 폴더의 `.env`에 둡니다. `.env.example`을 `.env`로 복사해 시작하세요 — `JWT_SECRET`, `INTERNAL_CALLBACK_TOKEN`, `MFA_ENCRYPTION_KEY`는 기본값이 없어 빠지면 기동이 실패합니다. 다른 위치의 파일을 사용할 때는 `SERVICE_ENV_FILE=/절대/경로/.env ./gradlew bootRun`으로 지정합니다. 배포 컨테이너에는 환경변수로 주입합니다. 실제 설정 키와 기본값은 `src/main/resources/application*.properties`를 참고하세요.
 
 DB `access_db`와 `src/main/resources/db/migration/`을 이 서비스가 소유합니다. 다른 서비스는 네트워크 API로 호출하며 다른 저장소의 소스는 빌드에 필요하지 않습니다. `src/main/java/fruition/shared/`는 이 저장소가 직접 관리하는 코드입니다.
 
@@ -34,7 +34,7 @@ Java 21 and Docker for Testcontainers are required.
 docker build -t fruition-access-svc:local .
 ```
 
-Provide runtime settings through environment variables or a local `.env` file in this directory. To use a file elsewhere, run `SERVICE_ENV_FILE=/absolute/path/.env ./gradlew bootRun`. Inject environment variables into deployment containers. See `src/main/resources/application*.properties` for configuration keys and defaults.
+Provide runtime settings through environment variables or a local `.env` file in this directory. Copy `.env.example` to `.env` to get started — `JWT_SECRET`, `INTERNAL_CALLBACK_TOKEN`, and `MFA_ENCRYPTION_KEY` have no defaults and startup fails without them. To use a file elsewhere, run `SERVICE_ENV_FILE=/absolute/path/.env ./gradlew bootRun`. Inject environment variables into deployment containers. See `src/main/resources/application*.properties` for configuration keys and defaults.
 
 This service owns `access_db` and `src/main/resources/db/migration/`. Other services communicate with it through network APIs; their source code is not required to build this repository. The code in `src/main/java/fruition/shared/` is maintained in this repository.
 
