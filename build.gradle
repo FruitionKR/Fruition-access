@@ -55,6 +55,8 @@ tasks.named('test') {
 	useJUnitPlatform()
 	// 운영 기본값을 두지 않는 설정이라 테스트에서만 고정값을 준다.
 	environment('INTERNAL_CALLBACK_TOKEN', 'test-internal-callback')
+	// JWT 서명 키도 기본값을 두지 않는다 — 테스트에서만 고정값을 준다(HS256 최소 32바이트).
+	environment('JWT_SECRET', 'test-only-jwt-secret-32bytes-minimum')
 	// MFA secret 암호화 키(base64 32바이트). 없으면 부팅이 실패하도록 만들어 둬서 테스트에도 필요하다.
 	environment('MFA_ENCRYPTION_KEY', 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=')
 	// OpenAPI 스냅샷 위치. 각 서비스 저장소가 API 계약을 소유한다.
