@@ -22,6 +22,7 @@ import fruition.access.user.dto.SignupRequest;
 import fruition.access.user.dto.SignupResponse;
 import fruition.access.user.dto.VerificationConfirmRequest;
 import fruition.access.user.dto.VerificationConfirmResponse;
+import fruition.access.user.exception.InvalidCredentialsException;
 import fruition.access.user.exception.InvalidRefreshTokenException;
 import fruition.access.user.mfa.MfaService;
 import fruition.access.user.service.AuthService;
@@ -180,8 +181,21 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request,
                                                HttpServletRequest servletRequest) {
-        loginAttemptLimiter.check(request.email(), ClientAddressResolver.of(servletRequest));
-        return authenticatedResponse(authService.login(request));
+        // 제한 확인은 비밀번호 검증보다 먼저다 — 뒤로 밀면 응답 시간 차이로 계정 존재가 샌다.
+        String clientAddress = ClientAddressResolver.of(servletRequest);
+        loginAttemptLimiter.check(request.email(), clientAddress);
+
+        LoginResponse response;
+        try {
+            response = authService.login(request);
+        } catch (InvalidCredentialsException e) {
+            // 실패만 센다. 성공까지 세면 탭을 여러 개 띄운 정상 사용자가 스스로 429를 맞는다.
+            loginAttemptLimiter.recordFailure(request.email(), clientAddress);
+            throw e;
+        }
+        // MFA 요구 응답도 비밀번호 검증은 통과한 것이라 예산을 비운다.
+        loginAttemptLimiter.recordSuccess(request.email(), clientAddress);
+        return authenticatedResponse(response);
     }
 
     @Operation(summary = "토큰 재발급", description = "HttpOnly refresh 쿠키를 검증하고 access token과 refresh 쿠키를 회전합니다.")

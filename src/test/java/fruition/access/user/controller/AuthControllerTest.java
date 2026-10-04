@@ -583,4 +583,35 @@ class AuthControllerTest {
                 .andExpect(header().string("Retry-After", "300"));
         verify(authService, org.mockito.Mockito.never()).login(any());
     }
+
+    /** 실패만 센다 — 틀린 비밀번호는 예산을 쓴다. */
+    @Test
+    void login_invalidCredentials_recordsFailure() throws Exception {
+        when(authService.login(any())).thenThrow(new InvalidCredentialsException());
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new LoginRequest("test@example.com", "wrong-password"))))
+                .andExpect(status().isUnauthorized());
+
+        verify(loginAttemptLimiter).recordFailure(eq("test@example.com"), any());
+        verify(loginAttemptLimiter, org.mockito.Mockito.never()).recordSuccess(any(), any());
+    }
+
+    /** 성공하면 예산을 비운다 — 오타 몇 번 뒤에 제대로 넣은 사용자를 잠그지 않는다. */
+    @Test
+    void login_success_resetsFailureBudget() throws Exception {
+        when(authService.login(any())).thenReturn(
+                LoginResponse.tokens("access-token", "refresh-token", 900));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new LoginRequest("test@example.com", "correct-password"))))
+                .andExpect(status().isOk());
+
+        verify(loginAttemptLimiter).recordSuccess(eq("test@example.com"), any());
+        verify(loginAttemptLimiter, org.mockito.Mockito.never()).recordFailure(any(), any());
+    }
 }
