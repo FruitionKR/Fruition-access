@@ -29,6 +29,7 @@ import fruition.access.user.service.AuthService;
 import fruition.access.user.service.EmailAvailabilityRateLimiter;
 import fruition.access.user.service.EmailVerificationService;
 import fruition.access.user.service.LoginAttemptLimiter;
+import fruition.access.user.service.PasswordChangeAttemptLimiter;
 import fruition.access.user.service.UserService;
 import fruition.shared.util.ErrorResponse;
 import fruition.shared.web.ClientAddressResolver;
@@ -70,6 +71,7 @@ public class AuthController {
     private final MfaService mfaService;
     private final EmailAvailabilityRateLimiter emailAvailabilityRateLimiter;
     private final LoginAttemptLimiter loginAttemptLimiter;
+    private final PasswordChangeAttemptLimiter passwordChangeAttemptLimiter;
     private final EmailVerificationService emailVerificationService;
     private final boolean refreshCookieSecure;
     private final long refreshTokenExpirationSeconds;
@@ -78,6 +80,7 @@ public class AuthController {
                           MfaService mfaService,
                           EmailAvailabilityRateLimiter emailAvailabilityRateLimiter,
                           LoginAttemptLimiter loginAttemptLimiter,
+                          PasswordChangeAttemptLimiter passwordChangeAttemptLimiter,
                           EmailVerificationService emailVerificationService,
                           @Value("${app.auth.refresh-cookie-secure}") boolean refreshCookieSecure,
                           @Value("${app.jwt.refresh-token-expiration-seconds}") long refreshTokenExpirationSeconds) {
@@ -86,6 +89,7 @@ public class AuthController {
         this.mfaService = mfaService;
         this.emailAvailabilityRateLimiter = emailAvailabilityRateLimiter;
         this.loginAttemptLimiter = loginAttemptLimiter;
+        this.passwordChangeAttemptLimiter = passwordChangeAttemptLimiter;
         this.emailVerificationService = emailVerificationService;
         this.refreshCookieSecure = refreshCookieSecure;
         this.refreshTokenExpirationSeconds = refreshTokenExpirationSeconds;
@@ -277,14 +281,27 @@ public class AuthController {
         @ApiResponse(responseCode = "400", description = "잘못된 요청이거나 비밀번호를 쓰지 않는 계정",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(responseCode = "401", description = "인증되지 않았거나 현재 비밀번호가 다름",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "429", description = "현재 비밀번호 확인 시도 횟수 제한 초과",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PutMapping("/me/password")
     public ResponseEntity<Void> changePassword(
             @AuthenticationPrincipal String userId,
             @Valid @RequestBody PasswordChangeRequest request,
-            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshToken) {
-        authService.changePassword(userId, request, refreshToken);
+            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshToken,
+            HttpServletRequest servletRequest) {
+        // 현재 비밀번호 확인도 비밀번호 검증이다 — 제한이 없으면 토큰을 훔친 공격자가
+        // 무제한으로 대입할 수 있다. 로그인과 같이 검증 전에 막는다.
+        String clientAddress = ClientAddressResolver.of(servletRequest);
+        passwordChangeAttemptLimiter.check(userId, clientAddress);
+        try {
+            authService.changePassword(userId, request, refreshToken);
+        } catch (InvalidCredentialsException e) {
+            passwordChangeAttemptLimiter.recordFailure(userId, clientAddress);
+            throw e;
+        }
+        passwordChangeAttemptLimiter.recordSuccess(userId, clientAddress);
         return ResponseEntity.noContent().build();
     }
 
