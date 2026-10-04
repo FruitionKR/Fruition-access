@@ -4,7 +4,9 @@ import fruition.access.workspace.domain.Workspace;
 import fruition.access.workspace.domain.WorkspaceMember;
 import fruition.access.workspace.domain.WorkspaceMemberId;
 import fruition.access.workspace.domain.WorkspaceRole;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -92,6 +94,28 @@ public interface WorkspaceMemberRepository extends JpaRepository<WorkspaceMember
               AND m.workspace.deletedAt IS NULL
             """)
     long countActiveByRole(
+            @Param("workspaceId") String workspaceId,
+            @Param("role") WorkspaceRole role
+    );
+
+    /**
+     * OWNER 행을 잠근 채로 돌려준다. 잠금 없이 세면 동시 요청이 각각 OWNER 2명을 보고
+     * 둘 다 통과해 OWNER 0명이 남는다 — 그 워크스페이스는 모든 관리 동작이 OWNER를
+     * 요구하므로 삭제조차 못 하는 상태가 된다. 같은 행을 두 트랜잭션이 반대 순서로
+     * 잠가 교착하지 않도록 정렬 순서를 고정한다.
+     *
+     * <p>deletedAt 조건은 두지 않는다 — 호출 전에 requireMember가 같은 트랜잭션에서
+     * 활성 워크스페이스임을 이미 확인한다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT m
+            FROM WorkspaceMember m
+            WHERE m.workspace.id = :workspaceId
+              AND m.role = :role
+            ORDER BY m.user.id
+            """)
+    List<WorkspaceMember> findByRoleForUpdate(
             @Param("workspaceId") String workspaceId,
             @Param("role") WorkspaceRole role
     );

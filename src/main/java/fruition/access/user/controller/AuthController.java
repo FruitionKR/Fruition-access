@@ -22,13 +22,17 @@ import fruition.access.user.dto.SignupRequest;
 import fruition.access.user.dto.SignupResponse;
 import fruition.access.user.dto.VerificationConfirmRequest;
 import fruition.access.user.dto.VerificationConfirmResponse;
+import fruition.access.user.exception.InvalidCredentialsException;
 import fruition.access.user.exception.InvalidRefreshTokenException;
 import fruition.access.user.mfa.MfaService;
 import fruition.access.user.service.AuthService;
 import fruition.access.user.service.EmailAvailabilityRateLimiter;
 import fruition.access.user.service.EmailVerificationService;
+import fruition.access.user.service.LoginAttemptLimiter;
+import fruition.access.user.service.PasswordChangeAttemptLimiter;
 import fruition.access.user.service.UserService;
 import fruition.shared.util.ErrorResponse;
+import fruition.shared.web.ClientAddressResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -66,6 +70,8 @@ public class AuthController {
     private final AuthService authService;
     private final MfaService mfaService;
     private final EmailAvailabilityRateLimiter emailAvailabilityRateLimiter;
+    private final LoginAttemptLimiter loginAttemptLimiter;
+    private final PasswordChangeAttemptLimiter passwordChangeAttemptLimiter;
     private final EmailVerificationService emailVerificationService;
     private final boolean refreshCookieSecure;
     private final long refreshTokenExpirationSeconds;
@@ -73,6 +79,8 @@ public class AuthController {
     public AuthController(UserService userService, AuthService authService,
                           MfaService mfaService,
                           EmailAvailabilityRateLimiter emailAvailabilityRateLimiter,
+                          LoginAttemptLimiter loginAttemptLimiter,
+                          PasswordChangeAttemptLimiter passwordChangeAttemptLimiter,
                           EmailVerificationService emailVerificationService,
                           @Value("${app.auth.refresh-cookie-secure}") boolean refreshCookieSecure,
                           @Value("${app.jwt.refresh-token-expiration-seconds}") long refreshTokenExpirationSeconds) {
@@ -80,6 +88,8 @@ public class AuthController {
         this.authService = authService;
         this.mfaService = mfaService;
         this.emailAvailabilityRateLimiter = emailAvailabilityRateLimiter;
+        this.loginAttemptLimiter = loginAttemptLimiter;
+        this.passwordChangeAttemptLimiter = passwordChangeAttemptLimiter;
         this.emailVerificationService = emailVerificationService;
         this.refreshCookieSecure = refreshCookieSecure;
         this.refreshTokenExpirationSeconds = refreshTokenExpirationSeconds;
@@ -98,7 +108,7 @@ public class AuthController {
     public ResponseEntity<EmailAvailabilityResponse> checkEmailAvailability(
             @Valid @RequestBody EmailAvailabilityRequest request,
             HttpServletRequest servletRequest) {
-        emailAvailabilityRateLimiter.check(request.email(), servletRequest.getRemoteAddr());
+        emailAvailabilityRateLimiter.check(request.email(), ClientAddressResolver.of(servletRequest));
         return ResponseEntity.ok(userService.checkEmailAvailability(request));
     }
 
@@ -168,11 +178,28 @@ public class AuthController {
         @ApiResponse(responseCode = "200", description = "로그인 성공",
             content = @Content(schema = @Schema(implementation = LoginResponse.class))),
         @ApiResponse(responseCode = "401", description = "이메일 또는 비밀번호 불일치",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "429", description = "로그인 시도 횟수 제한 초과",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        return authenticatedResponse(authService.login(request));
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request,
+                                               HttpServletRequest servletRequest) {
+        // 제한 확인은 비밀번호 검증보다 먼저다 — 뒤로 밀면 응답 시간 차이로 계정 존재가 샌다.
+        String clientAddress = ClientAddressResolver.of(servletRequest);
+        loginAttemptLimiter.check(request.email(), clientAddress);
+
+        LoginResponse response;
+        try {
+            response = authService.login(request);
+        } catch (InvalidCredentialsException e) {
+            // 실패만 센다. 성공까지 세면 탭을 여러 개 띄운 정상 사용자가 스스로 429를 맞는다.
+            loginAttemptLimiter.recordFailure(request.email(), clientAddress);
+            throw e;
+        }
+        // MFA 요구 응답도 비밀번호 검증은 통과한 것이라 예산을 비운다.
+        loginAttemptLimiter.recordSuccess(request.email(), clientAddress);
+        return authenticatedResponse(response);
     }
 
     @Operation(summary = "토큰 재발급", description = "HttpOnly refresh 쿠키를 검증하고 access token과 refresh 쿠키를 회전합니다.")
@@ -254,14 +281,27 @@ public class AuthController {
         @ApiResponse(responseCode = "400", description = "잘못된 요청이거나 비밀번호를 쓰지 않는 계정",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(responseCode = "401", description = "인증되지 않았거나 현재 비밀번호가 다름",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "429", description = "현재 비밀번호 확인 시도 횟수 제한 초과",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PutMapping("/me/password")
     public ResponseEntity<Void> changePassword(
             @AuthenticationPrincipal String userId,
             @Valid @RequestBody PasswordChangeRequest request,
-            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshToken) {
-        authService.changePassword(userId, request, refreshToken);
+            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshToken,
+            HttpServletRequest servletRequest) {
+        // 현재 비밀번호 확인도 비밀번호 검증이다 — 제한이 없으면 토큰을 훔친 공격자가
+        // 무제한으로 대입할 수 있다. 로그인과 같이 검증 전에 막는다.
+        String clientAddress = ClientAddressResolver.of(servletRequest);
+        passwordChangeAttemptLimiter.check(userId, clientAddress);
+        try {
+            authService.changePassword(userId, request, refreshToken);
+        } catch (InvalidCredentialsException e) {
+            passwordChangeAttemptLimiter.recordFailure(userId, clientAddress);
+            throw e;
+        }
+        passwordChangeAttemptLimiter.recordSuccess(userId, clientAddress);
         return ResponseEntity.noContent().build();
     }
 

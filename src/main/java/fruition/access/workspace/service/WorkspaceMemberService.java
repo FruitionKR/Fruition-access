@@ -93,7 +93,11 @@ public class WorkspaceMemberService {
                 .orElseThrow(() -> new WorkspaceMemberNotFoundException(workspaceId, userId));
     }
 
+    /**
+     * OWNER 행을 잠근 뒤 센다. 잠금 없이 세면 동시 요청이 각각 OWNER 2명을 보고 둘 다
+     * 통과해 OWNER 0명이 남는다 — 관리 동작이 전부 OWNER를 요구하므로 복구가 불가능해진다.
+     */
     private boolean isLastOwner(String workspaceId) {
-        return workspaceMemberRepository.countActiveByRole(workspaceId, WorkspaceRole.OWNER) <= 1;
+        return workspaceMemberRepository.findByRoleForUpdate(workspaceId, WorkspaceRole.OWNER).size() <= 1;
     }
 }
