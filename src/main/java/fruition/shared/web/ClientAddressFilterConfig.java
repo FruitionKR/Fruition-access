@@ -20,10 +20,18 @@ import org.springframework.web.filter.ForwardedHeaderFilter;
 @Configuration
 public class ClientAddressFilterConfig {
 
+    /** XFF에 덧붙이는 프록시 수의 상한. CloudFront+ALB가 2라 이보다 크면 설정 실수로 본다. */
+    private static final int MAX_TRUSTED_PROXY_COUNT = 5;
+
     @Bean
     public FilterRegistrationBean<ForwardedHeaderFilter> clientAddressFilter(
             ServerProperties serverProperties,
             @Value("${app.auth.client-address.trusted-proxy-count:1}") int trustedProxyCount) {
+        // 범위를 벗어나면 해석이 늘 TCP peer(ALB 주소)로 떨어져 전원이 한 rate limit 예산을 나눠 쓴다.
+        if (trustedProxyCount < 1 || trustedProxyCount > MAX_TRUSTED_PROXY_COUNT) {
+            throw new IllegalArgumentException("app.auth.client-address.trusted-proxy-count는 1~"
+                    + MAX_TRUSTED_PROXY_COUNT + " 사이여야 합니다: " + trustedProxyCount);
+        }
         ClientAddressFilter filter = new ClientAddressFilter(trustedProxyCount);
         filter.setRelativeRedirects(serverProperties.getTomcat().isUseRelativeRedirects());
         FilterRegistrationBean<ForwardedHeaderFilter> registration = new FilterRegistrationBean<>(filter);

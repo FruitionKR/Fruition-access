@@ -25,8 +25,9 @@ import org.slf4j.LoggerFactory;
  * <h2>전제</h2>
  * ALB가 XFF를 <b>덧붙인다</b>고 가정했다. {@code routing.http.xff_header_processing.mode}가
  * 기본값({@code append})일 때가 그렇다. 이 값을 {@code preserve}로 바꾸면 클라이언트 헤더가
- * 그대로 통과해 이 계산의 전제가 깨지므로, 바꿀 때는 trusted-proxy-count도 0으로 내려
- * 헤더를 무시해야 한다.
+ * 그대로 통과해 이 계산의 전제가 깨진다. trusted-proxy-count를 0으로 내려 헤더를 무시하는
+ * 우회는 쓸 수 없다 — TCP peer가 ALB 주소라 전원이 한 예산을 나눠 쓰므로 기동에서 거부한다
+ * (ClientAddressFilterConfig). append를 유지해야 한다.
  */
 public final class ClientAddressResolver {
 
