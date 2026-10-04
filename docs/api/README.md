@@ -85,8 +85,8 @@
 `/internal/**`은 `SecurityConfig`에서 `permitAll`이라 JWT 필터를 통과시키지 않고
 (`src/main/java/fruition/access/security/SecurityConfig.java:97`), 각 컨트롤러가 `X-Internal-Token`
 헤더를 상수 시간 비교로 검증한다
-(`src/main/java/fruition/access/workspace/controller/InternalAuthzController.java:68`,
-`src/main/java/fruition/access/workspace/controller/InternalWorkspaceAiModelController.java:55`).
+(`src/main/java/fruition/access/workspace/controller/InternalAuthzController.java:69`,
+`src/main/java/fruition/access/workspace/controller/InternalWorkspaceAiModelController.java:56`).
 토큰 값은 `app.internal.callback-token`(`INTERNAL_CALLBACK_TOKEN`)이다.
 access-svc의 내부 엔드포인트에는 `X-Agent-Service-Token`을 쓰지 않는다 — 그 헤더는
 ai-svc가 document-svc Tool 경로를 부를 때 쓰는 별개 헤더다.
