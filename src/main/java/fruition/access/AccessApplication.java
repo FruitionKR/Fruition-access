@@ -9,7 +9,7 @@ import fruition.shared.util.OpenApiConfig;
 
 /**
  * 로그인·OAuth·세션·워크스페이스를 담당하는 access 앱.
- * 공유 모듈에서는 JWT(발급·검증)와 Idempotency, 요청 로깅만 스캔한다
+ * 공유 모듈에서는 JWT(발급·검증)와 Idempotency, 요청 로깅, 클라이언트 주소 필터만 스캔한다
  * (fruition.shared.util 전체를 스캔하면 document 전용 MinioConfig까지 끌려온다).
  * JPA 배선(@EntityScan·@EnableJpaRepositories)은 slice 테스트에 끌려가지 않도록 {@link JpaConfig}에 둔다.
  */
@@ -18,7 +18,8 @@ import fruition.shared.util.OpenApiConfig;
         "fruition.shared.ai",
         "fruition.shared.logging",
         "fruition.shared.security",
-        "fruition.shared.idempotency"
+        "fruition.shared.idempotency",
+        "fruition.shared.web"
 })
 @Import(OpenApiConfig.class)
 public class AccessApplication {
