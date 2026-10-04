@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.filter.ForwardedHeaderFilter;
 
 import java.io.IOException;
+import java.util.Collections;
 
 /**
  * {@link ForwardedHeaderFilter}를 상속해, scheme·host 복원은 그대로 두고 rate limit용
@@ -33,8 +34,10 @@ public class ClientAddressFilter extends ForwardedHeaderFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         // super가 헤더를 가리기 전에 원본 XFF로 주소를 확정한다.
+        // 여러 줄로 온 XFF는 쉼표로 이은 한 줄과 같다 — getHeader는 첫 줄만 줘서 뒤 줄에 붙은 ALB 값을 놓친다.
+        String forwardedFor = String.join(",", Collections.list(request.getHeaders("X-Forwarded-For")));
         request.setAttribute(ClientAddressResolver.ATTRIBUTE, ClientAddressResolver.resolve(
-                request.getHeader("X-Forwarded-For"), request.getRemoteAddr(), trustedProxyCount));
+                forwardedFor, request.getRemoteAddr(), trustedProxyCount));
         super.doFilterInternal(request, response, filterChain);
     }
 }
