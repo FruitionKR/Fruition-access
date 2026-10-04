@@ -3,6 +3,7 @@ package fruition.access;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.stream.IntStream;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
@@ -29,7 +30,7 @@ public class ProductionSettings {
         for (String key : new String[] {"spring.mail.host", "spring.mail.username", "spring.mail.password",
                 "app.auth.email-verification.from", "app.auth.mfa.encryption-key",
                 "app.workspace.invitation.accept-url", "app.jwt.secret",
-                "app.auth.refresh-cookie-secure"}) {
+                "app.auth.refresh-cookie-secure", "app.internal.callback-token"}) {
             String value = environment.getProperty(key);
             if (value == null || value.isBlank() || value.contains("REPLACE_ME")) {
                 throw new IllegalArgumentException("필수 운영 설정 누락: " + key);
@@ -40,8 +41,14 @@ public class ProductionSettings {
             }
         }
         String key = environment.getRequiredProperty("app.auth.mfa.encryption-key");
-        if (Base64.getDecoder().decode(key).length != 32) {
+        byte[] mfaKey = Base64.getDecoder().decode(key);
+        if (mfaKey.length != 32) {
             throw new IllegalArgumentException("MFA 키는 base64로 인코딩한 32바이트여야 합니다.");
+        }
+        // base64 고정 길이라 표식을 넣을 수 없다. 커밋된 테스트 키(AAAA...=, 0바이트 32개)처럼
+        // 모든 바이트가 같은 키는 길이 검사를 통과하므로 따로 막는다.
+        if (IntStream.range(1, mfaKey.length).allMatch(i -> mfaKey[i] == mfaKey[0])) {
+            throw new IllegalArgumentException("MFA 키의 모든 바이트가 같습니다. 운영 키는 무작위로 생성해야 합니다.");
         }
         URI invitation = URI.create(environment.getRequiredProperty("app.workspace.invitation.accept-url"));
         if (!"https".equals(invitation.getScheme()) || invitation.getHost() == null

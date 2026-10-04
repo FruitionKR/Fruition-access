@@ -14,10 +14,11 @@ class ProductionSettingsTest {
                 .withProperty("spring.mail.username", "test-user")
                 .withProperty("spring.mail.password", "test-password")
                 .withProperty("app.auth.email-verification.from", "noreply@example.com")
-                .withProperty("app.auth.mfa.encryption-key", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+                .withProperty("app.auth.mfa.encryption-key", "+5w4SOzUyS26oJh28MKasrE5rYZaq8IBE7pCrJVXLBE=")
                 .withProperty("app.workspace.invitation.accept-url", "https://app.example.com/invitations")
                 .withProperty("app.jwt.secret", "p3LqS6vH9zB2nK5wR8tY1cX4mJ7dG0aQ")
-                .withProperty("app.auth.refresh-cookie-secure", "true");
+                .withProperty("app.auth.refresh-cookie-secure", "true")
+                .withProperty("app.internal.callback-token", "Zr8wQ2nV5kT1xL7cH4bM9pS3dF6gJ0aY");
     }
 
     @Test
@@ -29,7 +30,8 @@ class ProductionSettingsTest {
     void rejectsEachMissingRequiredSetting() {
         for (String key : new String[] {"spring.mail.host", "spring.mail.port", "spring.mail.username",
                 "spring.mail.password", "app.auth.email-verification.from", "app.auth.mfa.encryption-key",
-                "app.workspace.invitation.accept-url", "app.jwt.secret", "app.auth.refresh-cookie-secure"}) {
+                "app.workspace.invitation.accept-url", "app.jwt.secret", "app.auth.refresh-cookie-secure",
+                "app.internal.callback-token"}) {
             MockEnvironment environment = valid();
             environment.setProperty(key, "");
             assertThrows(RuntimeException.class, () -> new ProductionSettings(environment), key);
@@ -86,5 +88,29 @@ class ProductionSettingsTest {
     void rejectsTheCommittedTestJwtSecret() {
         assertThrows(IllegalArgumentException.class, () -> new ProductionSettings(valid()
                 .withProperty("app.jwt.secret", "jwt-secret-INSECURE-NOT-FOR-PRODUCTION-test")));
+    }
+
+    /**
+     * build.gradle·application-test.properties·.env.example에 커밋된 INTERNAL_CALLBACK_TOKEN은
+     * 표식을 달고 있지만, 표식 검사 대상 목록에 없으면 그 값 그대로 운영이 뜬다.
+     */
+    @Test
+    void rejectsTheCommittedTestCallbackToken() {
+        assertThrows(IllegalArgumentException.class, () -> new ProductionSettings(valid()
+                .withProperty("app.internal.callback-token", "callback-token-INSECURE-NOT-FOR-PRODUCTION")));
+    }
+
+    /**
+     * MFA 키는 base64 고정 길이라 표식을 넣을 수 없다. 길이만 검사하면 build.gradle·
+     * application-test.properties에 커밋된 0바이트 키(AAAA...=)가 그대로 운영을 통과해,
+     * 공개된 키로 모든 TOTP secret을 암호화하게 된다. 모든 바이트가 같은 키는 거부한다.
+     */
+    @Test
+    void rejectsTheCommittedAllZeroAndOtherUniformMfaKeys() {
+        for (String value : new String[] {"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE="}) {
+            assertThrows(IllegalArgumentException.class, () -> new ProductionSettings(valid()
+                    .withProperty("app.auth.mfa.encryption-key", value)), value);
+        }
     }
 }
