@@ -49,7 +49,12 @@ public class EmailAvailabilityRateLimiter {
                 INCREMENT_WITH_TTL,
                 List.of(key),
                 String.valueOf(windowSeconds));
-        if (count != null && count > limit) {
+        // null이면 제한을 세지 못한 것이다. 통과시키면 Redis 장애 동안 계정 열거가 무제한으로
+        // 열리므로, MfaAttemptLimiter와 같이 닫힌 채로 실패한다.
+        if (count == null) {
+            throw new IllegalStateException("이메일 중복 확인 요청 제한을 확인하지 못했습니다.");
+        }
+        if (count > limit) {
             throw new EmailAvailabilityRateLimitedException(windowSeconds);
         }
     }

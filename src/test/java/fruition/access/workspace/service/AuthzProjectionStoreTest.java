@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -13,10 +14,12 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentCaptor.forClass;
@@ -98,5 +101,32 @@ class AuthzProjectionStoreTest {
         } finally {
             TransactionSynchronizationManager.clearSynchronization();
         }
+    }
+
+    /**
+     * 커밋이 끝난 뒤 실행되므로 여기서 예외가 올라가면 호출자는 500을 받지만 DB 변경은
+     * 이미 확정돼 있다. 재시도는 404가 되고 stale 판정만 남으므로, 한 번 더 시도한 뒤
+     * ERROR로 남기고 응답은 성공으로 둔다.
+     */
+    @Test
+    void evict_redisFailure_isRetriedThenSwallowed() {
+        when(redisTemplate.delete("authz:role:ws_1:user_1"))
+                .thenThrow(new RedisConnectionFailureException("redis down"));
+        AuthzProjectionStore store = new AuthzProjectionStore(redisTemplate);
+
+        assertThatCode(() -> store.evict("ws_1", "user_1")).doesNotThrowAnyException();
+
+        verify(redisTemplate, times(2)).delete("authz:role:ws_1:user_1");
+    }
+
+    @Test
+    void evictWorkspace_redisFailure_isRetriedThenSwallowed() {
+        when(redisTemplate.scan(any(ScanOptions.class)))
+                .thenThrow(new RedisConnectionFailureException("redis down"));
+        AuthzProjectionStore store = new AuthzProjectionStore(redisTemplate);
+
+        assertThatCode(() -> store.evictWorkspace("ws_1")).doesNotThrowAnyException();
+
+        verify(redisTemplate, times(2)).scan(any(ScanOptions.class));
     }
 }

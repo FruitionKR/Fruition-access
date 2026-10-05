@@ -43,4 +43,17 @@ class EmailAvailabilityRateLimiterTest {
         assertThatThrownBy(() -> rateLimiter.check("test@example.com", "127.0.0.1"))
                 .isInstanceOf(EmailAvailabilityRateLimitedException.class);
     }
+
+    /**
+     * script 결과가 null이면 제한을 확인하지 못한 것이다. 통과시키면 계정 열거 방어선이
+     * Redis 장애와 동시에 조용히 사라진다 — MfaAttemptLimiter처럼 닫힌 채로 실패해야 한다.
+     */
+    @Test
+    void check_redisReturnsNull_failsClosed() {
+        doReturn(null).when(redisTemplate).execute(
+                any(RedisScript.class), anyList(), any(String.class));
+
+        assertThatThrownBy(() -> rateLimiter.check("test@example.com", "127.0.0.1"))
+                .isInstanceOf(IllegalStateException.class);
+    }
 }

@@ -13,6 +13,8 @@ import fruition.access.user.exception.InvalidOAuthCodeException;
 import fruition.access.user.exception.InvalidRefreshTokenException;
 import fruition.access.user.exception.InvalidVerificationCodeException;
 import fruition.access.user.exception.InvalidVerificationTokenException;
+import fruition.access.user.exception.LoginRateLimitedException;
+import fruition.access.user.exception.PasswordChangeRateLimitedException;
 import fruition.access.user.exception.OAuthEmailNotProvidedException;
 import fruition.access.user.exception.PasswordLoginUnavailableException;
 import fruition.access.user.exception.SessionNotFoundException;
@@ -318,6 +320,22 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
                 .status(HttpStatus.TOO_MANY_REQUESTS)
                 .header("Retry-After", String.valueOf(e.getRetryAfter()))
                 .body(ErrorResponse.of("EMAIL_AVAILABILITY_RATE_LIMITED", e.getMessage()));
+    }
+
+    @ExceptionHandler(LoginRateLimitedException.class)
+    public ResponseEntity<ErrorResponse> handleLoginRateLimited(LoginRateLimitedException e) {
+        logHandled(e, HttpStatus.TOO_MANY_REQUESTS, "LOGIN_RATE_LIMITED");
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(e.getRetryAfter()))
+                .body(ErrorResponse.of("LOGIN_RATE_LIMITED", e.getMessage()));
+    }
+
+    @ExceptionHandler(PasswordChangeRateLimitedException.class)
+    public ResponseEntity<ErrorResponse> handlePasswordChangeRateLimited(PasswordChangeRateLimitedException e) {
+        logHandled(e, HttpStatus.TOO_MANY_REQUESTS, "PASSWORD_CHANGE_RATE_LIMITED");
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(e.getRetryAfter()))
+                .body(ErrorResponse.of("PASSWORD_CHANGE_RATE_LIMITED", e.getMessage()));
     }
 
     @ExceptionHandler(EmailVerificationSendException.class)

@@ -148,6 +148,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
           description: 이메일 또는 비밀번호 불일치
+        "429":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 로그인 시도 횟수 제한 초과
       summary: 로그인
       tags:
       - Auth
@@ -448,6 +454,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
           description: 인증되지 않았거나 현재 비밀번호가 다름
+        "429":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 현재 비밀번호 확인 시도 횟수 제한 초과
       summary: 비밀번호 변경
       tags:
       - Auth

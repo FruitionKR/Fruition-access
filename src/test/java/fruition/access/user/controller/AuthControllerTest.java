@@ -26,6 +26,8 @@ import fruition.access.user.dto.VerificationConfirmRequest;
 import fruition.access.user.dto.VerificationConfirmResponse;
 import fruition.access.user.exception.DuplicateEmailException;
 import fruition.access.user.exception.EmailAvailabilityRateLimitedException;
+import fruition.access.user.exception.LoginRateLimitedException;
+import fruition.access.user.exception.PasswordChangeRateLimitedException;
 import fruition.access.user.exception.InvalidCredentialsException;
 import fruition.access.user.exception.InvalidOAuthCodeException;
 import fruition.access.user.exception.InvalidRefreshTokenException;
@@ -33,6 +35,8 @@ import fruition.access.user.exception.InvalidVerificationCodeException;
 import fruition.access.user.mfa.MfaService;
 import fruition.access.user.service.AuthService;
 import fruition.access.user.service.EmailAvailabilityRateLimiter;
+import fruition.access.user.service.LoginAttemptLimiter;
+import fruition.access.user.service.PasswordChangeAttemptLimiter;
 import fruition.access.user.service.EmailVerificationService;
 import fruition.access.user.service.UserService;
 import fruition.access.AccessExceptionHandler;
@@ -78,6 +82,8 @@ class AuthControllerTest {
     @MockBean AuthService authService;
     @MockBean MfaService mfaService;
     @MockBean EmailAvailabilityRateLimiter emailAvailabilityRateLimiter;
+    @MockBean LoginAttemptLimiter loginAttemptLimiter;
+    @MockBean PasswordChangeAttemptLimiter passwordChangeAttemptLimiter;
     @MockBean EmailVerificationService emailVerificationService;
     @MockBean CustomOAuth2UserService customOAuth2UserService;
     // OAuthExchangeCodeStore가 Redis에 의존하므로 web slice에는 mock template을 채운다.
@@ -564,4 +570,91 @@ class AuthControllerTest {
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Retry-After", "120"));
     }
 
+
+    /** 비밀번호를 받는 엔드포인트에 제한이 없으면 자격증명 대입을 막는 장치가 하나도 없다. */
+    @Test
+    void login_rateLimited_returns429WithRetryAfter() throws Exception {
+        doThrow(new LoginRateLimitedException(300))
+                .when(loginAttemptLimiter).check(any(), any());
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new LoginRequest("test@example.com", "password123!"))))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.error.code").value("LOGIN_RATE_LIMITED"))
+                .andExpect(header().string("Retry-After", "300"));
+        verify(authService, org.mockito.Mockito.never()).login(any());
+    }
+
+    /** 실패만 센다 — 틀린 비밀번호는 예산을 쓴다. */
+    @Test
+    void login_invalidCredentials_recordsFailure() throws Exception {
+        when(authService.login(any())).thenThrow(new InvalidCredentialsException());
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new LoginRequest("test@example.com", "wrong-password"))))
+                .andExpect(status().isUnauthorized());
+
+        verify(loginAttemptLimiter).recordFailure(eq("test@example.com"), any());
+        verify(loginAttemptLimiter, org.mockito.Mockito.never()).recordSuccess(any(), any());
+    }
+
+    /** 성공하면 예산을 비운다 — 오타 몇 번 뒤에 제대로 넣은 사용자를 잠그지 않는다. */
+    @Test
+    void login_success_resetsFailureBudget() throws Exception {
+        when(authService.login(any())).thenReturn(
+                LoginResponse.tokens("access-token", "refresh-token", 900));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new LoginRequest("test@example.com", "correct-password"))))
+                .andExpect(status().isOk());
+
+        verify(loginAttemptLimiter).recordSuccess(eq("test@example.com"), any());
+        verify(loginAttemptLimiter, org.mockito.Mockito.never()).recordFailure(any(), any());
+    }
+
+    /**
+     * 현재 비밀번호 확인에 제한이 없으면 access token을 훔친 공격자가 무제한으로 대입할 수
+     * 있다. 제한은 검증 전에 걸려야 한다 — 뒤로 밀면 응답 시간 차이가 새고 대입도 그대로 돈다.
+     */
+    @Test
+    void changePassword_rateLimited_returns429BeforeCheckingPassword() throws Exception {
+        doThrow(new PasswordChangeRateLimitedException(300))
+                .when(passwordChangeAttemptLimiter).check(any(), any());
+
+        String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
+
+        mockMvc.perform(put("/api/auth/me/password")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new PasswordChangeRequest("oldPassword1", "newPassword1"))))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "300"));
+
+        verify(authService, org.mockito.Mockito.never()).changePassword(any(), any(), any());
+    }
+
+    /** 현재 비밀번호가 틀리면 예산을 쓴다. */
+    @Test
+    void changePassword_wrongCurrentPassword_recordsFailure() throws Exception {
+        doThrow(new InvalidCredentialsException())
+                .when(authService).changePassword(any(), any(), any());
+
+        String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
+
+        mockMvc.perform(put("/api/auth/me/password")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new PasswordChangeRequest("wrongPassword1", "newPassword1"))))
+                .andExpect(status().isUnauthorized());
+
+        verify(passwordChangeAttemptLimiter).recordFailure(eq("user_1f9a74af"), any());
+    }
 }
