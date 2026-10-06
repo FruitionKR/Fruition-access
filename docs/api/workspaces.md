@@ -1524,6 +1524,8 @@ curl -X GET "$ACCESS/internal/users/<value>" \
 
 워크스페이스의 AI 모델 설정을 변경합니다.
 
+`provider`/`model`은 `AiModelCatalog`에 있는 조합만 허용하고, 그 밖의 조합은 `400 INVALID_AI_MODEL`입니다. 2026-10-06 기준으로 OpenAI 21개, Gemini 8개, Claude 9개입니다. 이 목록은 document의 `GET /api/ai-models`(Fruition-document `AiModelCatalog`)와 같아야 합니다. 두 목록이 어긋나면 설정은 저장되는데 질의가 거부되거나, 그 반대가 됩니다.
+
 #### 3. Auth 필요 여부
 
 - 필요
@@ -1611,6 +1613,8 @@ curl -X GET "$ACCESS/internal/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/ai-
 #### 2. 목적
 
 워크스페이스의 AI 모델 설정을 변경합니다.
+
+`provider`/`model`은 `AiModelCatalog`에 있는 조합만 허용하고, 그 밖의 조합은 `400 INVALID_AI_MODEL`입니다. 2026-10-06 기준으로 OpenAI 21개, Gemini 8개, Claude 9개입니다. 이 목록은 document의 `GET /api/ai-models`(Fruition-document `AiModelCatalog`)와 같아야 합니다. 두 목록이 어긋나면 설정은 저장되는데 질의가 거부되거나, 그 반대가 됩니다.
 
 #### 3. Auth 필요 여부
 

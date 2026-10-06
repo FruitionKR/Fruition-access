@@ -49,4 +49,18 @@ class WorkspaceAiModelServiceTest {
         assertThat(response.ingestLint().provider()).isEqualTo("claude");
         assertThat(response.ingestLint().model()).isEqualTo("claude-sonnet-5");
     }
+
+    @Test
+    void updateInternal_acceptsExpandedCatalogModelsAndRejectsOthers() {
+        when(workspaceRepository.findById("ws_1")).thenReturn(Optional.of(workspace));
+
+        // document 카탈로그(Fruition-document#51)와 같은 목록이어야 설정과 질의 검증 결과가 같다.
+        var response = service.updateInternal("ws_1", new WorkspaceAiModelRequest(
+                new WorkspaceAiModelRequest.AiModelSelection("claude", "claude-opus-5-5")));
+
+        assertThat(response.ingestLint().model()).isEqualTo("claude-opus-5-5");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.updateInternal("ws_1",
+                        new WorkspaceAiModelRequest(new WorkspaceAiModelRequest.AiModelSelection("openai", "gpt-4"))))
+                .isInstanceOf(fruition.shared.ai.InvalidAiModelException.class);
+    }
 }
