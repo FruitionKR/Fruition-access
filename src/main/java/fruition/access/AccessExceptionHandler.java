@@ -18,6 +18,11 @@ import fruition.access.user.exception.PasswordChangeRateLimitedException;
 import fruition.access.user.exception.OAuthEmailNotProvidedException;
 import fruition.access.user.exception.PasswordLoginUnavailableException;
 import fruition.access.user.exception.SessionNotFoundException;
+import fruition.access.user.exception.InvalidOAuthLinkCodeException;
+import fruition.access.user.exception.OAuthAccountAlreadyLinkedException;
+import fruition.access.user.exception.OAuthUnlinkNotAllowedException;
+import fruition.access.user.exception.UnsupportedOAuthProviderException;
+import fruition.access.user.exception.OAuthAccountNotFoundException;
 import fruition.access.user.exception.UserNotFoundException;
 import fruition.access.user.exception.VerificationCodeAttemptsExceededException;
 import fruition.access.user.exception.VerificationCodeExpiredException;
@@ -118,6 +123,46 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse.of("USER_NOT_FOUND", e.getMessage()));
+    }
+
+    @ExceptionHandler(OAuthAccountNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleOAuthAccountNotFound(OAuthAccountNotFoundException e) {
+        logHandled(e, HttpStatus.NOT_FOUND, "OAUTH_ACCOUNT_NOT_FOUND");
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of("OAUTH_ACCOUNT_NOT_FOUND", e.getMessage()));
+    }
+
+    @ExceptionHandler(UnsupportedOAuthProviderException.class)
+    public ResponseEntity<ErrorResponse> handleUnsupportedOAuthProvider(UnsupportedOAuthProviderException e) {
+        logHandled(e, HttpStatus.NOT_FOUND, "UNSUPPORTED_OAUTH_PROVIDER");
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of("UNSUPPORTED_OAUTH_PROVIDER", e.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidOAuthLinkCodeException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidOAuthLinkCode(InvalidOAuthLinkCodeException e) {
+        logHandled(e, HttpStatus.BAD_REQUEST, "INVALID_OAUTH_LINK_CODE");
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("INVALID_OAUTH_LINK_CODE", e.getMessage()));
+    }
+
+    @ExceptionHandler(OAuthAccountAlreadyLinkedException.class)
+    public ResponseEntity<ErrorResponse> handleOAuthAccountAlreadyLinked(OAuthAccountAlreadyLinkedException e) {
+        logHandled(e, HttpStatus.CONFLICT, "OAUTH_ACCOUNT_ALREADY_LINKED");
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of("OAUTH_ACCOUNT_ALREADY_LINKED", e.getMessage()));
+    }
+
+    @ExceptionHandler(OAuthUnlinkNotAllowedException.class)
+    public ResponseEntity<ErrorResponse> handleOAuthUnlinkNotAllowed(OAuthUnlinkNotAllowedException e) {
+        logHandled(e, HttpStatus.CONFLICT, "OAUTH_UNLINK_NOT_ALLOWED");
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of("OAUTH_UNLINK_NOT_ALLOWED", e.getMessage()));
     }
 
     @ExceptionHandler(SessionNotFoundException.class)

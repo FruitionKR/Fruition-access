@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
+import java.util.List;
 
 public record MeResponse(
         @Schema(description = "사용자 ID", example = "user_3f1c8a6b52d7411e9c04ab5d2e7f6081")
@@ -18,5 +19,9 @@ public record MeResponse(
 
         @JsonProperty("created_at")
         @Schema(description = "가입 시각(ISO-8601 UTC)", example = "2026-08-13T04:25:24.371948Z")
-        Instant createdAt
+        Instant createdAt,
+
+        @JsonProperty("oauth_providers")
+        @Schema(description = "로그인에 쓸 수 있도록 연결된 소셜 provider(google, kakao, naver)", example = "[\"google\"]")
+        List<String> oauthProviders
 ) {}

@@ -59,4 +59,17 @@ class OAuthExchangeCodeStoreTest {
 
         assertThat(store.consume("unknown-code")).isEmpty();
     }
+
+    @Test
+    void linkCode_roundTripsPendingLink_andLinkTokenIsBoundToProvider() {
+        var pending = new OAuthExchangeCodeStore.PendingLink("user_local", "naver", "id:with:colons");
+        ArgumentCaptor<String> value = ArgumentCaptor.forClass(String.class);
+        String code = store.issueLinkCode(pending);
+        verify(valueOperations).set(eq("oauth:link-code:" + code), value.capture(), eq(Duration.ofSeconds(60)));
+        when(valueOperations.getAndDelete("oauth:link-code:" + code)).thenReturn(value.getValue());
+        when(valueOperations.getAndDelete("oauth:link:t")).thenReturn("google:user_local");
+
+        assertThat(store.consumeLinkCode(code)).contains(pending);
+        assertThat(store.consumeLinkToken("t", "kakao")).isEmpty();
+    }
 }

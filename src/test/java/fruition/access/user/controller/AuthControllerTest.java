@@ -86,6 +86,7 @@ class AuthControllerTest {
     @MockBean PasswordChangeAttemptLimiter passwordChangeAttemptLimiter;
     @MockBean EmailVerificationService emailVerificationService;
     @MockBean CustomOAuth2UserService customOAuth2UserService;
+    @MockBean fruition.access.user.service.OAuthUserService oAuthUserService;
     // OAuthExchangeCodeStore가 Redis에 의존하므로 web slice에는 mock template을 채운다.
     @MockBean org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
 
@@ -314,7 +315,7 @@ class AuthControllerTest {
     void me_withValidAccessToken_returns200() throws Exception {
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
         when(authService.me("user_1f9a74af")).thenReturn(
-                new MeResponse("user_1f9a74af", "test@example.com", "tes", Instant.now()));
+                new MeResponse("user_1f9a74af", "test@example.com", "tes", Instant.now(), java.util.List.of()));
 
         mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
@@ -354,7 +355,7 @@ class AuthControllerTest {
     void updateDisplayName_authenticated_returns200() throws Exception {
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
         when(authService.updateDisplayName(eq("user_1f9a74af"), any())).thenReturn(
-                new MeResponse("user_1f9a74af", "test@example.com", "새 이름", Instant.now()));
+                new MeResponse("user_1f9a74af", "test@example.com", "새 이름", Instant.now(), java.util.List.of()));
 
         mockMvc.perform(patch("/api/auth/me")
                         .header("Authorization", "Bearer " + token)
@@ -440,7 +441,7 @@ class AuthControllerTest {
     void changeEmail_authenticated_returns200() throws Exception {
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
         when(authService.changeEmail(eq("user_1f9a74af"), any(), eq("current-refresh"))).thenReturn(
-                new MeResponse("user_1f9a74af", "new@example.com", "이름", Instant.now()));
+                new MeResponse("user_1f9a74af", "new@example.com", "이름", Instant.now(), java.util.List.of()));
 
         mockMvc.perform(put("/api/auth/me/email")
                         .header("Authorization", "Bearer " + token)

@@ -1,6 +1,8 @@
 package fruition.access.user.controller;
 
 import fruition.access.user.dto.EmailAvailabilityRequest;
+import fruition.access.user.dto.OAuthLinkConfirmRequest;
+import fruition.access.user.dto.OAuthLinkStartResponse;
 import fruition.access.user.dto.EmailAvailabilityResponse;
 import fruition.access.user.dto.EmailVerificationRequest;
 import fruition.access.user.dto.EmailVerificationResponse;
@@ -29,6 +31,7 @@ import fruition.access.user.service.AuthService;
 import fruition.access.user.service.EmailAvailabilityRateLimiter;
 import fruition.access.user.service.EmailVerificationService;
 import fruition.access.user.service.LoginAttemptLimiter;
+import fruition.access.user.service.OAuthUserService;
 import fruition.access.user.service.PasswordChangeAttemptLimiter;
 import fruition.access.user.service.UserService;
 import fruition.shared.util.ErrorResponse;
@@ -73,6 +76,7 @@ public class AuthController {
     private final LoginAttemptLimiter loginAttemptLimiter;
     private final PasswordChangeAttemptLimiter passwordChangeAttemptLimiter;
     private final EmailVerificationService emailVerificationService;
+    private final OAuthUserService oAuthUserService;
     private final boolean refreshCookieSecure;
     private final long refreshTokenExpirationSeconds;
 
@@ -82,6 +86,7 @@ public class AuthController {
                           LoginAttemptLimiter loginAttemptLimiter,
                           PasswordChangeAttemptLimiter passwordChangeAttemptLimiter,
                           EmailVerificationService emailVerificationService,
+                          OAuthUserService oAuthUserService,
                           @Value("${app.auth.refresh-cookie-secure}") boolean refreshCookieSecure,
                           @Value("${app.jwt.refresh-token-expiration-seconds}") long refreshTokenExpirationSeconds) {
         this.userService = userService;
@@ -91,6 +96,7 @@ public class AuthController {
         this.loginAttemptLimiter = loginAttemptLimiter;
         this.passwordChangeAttemptLimiter = passwordChangeAttemptLimiter;
         this.emailVerificationService = emailVerificationService;
+        this.oAuthUserService = oAuthUserService;
         this.refreshCookieSecure = refreshCookieSecure;
         this.refreshTokenExpirationSeconds = refreshTokenExpirationSeconds;
     }
@@ -442,6 +448,59 @@ public class AuthController {
             @AuthenticationPrincipal String userId,
             @Valid @RequestBody MfaCodeRequest request) {
         mfaService.disable(userId, request.code());
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "소셜 계정 연동 시작",
+            description = "1회용 연동 토큰(60초)을 발급합니다. 프론트는 /oauth2/authorization/{provider}"
+                    + "?mode=link&link_token=... 으로 이동합니다. 인증을 마치면 OAuth 콜백 주소에 ?link_code=... 가"
+                    + " 붙어 돌아오고(실패하면 ?link=failed), 프론트가 그 code로 연동 확정 API를 부릅니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "토큰 발급",
+            content = @Content(schema = @Schema(implementation = OAuthLinkStartResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "404", description = "지원하지 않는 provider",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/me/oauth-accounts/{provider}/link")
+    public ResponseEntity<OAuthLinkStartResponse> startOAuthLink(
+            @AuthenticationPrincipal String userId, @PathVariable String provider) {
+        return ResponseEntity.ok(new OAuthLinkStartResponse(oAuthUserService.startLink(userId, provider)));
+    }
+
+    @Operation(summary = "소셜 계정 연동 확정",
+            description = "연동 콜백이 넘긴 link_code를 연동을 시작한 사용자가 제출하면 소셜 계정을 연결합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "연동 성공(이미 내 계정에 연결된 경우 포함)"),
+        @ApiResponse(responseCode = "400", description = "유효하지 않거나 만료됐거나 다른 사용자가 시작한 link_code",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "409", description = "다른 계정에 연결된 소셜 계정이거나 같은 provider가 이미 연결됨",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/me/oauth-accounts/link/confirm")
+    public ResponseEntity<Void> confirmOAuthLink(
+            @AuthenticationPrincipal String userId, @Valid @RequestBody OAuthLinkConfirmRequest request) {
+        oAuthUserService.confirmLink(userId, request.linkCode());
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "소셜 계정 연동 해제",
+            description = "연결된 provider를 해제합니다. 가입할 때 쓴 provider는 해제할 수 없습니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "해제 성공"),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "404", description = "연결되지 않은 provider",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "409", description = "가입할 때 쓴 provider라 해제할 수 없음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @DeleteMapping("/me/oauth-accounts/{provider}")
+    public ResponseEntity<Void> unlinkOAuthAccount(@AuthenticationPrincipal String userId, @PathVariable String provider) {
+        oAuthUserService.unlink(userId, provider);
         return ResponseEntity.noContent().build();
     }
 

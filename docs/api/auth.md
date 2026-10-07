@@ -4,7 +4,7 @@
 
 가입·이메일 인증·로그인·토큰 API다.
 
-- API 수: 20
+- API 수: 23
 - 호출 연결: [access-svc 호출 연결 요약](README.md#호출-연결-요약) 참고
 
 ## API 목차
@@ -27,6 +27,9 @@
 | [`POST /api/auth/me/mfa`](#summary-post-api-auth-me-mfa) | secret과 복구 코드를 발급합니다(등록 1단계). |
 | [`POST /api/auth/me/mfa/activate`](#summary-post-api-auth-me-mfa-activate) | 코드를 확인하고 다단계 인증을 켭니다(등록 2단계). |
 | [`DELETE /api/auth/me/mfa`](#summary-delete-api-auth-me-mfa) | 코드로 본인을 확인한 뒤 다단계 인증을 해제합니다. |
+| [`POST /api/auth/me/oauth-accounts/{provider}/link`](#summary-post-api-auth-me-oauth-accounts-provider-link) | 소셜 계정 연동을 시작할 1회용 연동 토큰을 발급합니다. |
+| [`POST /api/auth/me/oauth-accounts/link/confirm`](#summary-post-api-auth-me-oauth-accounts-link-confirm) | 연동 콜백이 넘긴 `link_code`로 소셜 계정을 현재 계정에 연결합니다. |
+| [`DELETE /api/auth/me/oauth-accounts/{provider}`](#summary-delete-api-auth-me-oauth-accounts-provider) | 연결된 소셜 계정의 연동을 해제합니다. |
 | [`POST /api/auth/oauth/exchange`](#summary-post-api-auth-oauth-exchange) | OAuth code를 access token과 HttpOnly refresh 쿠키로 교환합니다. |
 | [`POST /api/auth/password-reset`](#summary-post-api-auth-password-reset) | verification_token으로 본인 확인 후 비밀번호를 변경하고 기존 세션을 폐기합니다. |
 | [`POST /api/auth/refresh`](#summary-post-api-auth-refresh) | HttpOnly refresh 쿠키를 검증하고 access token과 refresh 쿠키를 회전합니다. |
@@ -578,13 +581,17 @@ access token으로 인증된 사용자의 프로필을 반환합니다.
 
 - HTTP `200`: 조회 성공
 - Content-Type: `*/*` (`MeResponse`)
+- `oauth_providers`: 로그인 수단으로 연결된 소셜 provider 목록(provider 이름순). OAuth로 가입한 provider도 포함하며, 연결이 없으면 빈 배열이다. `PATCH /api/auth/me`, `PUT /api/auth/me/email`의 응답도 같은 `MeResponse`다.
 
 ```json
 {
   "created_at": "2026-08-13T04:25:24.371948Z",
   "display_name": "표시 이름",
   "email": "user@example.com",
-  "id": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081"
+  "id": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081",
+  "oauth_providers": [
+    "google"
+  ]
 }
 ```
 
@@ -617,7 +624,10 @@ curl -X GET "$ACCESS/api/auth/me" \
   "created_at": "2026-08-13T04:25:24.371948Z",
   "display_name": "표시 이름",
   "email": "user@example.com",
-  "id": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081"
+  "id": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081",
+  "oauth_providers": [
+    "google"
+  ]
 }
 ```
 
@@ -680,7 +690,10 @@ curl -X GET "$ACCESS/api/auth/me" \
   "id": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081",
   "email": "user@example.com",
   "display_name": "새 이름",
-  "created_at": "2026-08-13T04:25:24.371948Z"
+  "created_at": "2026-08-13T04:25:24.371948Z",
+  "oauth_providers": [
+    "google"
+  ]
 }
 ```
 
@@ -777,7 +790,10 @@ curl -X PATCH "$ACCESS/api/auth/me" \
   "id": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081",
   "email": "new@example.com",
   "display_name": "표시 이름",
-  "created_at": "2026-08-13T04:25:24.371948Z"
+  "created_at": "2026-08-13T04:25:24.371948Z",
+  "oauth_providers": [
+    "google"
+  ]
 }
 ```
 
@@ -820,7 +836,10 @@ curl -X PUT "$ACCESS/api/auth/me/email" \
   "id": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081",
   "email": "new@example.com",
   "display_name": "표시 이름",
-  "created_at": "2026-08-13T04:25:24.371948Z"
+  "created_at": "2026-08-13T04:25:24.371948Z",
+  "oauth_providers": [
+    "google"
+  ]
 }
 ```
 
@@ -1519,6 +1538,278 @@ curl -X DELETE "$ACCESS/api/auth/me/mfa" \
 - 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-delete-api-auth-me-mfa)
+
+</details>
+
+<a id="summary-post-api-auth-me-oauth-accounts-provider-link"></a>
+### `POST /api/auth/me/oauth-accounts/{provider}/link`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 로그인한 사용자가 소셜 계정 연동을 시작할 1회용 연동 토큰을 발급합니다. |
+| 입력 | **Path** — `provider`: `string` |
+| 출력 | `200` 토큰 발급 — `OAuthLinkStartResponse` |
+| 조건 | 인증 필요<br>토큰은 이 사용자와 `provider`에 묶이고 60초 뒤 만료된다. |
+| 주요 오류 | `401` 인증되지 않음<br>`404` 지원하지 않는 provider — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+#### 1. Method + Path
+
+`POST /api/auth/me/oauth-accounts/{provider}/link`
+
+#### 2. 목적
+
+설정 화면에서 소셜 계정(google, kakao, naver)을 현재 계정의 로그인 수단으로 연결하는 흐름의 첫 단계다.
+연결이 끝나면 그 소셜 계정으로 로그인했을 때 새 계정이 생기지 않고 현재 계정으로 로그인된다.
+
+흐름은 네 단계다.
+
+1. `POST /api/auth/me/oauth-accounts/{provider}/link` — `link_token` 발급(60초, 1회용)
+2. 프론트가 `/oauth2/authorization/{provider}?mode=link&link_token=<link_token>`으로 이동해 소셜 인증을 받는다.
+   로그인과 같은 OAuth 경로이며, 인가 요청을 만들 때 토큰을 소비해 연동 대상 사용자를 OAuth `state`에 묶는다.
+3. 인증을 마치면 OAuth 콜백 주소(`app.oauth.frontend-redirect-uri`)로 `?link_code=<code>`가 붙어 돌아온다(60초, 1회용).
+   토큰이 없거나 무효이거나 다른 provider용이거나 소셜 인증이 실패하면 `?link=failed`로 돌아온다.
+   연동 모드에서는 로그인용 `?code=`를 발급하지 않고 계정을 만들지도 않는다.
+4. 프론트가 로그인한 채로 [`POST /api/auth/me/oauth-accounts/link/confirm`](#summary-post-api-auth-me-oauth-accounts-link-confirm)에 `link_code`를 제출하면 연결된다.
+
+콜백에서 바로 연결하지 않고 4단계 확정을 두는 이유: 토큰이 URL에 실리므로, 공격자가 자기 토큰을 넣은 링크를
+피해자에게 열게 하면 피해자의 소셜 계정이 공격자 계정에 붙을 수 있다(연동 CSRF). 확정 API는 토큰을 발급받은
+사용자와 확정하는 로그인 사용자가 같아야만 연결하므로 이 공격이 막힌다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| path | `provider` | `string` | 예 | 등록된 OAuth provider ID(`google`, `kakao`, `naver`) |
+
+- 요청 본문 없음
+
+#### 5. Response body
+
+- HTTP `200`: 토큰 발급 — `OAuthLinkStartResponse`
+
+```json
+{
+  "link_token": "EXAMPLE-link-token-not-real-0000000000000000"
+}
+```
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 코드 |
+|---|---|---|
+| `401` | access token이 없거나 유효하지 않음 | — |
+| `404` | 등록되지 않은 provider | `UNSUPPORTED_OAUTH_PROVIDER` |
+
+이미 연결된 provider인지는 여기서 검사하지 않는다. 확정 단계에서 `409`로 거절된다.
+
+#### 7. Pagination / filtering
+
+- 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 토큰의 사용자 본인 계정에만 연결할 수 있다. 경로에 사용자 ID를 받지 않는다.
+- 연동 토큰은 발급한 `provider`의 인가 요청에서만 소비된다. 다른 provider로 쓰면 `?link=failed`가 된다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X POST "$ACCESS/api/auth/me/oauth-accounts/google/link" \
+  -H 'Authorization: Bearer <access_token>'
+```
+
+```json
+{
+  "link_token": "EXAMPLE-link-token-not-real-0000000000000000"
+}
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
+- 연동 OAuth 흐름: `src/main/java/fruition/access/security/oauth/OAuthLinkFlow.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: startOAuthLink`)
+- 호출자: **호출자 미확인** (frontend 구현 예정, FruitionKR/Fruition-frontend#105)
+- 하위 호출: 없음
+
+[↑ 요약으로 돌아가기](#summary-post-api-auth-me-oauth-accounts-provider-link)
+
+</details>
+
+<a id="summary-post-api-auth-me-oauth-accounts-link-confirm"></a>
+### `POST /api/auth/me/oauth-accounts/link/confirm`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 연동 콜백이 넘긴 `link_code`로 소셜 계정을 현재 계정에 연결합니다. |
+| 입력 | **Body** — `OAuthLinkConfirmRequest` |
+| 출력 | `204` 연동 성공 — 본문 없음 |
+| 조건 | 인증 필요<br>연동을 시작한 사용자 본인이 제출해야 한다. |
+| 주요 오류 | `400` 유효하지 않거나 만료됐거나 다른 사용자가 시작한 code — `ErrorResponse`<br>`401` 인증되지 않음<br>`409` 다른 계정에 연결된 소셜 계정이거나 같은 provider가 이미 연결됨 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+#### 1. Method + Path
+
+`POST /api/auth/me/oauth-accounts/link/confirm`
+
+#### 2. 목적
+
+소셜 계정 연동 흐름의 마지막 단계다. 전체 흐름과 확정 단계를 두는 이유는
+[`POST /api/auth/me/oauth-accounts/{provider}/link`](#summary-post-api-auth-me-oauth-accounts-provider-link) 참고.
+
+연동은 `user_oauth_accounts`에 행 하나를 추가할 뿐이다. 새 계정을 만들지 않고, 같은 이메일의 다른 계정과
+합치지도 않는다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| body | `link_code` | `string` | 예 | 연동 콜백이 `?link_code=`로 넘긴 1회용 code(60초) |
+
+```json
+{
+  "link_code": "EXAMPLE-link-code-not-real-00000000000000000"
+}
+```
+
+#### 5. Response body
+
+- HTTP `204`: 연동 성공, 본문 없음. 그 소셜 계정이 이미 내 계정에 연결돼 있어도 `204`다.
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 코드 |
+|---|---|---|
+| `400` | `link_code`가 비었음 | `INVALID_REQUEST` |
+| `400` | `link_code`가 없거나 만료·소비됐거나 다른 사용자가 시작한 연동 | `INVALID_OAUTH_LINK_CODE` |
+| `401` | access token이 없거나 유효하지 않음 | — |
+| `409` | 그 소셜 계정이 다른 계정에 연결돼 있거나, 내 계정에 같은 provider의 다른 소셜 계정이 이미 연결됨 | `OAUTH_ACCOUNT_ALREADY_LINKED` |
+
+`link_code`는 조회와 동시에 소비되므로, 거절된 code는 다시 쓸 수 없고 연동을 처음부터 다시 시작해야 한다.
+
+#### 7. Pagination / filtering
+
+- 지원하지 않음
+
+#### 8. 권한 규칙
+
+- `link_code`에 묶인 사용자(연동 토큰을 발급받은 사용자)와 access token의 사용자가 같아야 한다.
+- 연동·해제는 사용자 행을 잠가 사용자 단위로 직렬화한다. 다른 사용자가 같은 소셜 계정을 동시에 연동하면
+  한쪽만 성공하고 다른 쪽은 `409`다.
+- 연동해도 다른 세션(refresh token)은 폐기하지 않는다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X POST "$ACCESS/api/auth/me/oauth-accounts/link/confirm" \
+  -H 'Authorization: Bearer <access_token>' \
+  -H 'Content-Type: application/json' \
+  --data '{"link_code":"<link_code>"}' \
+  -i
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: confirmOAuthLink`)
+- 호출자: **호출자 미확인** (frontend 구현 예정, FruitionKR/Fruition-frontend#105)
+- 하위 호출: 없음
+
+[↑ 요약으로 돌아가기](#summary-post-api-auth-me-oauth-accounts-link-confirm)
+
+</details>
+
+<a id="summary-delete-api-auth-me-oauth-accounts-provider"></a>
+### `DELETE /api/auth/me/oauth-accounts/{provider}`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 연결된 소셜 계정의 연동을 해제합니다. |
+| 입력 | **Path** — `provider`: `string` |
+| 출력 | `204` 해제 성공 — 본문 없음 |
+| 조건 | 인증 필요<br>가입할 때 쓴 provider는 해제할 수 없다. |
+| 주요 오류 | `401` 인증되지 않음<br>`404` 연결되지 않은 provider — `ErrorResponse`<br>`409` 가입할 때 쓴 provider — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+#### 1. Method + Path
+
+`DELETE /api/auth/me/oauth-accounts/{provider}`
+
+#### 2. 목적
+
+현재 계정에 연결된 소셜 로그인 수단을 끊는다. 해제 후 그 소셜 계정으로 로그인하면 현재 계정이 아니라
+기존 OAuth 로그인 규칙대로 provider별 계정을 찾거나 새로 만든다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| path | `provider` | `string` | 예 | 해제할 provider ID(`google`, `kakao`, `naver`) |
+
+- 요청 본문 없음
+
+#### 5. Response body
+
+- HTTP `204`: 해제 성공, 본문 없음
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 코드 |
+|---|---|---|
+| `401` | access token이 없거나 유효하지 않음 | — |
+| `404` | 내 계정에 연결되지 않은 provider | `OAUTH_ACCOUNT_NOT_FOUND` |
+| `409` | 가입할 때 쓴 provider(`users.provider`)라 해제할 수 없음 | `OAUTH_UNLINK_NOT_ALLOWED` |
+
+가입 provider를 막는 이유: 해제하면 그 provider로 다시 로그인할 때 같은 `(email, provider)` 계정을 새로
+만들려다 막히고, OAuth 전용 계정은 마지막 로그인 수단을 잃는다.
+
+#### 7. Pagination / filtering
+
+- 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 토큰의 사용자 본인 계정의 연결만 해제한다.
+- 해제해도 다른 세션(refresh token)은 폐기하지 않는다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X DELETE "$ACCESS/api/auth/me/oauth-accounts/kakao" \
+  -H 'Authorization: Bearer <access_token>' \
+  -i
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: unlinkOAuthAccount`)
+- 호출자: **호출자 미확인** (frontend 구현 예정, FruitionKR/Fruition-frontend#105)
+- 하위 호출: 없음
+
+[↑ 요약으로 돌아가기](#summary-delete-api-auth-me-oauth-accounts-provider)
 
 </details>
 
