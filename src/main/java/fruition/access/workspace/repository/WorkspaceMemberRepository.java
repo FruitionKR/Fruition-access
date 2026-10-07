@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -131,4 +132,17 @@ public interface WorkspaceMemberRepository extends JpaRepository<WorkspaceMember
             @Param("workspaceId") String workspaceId,
             @Param("userId") String userId
     );
+
+    /** 기간 [from, to)에 한 번이라도 멤버였던 사용자. 탈퇴·제거된 사용자도 포함한다(V21 이력). */
+    @Query(value = """
+            SELECT DISTINCT user_id
+            FROM workspace_membership_periods
+            WHERE workspace_id = :workspaceId
+              AND joined_at < :to
+              AND (left_at IS NULL OR left_at > :from)
+            ORDER BY user_id
+            """, nativeQuery = true)
+    List<String> findUserIdsMemberDuring(@Param("workspaceId") String workspaceId,
+                                         @Param("from") Instant from,
+                                         @Param("to") Instant to);
 }

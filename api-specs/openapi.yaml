@@ -1379,6 +1379,43 @@ paths:
           description: OK
       tags:
       - internal-workspace-ai-model-controller
+  /internal/workspaces/{workspace_id}/member-users:
+    get:
+      operationId: memberUsers
+      parameters:
+      - example: ws_9d47a0e9a6324341b47562553b75f92a
+        in: path
+        name: workspace_id
+        required: true
+        schema:
+          type: string
+          default: ws_9d47a0e9a6324341b47562553b75f92a
+      - in: query
+        name: from_at
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: to_at
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - in: header
+        name: X-Internal-Token
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: object
+          description: OK
+      tags:
+      - internal-authz-controller
 components:
   schemas:
     AiModelSelectionRequest:
