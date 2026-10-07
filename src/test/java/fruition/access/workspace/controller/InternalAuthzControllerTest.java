@@ -114,4 +114,38 @@ class InternalAuthzControllerTest {
 
         verify(userRepository, never()).findById(any());
     }
+
+    private static final String MEMBER_USERS_URL =
+            "/internal/workspaces/ws_1/member-users?from_at=2026-09-01T00:00:00Z&to_at=2026-10-01T00:00:00Z";
+
+    @Test
+    @DisplayName("기간 멤버 조회는 user_ids로 돌려준다")
+    void memberUsers_returnsUserIds() throws Exception {
+        when(workspaceMemberRepository.findUserIdsMemberDuring("ws_1",
+                java.time.Instant.parse("2026-09-01T00:00:00Z"), java.time.Instant.parse("2026-10-01T00:00:00Z")))
+                .thenReturn(java.util.List.of("user_1", "user_left"));
+
+        mockMvc.perform(get(MEMBER_USERS_URL).header("X-Internal-Token", internalToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.user_ids[0]").value("user_1"))
+                .andExpect(jsonPath("$.user_ids[1]").value("user_left"));
+    }
+
+    @Test
+    @DisplayName("기간 멤버 조회도 토큰 없이는 401이고 저장소에 닿지 않는다")
+    void memberUsers_withoutToken_rejects() throws Exception {
+        mockMvc.perform(get(MEMBER_USERS_URL))
+                .andExpect(status().isUnauthorized());
+
+        verify(workspaceMemberRepository, never()).findUserIdsMemberDuring(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("시작이 종료보다 앞서지 않으면 400이다")
+    void memberUsers_invalidPeriod_returns400() throws Exception {
+        mockMvc.perform(get("/internal/workspaces/ws_1/member-users?from_at=2026-10-01T00:00:00Z&to_at=2026-10-01T00:00:00Z")
+                        .header("X-Internal-Token", internalToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_PERIOD"));
+    }
 }

@@ -70,6 +70,7 @@
 | `DELETE /api/workspaces/{workspace_id}/members/{user_id}` | frontend `src/entities/workspace/api/members.ts:29` | 없음 |
 | `GET /internal/authz/workspaces/{workspace_id}/users/{user_id}` | document-svc `src/main/java/fruition/core/authz/WorkspaceAccessGuard.java:95`, ai-svc `pipeline/app/modules/skill/infrastructure/workspace_authorization.py:19` | 없음 |
 | `GET /internal/users/{user_id}` | document-svc `src/main/java/fruition/core/authz/AccessUserClient.java:58` | 없음 |
+| `GET /internal/workspaces/{workspace_id}/member-users` | document-svc AI 사용량 정산(Fruition-document#59) | 없음 |
 | `GET /internal/workspaces/{workspace_id}/ai-model-settings` | document-svc `src/main/java/fruition/core/authz/WorkspaceAiModelClient.java:25` | 없음 |
 | `PUT /internal/workspaces/{workspace_id}/ai-model-settings` | document-svc `src/main/java/fruition/core/authz/WorkspaceAiModelClient.java:36` | 없음 |
 

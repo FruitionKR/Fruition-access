@@ -10,10 +10,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Instant;
+import java.util.List;
 
 /**
  * core(문서 서비스)가 호출하는 내부 조회 API. 사용자 인증 대상이 아니며
@@ -64,6 +67,27 @@ public class InternalAuthzController {
                         .body(ErrorResponse.of("USER_NOT_FOUND", "사용자를 찾을 수 없습니다.")));
     }
 
+    /**
+     * 기간 [from_at, to_at)에 멤버였던 사용자 ID. 탈퇴·제거된 사용자도 포함한다.
+     * document가 AI 사용량을 사용자별로 정산할 대상을 찾을 때 쓴다.
+     */
+    @GetMapping("/internal/workspaces/{workspace_id}/member-users")
+    public ResponseEntity<?> memberUsers(
+            @PathVariable("workspace_id") String workspaceId,
+            @RequestParam("from_at") Instant from,
+            @RequestParam("to_at") Instant to,
+            @RequestHeader(value = "X-Internal-Token", required = false) String token) {
+        if (!tokenMatches(token)) {
+            return unauthorized();
+        }
+        if (!from.isBefore(to)) {
+            return ResponseEntity.badRequest()
+                    .body(ErrorResponse.of("INVALID_PERIOD", "조회 시작은 종료보다 앞서야 합니다."));
+        }
+        return ResponseEntity.ok(new MemberUsersResponse(
+                workspaceMemberRepository.findUserIdsMemberDuring(workspaceId, from, to)));
+    }
+
     /** 길이가 달라도 시간차가 새지 않도록 상수 시간 비교를 쓴다. */
     private boolean tokenMatches(String token) {
         return token != null && MessageDigest.isEqual(
@@ -77,6 +101,8 @@ public class InternalAuthzController {
     }
 
     record RoleResponse(String role) {}
+
+    record MemberUsersResponse(@JsonProperty("user_ids") List<String> userIds) {}
 
     record UserResponse(@JsonProperty("display_name") String displayName) {}
 }
