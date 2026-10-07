@@ -28,6 +28,8 @@ import java.util.stream.Collectors;
 public class WorkspaceService {
 
     private static final String DEFAULT_NAME = "새 워크스페이스";
+    /** WorkspaceCreateRequest·WorkspaceRenameRequest의 @Size(max = 255). UTF-16 단위로 센다. */
+    private static final int MAX_NAME_LENGTH = 255;
 
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
@@ -73,9 +75,25 @@ public class WorkspaceService {
                 .collect(Collectors.toSet());
         String name = wanted;
         for (int suffix = 2; taken.contains(name); suffix++) {
-            name = wanted + " " + suffix;
+            name = withSuffix(wanted, " " + suffix);
         }
         return name;
+    }
+
+    /**
+     * 붙인 뒤에도 255자를 넘지 않도록 suffix 길이만큼 앞부분을 자른다. 요청 검증(@Size)과 같은 UTF-16
+     * 단위로 세야 만든 이름 그대로 이름 변경 요청을 보내도 통과한다. 자른 자리가 surrogate pair 가운데면
+     * 반쪽 문자를 남기지 않도록 한 칸 더 자른다. varchar(255)는 code point로 세므로 이 길이면 항상 들어간다.
+     */
+    static String withSuffix(String base, String suffix) {
+        int end = MAX_NAME_LENGTH - suffix.length();
+        if (base.length() <= end) {
+            return base + suffix;
+        }
+        if (Character.isHighSurrogate(base.charAt(end - 1))) {
+            end--;
+        }
+        return base.substring(0, end).stripTrailing() + suffix;
     }
 
     public WorkspaceListResponse list(String userId) {
