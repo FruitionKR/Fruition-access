@@ -85,6 +85,27 @@ class WorkspaceServiceTest {
     }
 
     @Test
+    void create_maxLengthNameAlreadyVisible_truncatesToFitNumber() {
+        String wanted = "가".repeat(255);
+        when(workspaceRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(workspaceMemberRepository.findAllWorkspacesByUserId("user_1f9a74af")).thenReturn(List.of(
+                new Workspace("ws_1", wanted),
+                new Workspace("ws_2", "가".repeat(253) + " 2")));
+
+        String name = workspaceService.create("user_1f9a74af", new WorkspaceCreateRequest(wanted)).name();
+
+        assertThat(name).isEqualTo("가".repeat(253) + " 3");
+    }
+
+    @Test
+    void withSuffix_countsUtf16LikeRequestValidationAndKeepsSurrogatePairsWhole() {
+        String emoji = "😀".repeat(127) + "a"; // UTF-16 255자
+
+        assertThat(WorkspaceService.withSuffix(emoji, " 2")).isEqualTo("😀".repeat(126) + " 2");
+        assertThat(WorkspaceService.withSuffix(emoji, " 10")).isEqualTo("😀".repeat(126) + " 10");
+    }
+
+    @Test
     void create_blankName_fallsBackToDefaultName() {
         when(workspaceRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(workspaceMemberRepository.findAllWorkspacesByUserId("user_1f9a74af")).thenReturn(List.of());
