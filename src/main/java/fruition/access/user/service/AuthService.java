@@ -4,6 +4,7 @@ import fruition.shared.security.JwtTokenProvider;
 import fruition.access.security.oauth.OAuthExchangeCodeStore;
 import fruition.access.user.domain.User;
 import fruition.access.user.domain.UserMfaChallenge;
+import fruition.access.user.domain.UserOAuthAccount;
 import fruition.access.user.domain.UserRefreshToken;
 import fruition.access.user.dto.LoginRequest;
 import fruition.access.user.dto.MfaLoginRequest;
@@ -28,6 +29,7 @@ import fruition.access.user.exception.SessionNotFoundException;
 import fruition.access.user.exception.UserNotFoundException;
 import fruition.access.user.mfa.MfaService;
 import fruition.access.user.repository.UserMfaChallengeRepository;
+import fruition.access.user.repository.UserOAuthAccountRepository;
 import fruition.access.user.repository.UserRefreshTokenRepository;
 import fruition.access.user.repository.UserRepository;
 import org.hibernate.exception.ConstraintViolationException;
@@ -64,6 +66,7 @@ public class AuthService {
     private final EmailVerificationService emailVerificationService;
     private final MfaService mfaService;
     private final UserMfaChallengeRepository mfaChallengeRepository;
+    private final UserOAuthAccountRepository oauthAccountRepository;
     private final long refreshTokenExpirationSeconds;
     private final long mfaChallengeTtlSeconds;
 
@@ -75,6 +78,7 @@ public class AuthService {
                        EmailVerificationService emailVerificationService,
                        MfaService mfaService,
                        UserMfaChallengeRepository mfaChallengeRepository,
+                       UserOAuthAccountRepository oauthAccountRepository,
                        @Value("${app.jwt.refresh-token-expiration-seconds}") long refreshTokenExpirationSeconds,
                        @Value("${app.auth.mfa.challenge-ttl-seconds:300}") long mfaChallengeTtlSeconds) {
         this.userRepository = userRepository;
@@ -85,6 +89,7 @@ public class AuthService {
         this.emailVerificationService = emailVerificationService;
         this.mfaService = mfaService;
         this.mfaChallengeRepository = mfaChallengeRepository;
+        this.oauthAccountRepository = oauthAccountRepository;
         this.refreshTokenExpirationSeconds = refreshTokenExpirationSeconds;
         this.mfaChallengeTtlSeconds = mfaChallengeTtlSeconds;
     }
@@ -162,7 +167,14 @@ public class AuthService {
     public MeResponse me(String userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException(userId));
-        return new MeResponse(user.getId(), user.getEmail(), user.getDisplayName(), user.getCreatedAt());
+        return toMe(user);
+    }
+
+    private MeResponse toMe(User user) {
+        List<String> providers = oauthAccountRepository.findAllByUserIdOrderByProvider(user.getId()).stream()
+                .map(UserOAuthAccount::getProvider)
+                .toList();
+        return new MeResponse(user.getId(), user.getEmail(), user.getDisplayName(), user.getCreatedAt(), providers);
     }
 
     @Transactional
@@ -171,7 +183,7 @@ public class AuthService {
                 .orElseThrow(() -> new UserNotFoundException(userId));
         user.changeDisplayName(request.displayName().trim());
         log.info("[표시 이름 변경] userId={}", userId);
-        return new MeResponse(user.getId(), user.getEmail(), user.getDisplayName(), user.getCreatedAt());
+        return toMe(user);
     }
 
     /**
@@ -238,7 +250,7 @@ public class AuthService {
         }
         int revoked = revokeOtherSessions(userId, currentRefreshToken);
         log.info("[이메일 변경 성공] userId={} revokedSessions={}", userId, revoked);
-        return new MeResponse(user.getId(), user.getEmail(), user.getDisplayName(), user.getCreatedAt());
+        return toMe(user);
     }
 
     /**

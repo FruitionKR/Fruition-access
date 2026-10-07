@@ -6,7 +6,7 @@
 
 | 도메인 | API 수 | 역할 | 호출 연결 |
 |---|---:|---|---|
-| [Auth](auth.md) | 20 | 가입·인증·로그인·토큰·프로필 관리 | 20개 모두 frontend가 호출. signup만 document-svc를 호출 |
+| [Auth](auth.md) | 23 | 가입·인증·로그인·토큰·프로필·소셜 계정 연동 관리 | 20개는 frontend, 3개(소셜 계정 연동)는 호출자 미확인(frontend 구현 예정). signup만 document-svc를 호출 |
 | [Workspaces](workspaces.md) | 16 | 워크스페이스·멤버 관리와 내부 인가·AI 모델 설정 | 9개는 frontend, 4개(`/internal/**`)는 document-svc·ai-svc, 3개는 호출자 미확인 |
 | [Invitations](invitations.md) | 5 | 이메일 초대 발송·취소·수락 | 3개는 frontend, 2개는 호출자 미확인 |
 
@@ -48,6 +48,9 @@
 | `POST /api/auth/me/mfa` | frontend `src/entities/user/api/mfa.ts:23` | 없음 |
 | `POST /api/auth/me/mfa/activate` | frontend `src/entities/user/api/mfa.ts:28` | 없음 |
 | `DELETE /api/auth/me/mfa` | frontend `src/entities/user/api/mfa.ts:35` | 없음 |
+| `POST /api/auth/me/oauth-accounts/{provider}/link` | **호출자 미확인** (frontend 구현 예정, FruitionKR/Fruition-frontend#105) | 없음 |
+| `POST /api/auth/me/oauth-accounts/link/confirm` | **호출자 미확인** (frontend 구현 예정, FruitionKR/Fruition-frontend#105) | 없음 |
+| `DELETE /api/auth/me/oauth-accounts/{provider}` | **호출자 미확인** (frontend 구현 예정, FruitionKR/Fruition-frontend#105) | 없음 |
 
 ### Workspaces
 
@@ -83,7 +86,7 @@
 ### 내부 호출 인증
 
 `/internal/**`은 `SecurityConfig`에서 `permitAll`이라 JWT 필터를 통과시키지 않고
-(`src/main/java/fruition/access/security/SecurityConfig.java:97`), 각 컨트롤러가 `X-Internal-Token`
+(`src/main/java/fruition/access/security/SecurityConfig.java:102`), 각 컨트롤러가 `X-Internal-Token`
 헤더를 상수 시간 비교로 검증한다
 (`src/main/java/fruition/access/workspace/controller/InternalAuthzController.java:69`,
 `src/main/java/fruition/access/workspace/controller/InternalWorkspaceAiModelController.java:56`).
@@ -99,6 +102,9 @@ access-svc가 document-svc로 나갈 때도 같은 `X-Internal-Token`을 붙인�
 `POST /internal/workspaces/{workspaceId}/initial-note` 호출은 기본 워크스페이스 생성
 (`WorkspaceService.createDefault`)을 통해서도 일어난다. 즉 `POST /api/auth/signup`과
 OAuth 로그인 콜백(`/login/oauth2/**` → `CustomOAuth2UserService`
-→ `src/main/java/fruition/access/user/service/OAuthUserService.java:70`) 경로에서도 발생한다.
+→ `src/main/java/fruition/access/user/service/OAuthUserService.java:157`) 경로에서도 발생한다.
 OAuth 로그인 콜백은 Spring Security가 처리하는 경로라 이 문서의 API 목록에는 없다.
+로그인한 사용자의 소셜 계정 연동(`/oauth2/authorization/{provider}?mode=link&link_token=...`)도 같은
+콜백을 타지만, 계정을 만들지 않으므로 기본 워크스페이스 생성과 하위 호출이 없다. 콜백은 로그인용 `?code=` 대신
+`?link_code=`(실패 시 `?link=failed`)를 넘기고, 연결은 `POST /api/auth/me/oauth-accounts/link/confirm`에서 일어난다.
 `POST /api/auth/oauth/exchange`는 발급된 code를 토큰으로 교환할 뿐 하위 호출이 없다.

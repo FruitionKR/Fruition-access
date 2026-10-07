@@ -30,4 +30,15 @@ class OAuth2AuthenticationFailureHandlerTest {
         verify(session).invalidate();
         verify(response).sendRedirect("http://localhost:3000/oauth/callback?error=oauth_failed");
     }
+
+    @Test
+    void linkFailure_redirectsWithLinkFailedInsteadOfLoginError() throws Exception {
+        var handler = new OAuth2AuthenticationFailureHandler("http://localhost:3000/oauth/callback");
+        var denied = new org.springframework.security.oauth2.core.OAuth2AuthenticationException(
+                new org.springframework.security.oauth2.core.OAuth2Error("access_denied"));
+
+        handler.onAuthenticationFailure(OAuth2AuthenticationSuccessHandlerTest.linkCallback("user_local"), response, denied);
+
+        verify(response).sendRedirect("http://localhost:3000/oauth/callback?link=failed");
+    }
 }

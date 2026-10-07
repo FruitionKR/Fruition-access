@@ -35,4 +35,36 @@ class OAuth2AuthenticationSuccessHandlerTest {
         verify(session).invalidate();
         verify(response).sendRedirect("http://localhost:3000/oauth/callback?code=exchange-code");
     }
+
+    /** 콜백에서 세션의 인가 요청을 꺼낸 상태의 요청. linkUserId가 있으면 연동 모드다. */
+    static org.springframework.mock.web.MockHttpServletRequest linkCallback(String linkUserId) {
+        var request = new org.springframework.mock.web.MockHttpServletRequest();
+        var repository = fruition.access.security.oauth.OAuthLinkFlow.repository();
+        repository.saveAuthorizationRequest(
+                org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest.authorizationCode()
+                        .authorizationUri("https://accounts.example/auth").clientId("id").state("s")
+                        .attributes(a -> a.put("link_user_id", linkUserId)).build(),
+                request, new org.springframework.mock.web.MockHttpServletResponse());
+        request.setParameter("state", "s");
+        repository.removeAuthorizationRequest(request, new org.springframework.mock.web.MockHttpServletResponse());
+        return request;
+    }
+
+    @Test
+    void linkSuccess_issuesLinkCodeInsteadOfLoginCode() throws Exception {
+        var principal = new org.springframework.security.oauth2.core.user.DefaultOAuth2User(java.util.List.of(),
+                java.util.Map.of("internal_user_id", "user_local", "link_provider_user_id", "google-sub-1"),
+                "internal_user_id");
+        var linkAuthentication = new org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken(
+                principal, java.util.List.of(), "google");
+        when(exchangeCodeStore.issueLinkCode(
+                new OAuthExchangeCodeStore.PendingLink("user_local", "google", "google-sub-1"))).thenReturn("link-code");
+        var handler = new OAuth2AuthenticationSuccessHandler(
+                exchangeCodeStore, "http://localhost:3000/oauth/callback");
+
+        handler.onAuthenticationSuccess(linkCallback("user_local"), response, linkAuthentication);
+
+        verify(exchangeCodeStore, org.mockito.Mockito.never()).issue(org.mockito.ArgumentMatchers.any());
+        verify(response).sendRedirect("http://localhost:3000/oauth/callback?link_code=link-code");
+    }
 }

@@ -7,7 +7,7 @@ DB migration 원본은 `src/main/resources/db/migration/`입니다. 다른 서�
 | 테이블 | 소유 | 용도 | 핵심 컬럼/관계 |
 |---|---|---|---|
 | users | access-svc | 사용자 계정 | `(email, provider)` UK, `provider`는 계정을 만든 수단(`local`/OAuth 등록 ID), `password_hash`(OAuth 전용은 NULL) |
-| user_oauth_accounts | access-svc | OAuth provider 연결 | users 1:N(FK `ON DELETE CASCADE`), `(provider, provider_user_id)` |
+| user_oauth_accounts | access-svc | OAuth provider 연결 | users 1:N(FK `ON DELETE CASCADE`), `(provider, provider_user_id)`. OAuth 가입 때 만들고, 로그인한 사용자가 설정에서 다른 provider를 연동·해제한다(사용자당 provider 하나, 가입 provider는 해제 불가 — 앱에서 검사) |
 | user_refresh_tokens | access-svc | JWT refresh token | `token_hash`(SHA-256), `revoked_at`으로 탈취 감지, `user_agent`(세션 목록의 기기 구분. 컬럼 신설 이전 발급분은 NULL) |
 | user_mfa | access-svc | TOTP 설정 | PK/FK `user_id`(삭제 cascade), `secret_cipher`·`secret_nonce`(AES-GCM. 검증에 원문이 필요해 해시로 둘 수 없다), `activated_at`(NULL이면 등록만 하고 미활성이라 로그인을 막지 않음), `last_used_counter`(같은 시간 창 재사용 차단) |
 | user_mfa_recovery_codes | access-svc | 1회용 복구 코드 | `code_hash`(SHA-256, 원문 미저장), `consumed_at`. 미소비분에 partial index |
