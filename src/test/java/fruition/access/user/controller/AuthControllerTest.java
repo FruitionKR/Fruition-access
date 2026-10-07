@@ -58,6 +58,7 @@ import java.time.Instant;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -326,6 +327,55 @@ class AuthControllerTest {
     void me_withoutAccessToken_returns401() throws Exception {
         mockMvc.perform(get("/api/auth/me"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void startOAuthLink_returnsLinkToken() throws Exception {
+        String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
+        when(oAuthUserService.startLink("user_1f9a74af", "google")).thenReturn("link-token");
+
+        mockMvc.perform(post("/api/auth/me/oauth-accounts/google/link").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.link_token").value("link-token"));
+    }
+
+    @Test
+    void oauthLinkApis_withoutAccessToken_return401() throws Exception {
+        mockMvc.perform(post("/api/auth/me/oauth-accounts/google/link"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/auth/me/oauth-accounts/link/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"link_code\":\"code\"}"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(delete("/api/auth/me/oauth-accounts/google"))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(oAuthUserService);
+    }
+
+    @Test
+    void confirmOAuthLink_bindsLinkCodeAndReturns204() throws Exception {
+        String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
+
+        mockMvc.perform(post("/api/auth/me/oauth-accounts/link/confirm")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"link_code\":\"code\"}"))
+                .andExpect(status().isNoContent());
+
+        verify(oAuthUserService).confirmLink("user_1f9a74af", "code");
+    }
+
+    @Test
+    void confirmOAuthLink_blankLinkCode_returns400() throws Exception {
+        String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
+
+        mockMvc.perform(post("/api/auth/me/oauth-accounts/link/confirm")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"link_code\":\" \"}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(oAuthUserService);
     }
 
     @Test
