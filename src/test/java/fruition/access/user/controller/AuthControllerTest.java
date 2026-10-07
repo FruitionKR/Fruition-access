@@ -93,7 +93,7 @@ class AuthControllerTest {
 
     @Test
     void checkEmailAvailability_existingEmail_returnsFalse() throws Exception {
-        when(userService.checkEmailAvailability(any())).thenReturn(new EmailAvailabilityResponse(false));
+        when(userService.checkEmailAvailability(any())).thenReturn(new EmailAvailabilityResponse(false, java.util.List.of()));
 
         mockMvc.perform(post("/api/auth/email-availability")
                         .contentType(MediaType.APPLICATION_JSON)

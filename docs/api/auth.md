@@ -11,7 +11,7 @@
 
 | API | 목적 |
 |---|---|
-| [`POST /api/auth/email-availability`](#summary-post-api-auth-email-availability) | 회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 일반 회원가입 계정만 대상으로 확인하므로, OAuth로만 가입된 이메일은 일반 회원가입이 가능해 `available: true`를 반환합니다. |
+| [`POST /api/auth/email-availability`](#summary-post-api-auth-email-availability) | 회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 일반 회원가입 계정만 대상으로 확인하므로, OAuth로만 가입된 이메일은 일반 회원가입이 가능해 `available: true`를 반환합니다. 같은 이메일로 소셜 가입한 계정이 있으면 `oauth_providers`로 알려, 새로 가입하기보다 그 계정으로 로그인한 뒤 설정에서 연동하도록 안내할 수 있게 합니다. |
 | [`POST /api/auth/email-verifications`](#summary-post-api-auth-email-verifications) | 회원가입/비밀번호 재설정/이메일 변경을 위한 인증번호를 발급합니다. |
 | [`POST /api/auth/email-verifications/{verification_id}/confirm`](#summary-post-api-auth-email-verifications-verification-id-confirm) | 인증번호를 검증하고 1회용 verification_token을 발급합니다. |
 | [`POST /api/auth/login`](#summary-post-api-auth-login) | 이메일/비밀번호를 검증하고 access token과 HttpOnly refresh 쿠키를 발급합니다. MFA를 켠 사용자에게는 `mfa_required`를 돌려줍니다. |
@@ -42,7 +42,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | 회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 일반 회원가입 계정만 대상으로 확인하므로, OAuth로만 가입된 이메일은 일반 회원가입이 가능해 `available: true`를 반환합니다. |
+| 목적 | 회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 일반 회원가입 계정만 대상으로 확인하므로, OAuth로만 가입된 이메일은 일반 회원가입이 가능해 `available: true`를 반환합니다. 같은 이메일로 소셜 가입한 계정이 있으면 `oauth_providers`로 알려, 새로 가입하기보다 그 계정으로 로그인한 뒤 설정에서 연동하도록 안내할 수 있게 합니다. |
 | 입력 | **Body** — `EmailAvailabilityRequest` |
 | 출력 | `200` 가입 가능 여부 — `EmailAvailabilityResponse` |
 | 조건 | 인증 불필요<br>인증 없이 호출할 수 있다.<br>공개 API이므로 별도의 사용자 권한 검증이 없다.<br>기존 인증번호 요청 API도 가입 이메일 중복을 `409`로 노출하므로 동일한 공개 범위를 유지한다.<br>그 밖의 조건은 상세 권한 규칙 참고 |
@@ -60,7 +60,7 @@
 
 #### 2. 목적
 
-회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 일반 회원가입 계정만 대상으로 확인하므로, OAuth로만 가입된 이메일은 일반 회원가입이 가능해 `available: true`를 반환합니다.
+회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 일반 회원가입 계정만 대상으로 확인하므로, OAuth로만 가입된 이메일은 일반 회원가입이 가능해 `available: true`를 반환합니다. 같은 이메일로 소셜 가입한 계정이 있으면 `oauth_providers`로 알려, 새로 가입하기보다 그 계정으로 로그인한 뒤 설정에서 연동하도록 안내할 수 있게 합니다.
 
 #### 3. Auth 필요 여부
 
@@ -82,10 +82,15 @@
 
 - HTTP `200`: 가입 가능 여부
 - Content-Type: `*/*` (`EmailAvailabilityResponse`)
+- `available`: 일반 회원가입(`local`) 계정이 없으면 `true`
+- `oauth_providers`: 같은 이메일로 소셜 가입한 계정의 provider 목록(이름순). 없으면 빈 배열. 가입을 막지 않는 안내용 신호다.
 
 ```json
 {
-  "available": true
+  "available": true,
+  "oauth_providers": [
+    "google"
+  ]
 }
 ```
 
@@ -105,6 +110,7 @@
 
 - 공개 API이므로 별도의 사용자 권한 검증이 없다.
 - 기존 인증번호 요청 API도 가입 이메일 중복을 `409`로 노출하므로 동일한 공개 범위를 유지한다.
+- `oauth_providers`는 같은 이메일의 소셜 가입 여부와 provider까지 노출한다. 일반 회원가입 계정 존재를 이미 노출하는 것과 같은 범위로 보고, 같은 호출 제한을 적용한다.
 - 계정 열거 비용을 제한하기 위해 Redis에서 IP당 30회/분, 이메일당 5회/분으로 호출을 제한한다.
 
 #### 9. 예시 요청/응답
@@ -117,7 +123,10 @@ curl -X POST "$ACCESS/api/auth/email-availability" \
 
 ```json
 {
-  "available": true
+  "available": true,
+  "oauth_providers": [
+    "google"
+  ]
 }
 ```
 
