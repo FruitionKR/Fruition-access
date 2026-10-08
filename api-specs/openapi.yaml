@@ -423,6 +423,106 @@ paths:
       summary: 다단계 인증 활성화(2단계)
       tags:
       - Auth
+  /api/auth/me/oauth-accounts/link/confirm:
+    post:
+      description: 연동 콜백이 넘긴 link_code를 연동을 시작한 사용자가 제출하면 소셜 계정을 연결합니다.
+      operationId: confirmOAuthLink
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OAuthLinkConfirmRequest"
+        required: true
+      responses:
+        "204":
+          description: 연동 성공(이미 내 계정에 연결된 경우 포함)
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 유효하지 않거나 만료됐거나 다른 사용자가 시작한 link_code
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 인증되지 않음
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 다른 계정에 연결된 소셜 계정이거나 같은 provider가 이미 연결됨
+      summary: 소셜 계정 연동 확정
+      tags:
+      - Auth
+  /api/auth/me/oauth-accounts/{provider}:
+    delete:
+      description: 연결된 provider를 해제합니다. 가입할 때 쓴 provider는 해제할 수 없습니다.
+      operationId: unlinkOAuthAccount
+      parameters:
+      - in: path
+        name: provider
+        required: true
+        schema:
+          type: string
+      responses:
+        "204":
+          description: 해제 성공
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 인증되지 않음
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 연결되지 않은 provider
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 가입할 때 쓴 provider라 해제할 수 없음
+      summary: 소셜 계정 연동 해제
+      tags:
+      - Auth
+  /api/auth/me/oauth-accounts/{provider}/link:
+    post:
+      description: "1회용 연동 토큰(60초)을 발급합니다. 프론트는 /oauth2/authorization/{provider}?mode=link&link_token=... 으로 이동합니다. 인증을 마치면 OAuth 콜백 주소에 ?link_code=... 가 붙어 돌아오고(실패하면 ?link=failed), 프론트가 그 code로 연동 확정 API를 부릅니다."
+      operationId: startOAuthLink
+      parameters:
+      - in: path
+        name: provider
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/OAuthLinkStartResponse"
+          description: 토큰 발급
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 인증되지 않음
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 지원하지 않는 provider
+      summary: 소셜 계정 연동 시작
+      tags:
+      - Auth
   /api/auth/me/password:
     put:
       description: 현재 비밀번호를 확인하고 새 비밀번호로 바꿉니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.
@@ -1379,6 +1479,43 @@ paths:
           description: OK
       tags:
       - internal-workspace-ai-model-controller
+  /internal/workspaces/{workspace_id}/member-users:
+    get:
+      operationId: memberUsers
+      parameters:
+      - example: ws_9d47a0e9a6324341b47562553b75f92a
+        in: path
+        name: workspace_id
+        required: true
+        schema:
+          type: string
+          default: ws_9d47a0e9a6324341b47562553b75f92a
+      - in: query
+        name: from_at
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: to_at
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - in: header
+        name: X-Internal-Token
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: object
+          description: OK
+      tags:
+      - internal-authz-controller
 components:
   schemas:
     AiModelSelectionRequest:
@@ -1431,6 +1568,13 @@ components:
           type: boolean
           description: 이메일로 신규 가입할 수 있으면 true
           example: true
+        oauth_providers:
+          type: array
+          description: 같은 이메일로 소셜 가입한 계정의 provider(이름순). 비어 있지 않으면 새로 가입하기보다 그 소셜 계정으로 로그인한 뒤 설정에서 연동하도록 안내한다. 가입 자체는 막지 않는다.
+          example:
+          - google
+          items:
+            type: string
     EmailChangeRequest:
       type: object
       properties:
@@ -1631,6 +1775,13 @@ components:
           type: string
           description: 사용자 ID
           example: user_3f1c8a6b52d7411e9c04ab5d2e7f6081
+        oauth_providers:
+          type: array
+          description: "로그인에 쓸 수 있도록 연결된 소셜 provider(google, kakao, naver)"
+          example:
+          - google
+          items:
+            type: string
     MfaCodeRequest:
       type: object
       properties:
@@ -1699,6 +1850,21 @@ components:
           minLength: 1
       required:
       - code
+    OAuthLinkConfirmRequest:
+      type: object
+      properties:
+        link_code:
+          type: string
+          description: 연동 콜백이 ?link_code= 로 넘긴 1회용 code
+          minLength: 1
+      required:
+      - link_code
+    OAuthLinkStartResponse:
+      type: object
+      properties:
+        link_token:
+          type: string
+          description: "1회용 연동 토큰(60초). /oauth2/authorization/{provider}?mode=link&link_token=... 로 이동할 때 쓴다"
     PasswordChangeRequest:
       type: object
       properties:

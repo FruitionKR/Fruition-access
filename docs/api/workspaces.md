@@ -4,7 +4,7 @@
 
 워크스페이스 관리와 서비스 간 인가·AI 모델 설정 API다.
 
-워크스페이스명은 중복을 허용한다. 구분은 `workspace_id`로 한다. 다만 생성 시 요청한 이름이 사용자에게 이미 보이는 이름과 같으면 `내 워크스페이스 2`처럼 번호를 붙여 저장한다. `name`을 비우거나 공백만 보내면 `새 워크스페이스`를 기준으로 같은 규칙을 적용한다. 번호는 목록에서 서로를 구분하기 위한 것이라 동시 생성 시 같은 번호가 나올 수 있고, 이름 변경에는 적용하지 않는다.
+워크스페이스명은 중복을 허용한다. 구분은 `workspace_id`로 한다. 다만 생성 시 요청한 이름이 사용자에게 이미 보이는 이름과 같으면 `내 워크스페이스 2`처럼 번호를 붙여 저장한다. `name`을 비우거나 공백만 보내면 `새 워크스페이스`를 기준으로 같은 규칙을 적용한다. 번호는 목록에서 서로를 구분하기 위한 것이라 동시 생성 시 같은 번호가 나올 수 있고, 이름 변경에는 적용하지 않는다. 번호를 붙여 255자를 넘으면 번호 길이만큼 이름 앞부분을 잘라 255자(요청 검증과 같은 UTF-16 기준)에 맞춘다.
 
 - API 수: 16
 - 호출 연결: [access-svc 호출 연결 요약](README.md#호출-연결-요약) 참고
@@ -27,6 +27,7 @@
 | [`POST /api/workspaces/{workspace_id}/restore`](#summary-post-api-workspaces-workspace-id-restore) | 소프트 삭제한 워크스페이스와 기존 하위 데이터의 접근을 복구합니다. |
 | [`GET /internal/authz/workspaces/{workspace_id}/users/{user_id}`](#summary-get-internal-authz-workspaces-workspace-id-users-user-id) | 워크스페이스에서 사용자의 활성 역할을 조회합니다. |
 | [`GET /internal/users/{user_id}`](#summary-get-internal-users-user-id) | 워크스페이스에서 사용자의 활성 역할을 조회합니다. |
+| [`GET /internal/workspaces/{workspace_id}/member-users`](#summary-get-internal-workspaces-workspace-id-member-users) | 기간 중 멤버였던 사용자 ID를 조회합니다(탈퇴·제거 포함). |
 | [`GET /internal/workspaces/{workspace_id}/ai-model-settings`](#summary-get-internal-workspaces-workspace-id-ai-model-settings) | 내부 서비스가 사용자의 표시 이름을 조회합니다. |
 | [`PUT /internal/workspaces/{workspace_id}/ai-model-settings`](#summary-put-internal-workspaces-workspace-id-ai-model-settings) | 내부 서비스가 사용자의 표시 이름을 조회합니다. |
 
@@ -1498,6 +1499,21 @@ curl -X GET "$ACCESS/internal/users/<value>" \
 [↑ 요약으로 돌아가기](#summary-get-internal-users-user-id)
 
 </details>
+
+<a id="summary-get-internal-workspaces-workspace-id-member-users"></a>
+### `GET /internal/workspaces/{workspace_id}/member-users`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 기간 `[from_at, to_at)`에 한 번이라도 멤버였던 사용자 ID를 조회합니다. 탈퇴·제거·사용자 삭제로 지금은 멤버가 아닌 사용자도 포함합니다. document의 AI 사용량 정산이 대상 사용자를 찾을 때 씁니다. |
+| 입력 | **Path** — `workspace_id`: `string`<br>**Query** — `from_at`(필수), `to_at`(필수): ISO 8601 시각<br>**Header** — `X-Internal-Token`(필수): `string` |
+| 출력 | `200` 성공 — `{"user_ids": ["string"]}` (중복 없음, 사전순) |
+| 조건 | 내부 서비스 토큰을 가진 서비스만 호출할 수 있다. |
+| 주요 오류 | `400` `INVALID_PERIOD`(시작이 종료보다 앞서지 않음)·파라미터 누락/형식 오류, `401` `INVALID_INTERNAL_TOKEN` |
+
+- 근거 데이터는 `workspace_membership_periods`(V21)다. `workspace_members`의 INSERT·DELETE trigger가 기록한다.
+- 이력은 V21 배포 시점부터 쌓인다. 배포 전에 이미 제거된 멤버는 포함되지 않는다.
+- 구현: `src/main/java/fruition/access/workspace/controller/InternalAuthzController.java`, `operationId: memberUsers`
 
 <a id="summary-get-internal-workspaces-workspace-id-ai-model-settings"></a>
 ### `GET /internal/workspaces/{workspace_id}/ai-model-settings`

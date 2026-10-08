@@ -15,6 +15,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -38,7 +39,16 @@ public class UserService {
     @Transactional(readOnly = true)
     public EmailAvailabilityResponse checkEmailAvailability(EmailAvailabilityRequest request) {
         String email = request.email().trim().toLowerCase();
-        return new EmailAvailabilityResponse(!userRepository.existsByEmailAndProvider(email, User.PROVIDER_LOCAL));
+        List<User> accounts = userRepository.findAllByEmail(email);
+        // 같은 이메일의 소셜 계정은 가입을 막지 않고, "기존 계정으로 로그인 후 연동" 안내용으로만 알린다.
+        List<String> oauthProviders = accounts.stream()
+                .map(User::getProvider)
+                .filter(provider -> !User.PROVIDER_LOCAL.equals(provider))
+                .distinct()
+                .sorted()
+                .toList();
+        boolean localExists = accounts.stream().anyMatch(user -> User.PROVIDER_LOCAL.equals(user.getProvider()));
+        return new EmailAvailabilityResponse(!localExists, oauthProviders);
     }
 
     @Transactional

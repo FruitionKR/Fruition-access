@@ -1,5 +1,7 @@
 package fruition.access.security;
 
+import fruition.access.security.oauth.OAuthExchangeCodeStore;
+import fruition.access.security.oauth.OAuthLinkFlow;
 import fruition.access.security.oauth.service.CustomOAuth2UserService;
 import fruition.access.security.oauth.handler.OAuth2AuthenticationFailureHandler;
 import fruition.access.security.oauth.handler.OAuth2AuthenticationSuccessHandler;
@@ -12,6 +14,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
@@ -67,7 +70,9 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                                   ClientRegistrationRepository clientRegistrationRepository,
+                                                   OAuthExchangeCodeStore oAuthExchangeCodeStore) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
@@ -100,6 +105,11 @@ public class SecurityConfig {
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
                 .oauth2Login(oauth2 -> oauth2
+                        // 로그인한 사용자의 소셜 계정 연동도 같은 흐름을 탄다(?mode=link).
+                        .authorizationEndpoint(endpoint -> endpoint
+                                .authorizationRequestResolver(
+                                        OAuthLinkFlow.resolver(clientRegistrationRepository, oAuthExchangeCodeStore))
+                                .authorizationRequestRepository(OAuthLinkFlow.repository()))
                         .userInfoEndpoint(userInfo -> userInfo.userService(customOAuth2UserService))
                         .successHandler(oAuth2AuthenticationSuccessHandler)
                         .failureHandler(oAuth2AuthenticationFailureHandler))

@@ -61,6 +61,7 @@ class AuthServiceTest {
     @Mock EmailVerificationService emailVerificationService;
     @Mock MfaService mfaService;
     @Mock UserMfaChallengeRepository mfaChallengeRepository;
+    @Mock fruition.access.user.repository.UserOAuthAccountRepository oauthAccountRepository;
 
     PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     JwtTokenProvider jwtTokenProvider = new JwtTokenProvider(
@@ -89,7 +90,7 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         authService = new AuthService(userRepository, refreshTokenRepository, passwordEncoder, jwtTokenProvider,
-                oAuthExchangeCodeStore, emailVerificationService, mfaService, mfaChallengeRepository, 1209600, 300);
+                oAuthExchangeCodeStore, emailVerificationService, mfaService, mfaChallengeRepository, oauthAccountRepository, 1209600, 300);
     }
 
     private User newUser(String rawPassword) {

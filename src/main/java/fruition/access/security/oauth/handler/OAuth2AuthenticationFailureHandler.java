@@ -1,5 +1,6 @@
 package fruition.access.security.oauth.handler;
 
+import fruition.access.security.oauth.OAuthLinkFlow;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
@@ -35,8 +36,10 @@ public class OAuth2AuthenticationFailureHandler implements AuthenticationFailure
             session.invalidate();
         }
 
+        // 연동 모드였으면 로그인 실패와 구분해 ?link=failed로 돌려보낸다.
+        boolean link = OAuthLinkFlow.linkUserId(request) != null;
         String redirectUrl = UriComponentsBuilder.fromUriString(frontendRedirectUri)
-                .queryParam("error", "oauth_failed")
+                .queryParam(link ? "link" : "error", link ? "failed" : "oauth_failed")
                 .build()
                 .toUriString();
         response.sendRedirect(redirectUrl);

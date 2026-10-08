@@ -37,21 +37,26 @@ class UserServiceTest {
 
     @Test
     void checkEmailAvailability_existingLocalEmail_returnsFalse() {
-        when(userRepository.existsByEmailAndProvider("test@example.com", User.PROVIDER_LOCAL)).thenReturn(true);
+        when(userRepository.findAllByEmail("test@example.com")).thenReturn(java.util.List.of(
+                new User("user_local", "test@example.com", User.PROVIDER_LOCAL, "tes", "hash")));
 
-        assertThat(userService.checkEmailAvailability(new EmailAvailabilityRequest(" TEST@example.com ")).available())
-                .isFalse();
+        var response = userService.checkEmailAvailability(new EmailAvailabilityRequest(" TEST@example.com "));
+
+        assertThat(response.available()).isFalse();
+        assertThat(response.oauthProviders()).isEmpty();
     }
 
     @Test
-    void checkEmailAvailability_noLocalAccount_returnsTrue() {
-        // local 계정이 없으면 가입 가능하다. OAuth 계정만 있는 이메일도 여기에 해당한다.
-        // 조회가 local로 한정되는 것이 그 동작의 근거이므로 provider 인자까지 검증한다.
-        when(userRepository.existsByEmailAndProvider("oauth@example.com", User.PROVIDER_LOCAL)).thenReturn(false);
+    void checkEmailAvailability_onlySocialAccounts_allowsSignupAndListsProvidersForGuidance() {
+        // 소셜 계정만 있는 이메일은 가입을 막지 않는다. 대신 로그인 후 연동하도록 안내할 provider를 알린다.
+        when(userRepository.findAllByEmail("oauth@example.com")).thenReturn(java.util.List.of(
+                new User("user_n", "oauth@example.com", "naver", "n", null),
+                new User("user_g", "oauth@example.com", "google", "g", null)));
 
-        assertThat(userService.checkEmailAvailability(new EmailAvailabilityRequest("oauth@example.com")).available())
-                .isTrue();
-        verify(userRepository).existsByEmailAndProvider("oauth@example.com", User.PROVIDER_LOCAL);
+        var response = userService.checkEmailAvailability(new EmailAvailabilityRequest("oauth@example.com"));
+
+        assertThat(response.available()).isTrue();
+        assertThat(response.oauthProviders()).containsExactly("google", "naver");
     }
 
     @Test
