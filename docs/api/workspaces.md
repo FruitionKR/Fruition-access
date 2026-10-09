@@ -251,7 +251,7 @@ curl -X POST "$ACCESS/api/workspaces" \
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | 소유자가 삭제한 워크스페이스를 반환합니다. |
+| 목적 | 소유자가 삭제한 워크스페이스를 반환합니다. 삭제하고 30일이 지나면 문서까지 영구 삭제되어 목록에서 사라집니다. |
 | 입력 | 없음 |
 | 출력 | `200` 성공 — `WorkspaceTrashResponse` |
 | 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다.<br>인증된 사용자만 호출할 수 있다. |

@@ -9,6 +9,7 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
@@ -55,6 +56,24 @@ class DocumentInternalClientTest {
 
         assertThatCode(() -> client.createInitialNote("ws_aaa11111", "user_1f9a74af"))
                 .doesNotThrowAnyException();
+
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("워크스페이스 파기를 요청하고, 실패하면 다시 시도할 수 있게 예외를 던진다")
+    void purgeWorkspace_sendsRequestAndPropagatesFailure() {
+        server.expect(requestTo("http://document.internal/internal/purge/workspaces"))
+                .andExpect(method(POST))
+                .andExpect(header("X-Internal-Token", "test-internal-callback"))
+                .andExpect(content().json("{\"workspace_ids\":[\"ws_aaa11111\"]}"))
+                .andRespond(withStatus(HttpStatus.OK));
+        server.expect(requestTo("http://document.internal/internal/purge/workspaces"))
+                .andRespond(withServerError());
+
+        client.purgeWorkspace("ws_aaa11111");
+        assertThatThrownBy(() -> client.purgeWorkspace("ws_aaa11111"))
+                .isInstanceOf(org.springframework.web.client.RestClientException.class);
 
         server.verify();
     }

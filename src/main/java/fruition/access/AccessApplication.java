@@ -5,6 +5,7 @@ import org.flywaydb.core.Flyway;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Import;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import fruition.shared.util.OpenApiConfig;
 
 /**
@@ -22,6 +23,7 @@ import fruition.shared.util.OpenApiConfig;
         "fruition.shared.web"
 })
 @Import(OpenApiConfig.class)
+@EnableScheduling
 public class AccessApplication {
 
     public static void main(String[] args) {
