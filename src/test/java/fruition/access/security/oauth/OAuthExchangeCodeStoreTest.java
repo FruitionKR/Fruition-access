@@ -3,13 +3,18 @@ package fruition.access.security.oauth;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
+import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -96,6 +101,17 @@ class OAuthExchangeCodeStoreTest {
 
         storedValueIsReturnedOnce("oauth:exchange:" + code, value.getValue());
         assertThat(store.consume(code, VERIFIER + "x")).isEmpty();
+    }
+
+    /** challenge가 verifier의 해시와 맞아도 verifier가 RFC 7636 형식(43~128자, [A-Za-z0-9-._~])이 아니면 거절한다. */
+    @ParameterizedTest
+    @ValueSource(strings = {"short-verifier", "a+b/c=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFO", "129"})
+    void consume_malformedVerifier_isRejectedEvenIfHashMatches(String verifier) throws Exception {
+        if (verifier.equals("129")) verifier = "a".repeat(129);
+        String challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)));
+        storedValueIsReturnedOnce("oauth:exchange:c", "user_1f9a74af:" + challenge);
+        assertThat(store.consume("c", verifier)).isEmpty();
     }
 
     @Test

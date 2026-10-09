@@ -10,6 +10,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * OAuth 로그인 성공 후 프런트로 전달하는 1회용 교환 코드 저장소.
@@ -29,6 +30,8 @@ public class OAuthExchangeCodeStore {
     private static final String SIGNUP_KEY_PREFIX = "oauth:signup:";
     /** 소셜 신규 가입자가 약관을 읽고 동의할 시간. */
     private static final Duration SIGNUP_TTL = Duration.ofMinutes(10);
+    /** RFC 7636 code_verifier 형식. */
+    private static final Pattern CODE_VERIFIER = Pattern.compile("[A-Za-z0-9._~-]{43,128}");
 
     /** 소셜 인증을 마쳤지만 약관 동의 전이라 아직 계정을 만들지 않은 신규 가입. */
     public record PendingSignup(String provider, String providerUserId, String email, String name,
@@ -107,12 +110,15 @@ public class OAuthExchangeCodeStore {
                 .filter(signup -> verifierMatches(signup.codeChallenge(), codeVerifier));
     }
 
-    /** challenge가 없으면(웹 로그인) 통과. 있으면 BASE64URL(SHA256(verifier))이 challenge와 같아야 한다. */
+    /**
+     * challenge가 없으면(웹 로그인) 통과. 있으면 verifier가 RFC 7636 형식이고
+     * BASE64URL(SHA256(verifier))이 challenge와 같아야 한다.
+     */
     private static boolean verifierMatches(String codeChallenge, String codeVerifier) {
         if (codeChallenge == null) {
             return true;
         }
-        if (codeVerifier == null) {
+        if (codeVerifier == null || !CODE_VERIFIER.matcher(codeVerifier).matches()) {
             return false;
         }
         try {

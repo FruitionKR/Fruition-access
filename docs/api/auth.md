@@ -1985,7 +1985,7 @@ OAuth 로그인 성공 후 발급된 1회용 code를 access token과 HttpOnly re
 ```
 
 - `code_verifier`: 데스크톱 로그인일 때만 보낸다. 서버는 `BASE64URL(SHA256(code_verifier))`가 로그인 시작 때의 `code_challenge`와 같은지 본다.
-  다르거나 없으면 `401 INVALID_OAUTH_CODE`이고 code는 소비된다. 웹 로그인 code에는 challenge가 없어 지금처럼 `code`만 보내면 된다.
+  다르거나 없거나 형식(43~128자, `[A-Za-z0-9-._~]`)이 틀리면 `401 INVALID_OAUTH_CODE`이고 code는 소비된다. 웹 로그인 code에는 challenge가 없어 지금처럼 `code`만 보내면 된다.
 - MFA를 켠 사용자는 웹과 똑같이 `mfa_required`와 `mfa_token`을 받고, 이어서 `POST /api/auth/login/mfa`로 로그인을 마친다.
 
 #### 데스크톱 앱 로그인(딥링크 + PKCE)
@@ -1993,13 +1993,17 @@ OAuth 로그인 성공 후 발급된 1회용 code를 access token과 HttpOnly re
 데스크톱 앱은 시스템 브라우저로 소셜 로그인을 하고 앱 딥링크로 돌아온다. 딥링크를 다른 앱이 가로채도 `code_verifier`가 없으면
 code를 쓸 수 없다.
 
-1. 앱이 무작위 `code_verifier`(43~128자)를 만들고 `code_challenge = BASE64URL(SHA256(code_verifier))`를 계산한다.
+1. 앱이 무작위 `code_verifier`(RFC 7636: 43~128자, `[A-Za-z0-9-._~]`)를 만들고 `code_challenge = BASE64URL(SHA256(code_verifier))`를 계산한다.
 2. 시스템 브라우저로 `/oauth2/authorization/{provider}?client=desktop&code_challenge=<challenge>&code_challenge_method=S256`을 연다.
    - `code_challenge_method`는 `S256`만 받는다. `code_challenge`는 base64url 43~128자여야 한다.
    - challenge가 없거나 형식이 틀리거나 `plain`이면, 또는 `mode=link`와 함께 쓰면 인가를 시작하지 않고 `400`을 돌려준다.
 3. 로그인이 끝나면 웹 주소 대신 `app.oauth.desktop-redirect-uri`(기본 `fruition://oauth/callback`)로 redirect한다.
    쿼리 이름은 웹과 같다: 기존 회원 `?code=`, 신규 가입 `?signup_token=`, 실패 `?error=oauth_failed`.
 4. 앱이 `code`와 `code_verifier`로 이 API를 부른다. 신규 가입이면 `POST /api/auth/oauth/signup/consent`에 `code_verifier`를 함께 보낸다.
+
+한계: 콜백에서 인가 요청을 꺼내기 전에 실패하면(브라우저 세션 만료로 `authorization_request_not_found`, `state` 누락 등)
+서버가 데스크톱 로그인인지 알 수 없어 앱 딥링크 대신 웹 주소(`?error=oauth_failed`)로 보낸다. 앱은 딥링크를 기다리는 시간에
+제한을 두고, 시간이 지나면 새 `code_verifier`로 로그인을 다시 시작한다.
 
 refresh 쿠키는 `Max-Age`(기본 14일, `app.jwt.refresh-token-expiration-seconds`)가 붙은 영속 쿠키다. 앱을 다시 켜도
 쿠키가 남아 있으면 `POST /api/auth/refresh`로 이어서 로그인된다.
@@ -2224,6 +2228,8 @@ HttpOnly refresh 쿠키를 검증하고 access token과 refresh 쿠키를 회전
 ```
 
 - 응답의 `Set-Cookie`가 기존 refresh 쿠키를 회전한 값으로 교체한다.
+- 같은 refresh token으로 동시에 여러 번 호출하면 한 번만 회전에 성공하고 나머지는 `401`이다. 회전 유예 시간은 없다.
+  여러 탭·창이 함께 refresh하는 클라이언트는 요청을 하나로 모아야 한다.
 
 #### 6. Error response
 
