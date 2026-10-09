@@ -3,6 +3,8 @@ package fruition.access.user.service;
 import fruition.TestcontainersConfiguration;
 import fruition.access.security.oauth.OAuthExchangeCodeStore;
 import fruition.access.user.domain.User;
+import fruition.access.user.domain.UserOAuthAccount;
+import fruition.access.user.repository.UserOAuthAccountRepository;
 import fruition.access.user.repository.UserRepository;
 import fruition.access.workspace.service.DocumentInternalClient;
 import fruition.shared.security.JwtTokenProvider;
@@ -11,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -23,6 +26,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -38,6 +42,7 @@ class UserConsentIntegrationTest {
     @Autowired UserRepository users;
     @Autowired JwtTokenProvider jwtTokenProvider;
     @Autowired JdbcTemplate jdbc;
+    @Autowired UserOAuthAccountRepository oauthAccounts;
     @MockitoBean DocumentInternalClient documentClient;
     @MockitoBean EmailVerificationService emailVerificationService;
 
@@ -71,6 +76,27 @@ class UserConsentIntegrationTest {
         signupConsent(token, true, "2026-10-01")
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("INVALID_SIGNUP_TOKEN"));
+    }
+
+    @Test
+    void socialSignupFinishedInAnotherTabStillRequiresMfa() throws Exception {
+        String providerUserId = "google-" + UUID.randomUUID();
+        String userId = UUID.randomUUID().toString();
+        users.saveAndFlush(new User(userId, userId + "@example.com", "google", "다른 탭 가입", null));
+        oauthAccounts.saveAndFlush(new UserOAuthAccount(userId, "google", providerUserId));
+        jdbc.update("INSERT INTO user_mfa(user_id, secret_cipher, secret_nonce, activated_at) VALUES (?, ?, ?, now())",
+                userId, new byte[]{1}, new byte[]{1});
+        String token = codeStore.issueSignupToken(
+                new OAuthExchangeCodeStore.PendingSignup("google", providerUserId, userId + "@example.com", "새 사용자", null));
+
+        signupConsent(token, true, "2026-10-01")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mfa_required").value(true))
+                .andExpect(jsonPath("$.mfa_token").exists())
+                .andExpect(jsonPath("$.access_token").doesNotExist())
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_refresh_tokens WHERE user_id = ?", Integer.class,
+                userId)).isZero();
     }
 
     @Test

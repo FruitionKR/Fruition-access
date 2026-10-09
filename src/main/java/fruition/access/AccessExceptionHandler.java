@@ -47,6 +47,7 @@ import fruition.access.workspace.exception.WorkspaceIconTooLargeException;
 import fruition.access.workspace.exception.WorkspaceAccessDeniedException;
 import fruition.access.workspace.exception.WorkspaceMemberNotFoundException;
 import fruition.access.workspace.exception.WorkspaceNotFoundException;
+import fruition.access.workspace.exception.WorkspaceTrashExpiredException;
 import fruition.shared.util.BaseExceptionHandler;
 import fruition.shared.util.ErrorResponse;
 import org.springframework.http.HttpStatus;
@@ -184,6 +185,14 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse.of("WORKSPACE_NOT_FOUND", e.getMessage()));
+    }
+
+    @ExceptionHandler(WorkspaceTrashExpiredException.class)
+    public ResponseEntity<ErrorResponse> handleWorkspaceTrashExpired(WorkspaceTrashExpiredException e) {
+        logHandled(e, HttpStatus.GONE, "WORKSPACE_TRASH_EXPIRED");
+        return ResponseEntity
+                .status(HttpStatus.GONE)
+                .body(ErrorResponse.of("WORKSPACE_TRASH_EXPIRED", e.getMessage()));
     }
 
     @ExceptionHandler(WorkspaceMemberNotFoundException.class)

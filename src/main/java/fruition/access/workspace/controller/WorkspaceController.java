@@ -172,7 +172,7 @@ public class WorkspaceController {
         return ResponseEntity.ok(workspaceService.delete(userId, workspaceId, idempotencyKey));
     }
 
-    @Operation(summary = "삭제 워크스페이스 목록", description = "소유자가 삭제한 워크스페이스를 반환합니다.")
+    @Operation(summary = "삭제 워크스페이스 목록", description = "소유자가 삭제한 워크스페이스 중 휴지통 보관 기간(30일)이 지나지 않은 것을 반환합니다.")
     @GetMapping("/trash")
     public ResponseEntity<WorkspaceTrashResponse> trash(
             @AuthenticationPrincipal String userId) {
@@ -188,6 +188,8 @@ public class WorkspaceController {
         @ApiResponse(responseCode = "404", description = "삭제 workspace 또는 소유권을 찾을 수 없음",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(responseCode = "409", description = "Idempotency-Key 충돌",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "410", description = "휴지통 보관 기간이 지나 복구할 수 없음(WORKSPACE_TRASH_EXPIRED)",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PostMapping("/{workspace_id}/restore")

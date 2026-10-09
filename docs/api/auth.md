@@ -1894,7 +1894,7 @@ curl -X DELETE "$ACCESS/api/auth/me/oauth-accounts/kakao" \
 |---|---|
 | 목적 | 소셜 신규 가입 확정. 만 18세 이상 확인과 이용약관 동의를 받아 계정·기본 워크스페이스를 만들고 로그인시킵니다. |
 | 입력 | **Body** — `OAuthSignupConsentRequest` `{ "signup_token", "age_confirmed", "terms_version", "marketing_opt_in", "code_verifier" }`(`code_verifier`는 데스크톱 로그인만) |
-| 출력 | `200` 가입과 로그인 완료 — `LoginResponse`(access token, HttpOnly refresh 쿠키) |
+| 출력 | `200` 가입과 로그인 완료 — `LoginResponse`(access token, HttpOnly refresh 쿠키). 다른 탭이 먼저 가입한 계정이 MFA를 켰으면 `mfa_required`·`mfa_token`만 온다 |
 | 조건 | 인증 불필요. `signup_token`은 10분 동안 한 번만 쓸 수 있다. |
 | 주요 오류 | `400` `CONSENT_REQUIRED` 만 18세 이상 확인·현재 이용약관 동의 없음(토큰은 소비하지 않아 다시 보낼 수 있다)<br>`401` `INVALID_SIGNUP_TOKEN` 토큰이 없거나 만료·사용됨, 또는 데스크톱 가입인데 `code_verifier`가 없거나 틀림(토큰은 소비된다). 소셜 로그인부터 다시 한다 |
 
@@ -1910,7 +1910,8 @@ curl -X DELETE "$ACCESS/api/auth/me/oauth-accounts/kakao" \
    Redis `oauth:signup:{token}`에 10분 보관하고, OAuth 콜백 주소에 `?code=` 대신 `?signup_token=`을 붙여 돌려보낸다.
 2. 프론트는 동의 화면을 보여 주고 이 API를 부른다.
 3. 서버는 동의를 확인한 뒤 토큰을 소비하고 계정·소셜 연결·기본 워크스페이스·동의 기록을 만들고 로그인 토큰을 준다.
-   그사이 다른 탭에서 같은 소셜 계정으로 가입을 끝냈으면 그 계정으로 로그인시킨다.
+   그사이 다른 탭에서 같은 소셜 계정으로 가입을 끝냈으면 그 계정으로 로그인시킨다. 그 계정이 MFA를 켰으면 토큰과 refresh 쿠키 대신
+   일반 로그인처럼 `mfa_required: true`와 `mfa_token`을 돌려주고, `POST /api/auth/login/mfa`로 로그인을 마친다.
 
 기존 회원의 소셜 로그인은 지금처럼 `?code=`로 돌아온다.
 

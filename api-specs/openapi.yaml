@@ -950,7 +950,7 @@ paths:
       - Workspaces
   /api/workspaces/trash:
     get:
-      description: 소유자가 삭제한 워크스페이스를 반환합니다.
+      description: 소유자가 삭제한 워크스페이스 중 휴지통 보관 기간(30일)이 지나지 않은 것을 반환합니다.
       operationId: trash
       responses:
         "200":
@@ -1466,6 +1466,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
           description: Idempotency-Key 충돌
+        "410":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 휴지통 보관 기간이 지나 복구할 수 없음(WORKSPACE_TRASH_EXPIRED)
       summary: 워크스페이스 복구
       tags:
       - Workspaces
