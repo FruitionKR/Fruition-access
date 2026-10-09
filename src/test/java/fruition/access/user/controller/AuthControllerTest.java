@@ -2,6 +2,8 @@ package fruition.access.user.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fruition.shared.security.JwtAuthenticationFilter;
+import fruition.access.user.service.AccountDeletionService;
+import fruition.access.user.service.UserConsentService;
 import fruition.shared.security.JwtTokenProvider;
 import fruition.access.security.SecurityConfig;
 import fruition.access.security.oauth.service.CustomOAuth2UserService;
@@ -85,6 +87,8 @@ class AuthControllerTest {
     @MockBean EmailAvailabilityRateLimiter emailAvailabilityRateLimiter;
     @MockBean LoginAttemptLimiter loginAttemptLimiter;
     @MockBean PasswordChangeAttemptLimiter passwordChangeAttemptLimiter;
+    @MockBean AccountDeletionService accountDeletionService;
+    @MockBean UserConsentService userConsentService;
     @MockBean EmailVerificationService emailVerificationService;
     @MockBean CustomOAuth2UserService customOAuth2UserService;
     @MockBean fruition.access.user.service.OAuthUserService oAuthUserService;
@@ -134,7 +138,7 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new SignupRequest("test@example.com", "password123", null, "verification-token"))))
+                                new SignupRequest("test@example.com", "password123", null, "verification-token", true, "2026-10-01", false))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value("user_1f9a74af"))
                 .andExpect(jsonPath("$.email").value("test@example.com"));
@@ -157,7 +161,7 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new SignupRequest("test@example.com", "password123", null, "verification-token"))))
+                                new SignupRequest("test@example.com", "password123", null, "verification-token", true, "2026-10-01", false))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("DUPLICATE_EMAIL"));
     }
@@ -316,7 +320,7 @@ class AuthControllerTest {
     void me_withValidAccessToken_returns200() throws Exception {
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
         when(authService.me("user_1f9a74af")).thenReturn(
-                new MeResponse("user_1f9a74af", "test@example.com", "tes", Instant.now(), java.util.List.of()));
+                new MeResponse("user_1f9a74af", "test@example.com", "tes", Instant.now(), java.util.List.of(), false));
 
         mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
@@ -405,7 +409,7 @@ class AuthControllerTest {
     void updateDisplayName_authenticated_returns200() throws Exception {
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
         when(authService.updateDisplayName(eq("user_1f9a74af"), any())).thenReturn(
-                new MeResponse("user_1f9a74af", "test@example.com", "새 이름", Instant.now(), java.util.List.of()));
+                new MeResponse("user_1f9a74af", "test@example.com", "새 이름", Instant.now(), java.util.List.of(), false));
 
         mockMvc.perform(patch("/api/auth/me")
                         .header("Authorization", "Bearer " + token)
@@ -491,7 +495,7 @@ class AuthControllerTest {
     void changeEmail_authenticated_returns200() throws Exception {
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
         when(authService.changeEmail(eq("user_1f9a74af"), any(), eq("current-refresh"))).thenReturn(
-                new MeResponse("user_1f9a74af", "new@example.com", "이름", Instant.now(), java.util.List.of()));
+                new MeResponse("user_1f9a74af", "new@example.com", "이름", Instant.now(), java.util.List.of(), false));
 
         mockMvc.perform(put("/api/auth/me/email")
                         .header("Authorization", "Bearer " + token)

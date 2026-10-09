@@ -4,7 +4,9 @@ import fruition.access.security.oauth.OAuthExchangeCodeStore;
 import fruition.access.security.oauth.domain.OAuth2UserInfo;
 import fruition.access.user.domain.User;
 import fruition.access.user.domain.UserOAuthAccount;
+import fruition.access.user.dto.OAuthSignupConsentRequest;
 import fruition.access.user.exception.InvalidOAuthLinkCodeException;
+import fruition.access.user.exception.InvalidSignupTokenException;
 import fruition.access.user.exception.OAuthAccountAlreadyLinkedException;
 import fruition.access.user.exception.OAuthAccountNotFoundException;
 import fruition.access.user.exception.OAuthEmailNotProvidedException;
@@ -35,45 +37,73 @@ public class OAuthUserService {
     private final WorkspaceService workspaceService;
     private final OAuthExchangeCodeStore codeStore;
     private final ClientRegistrationRepository clientRegistrationRepository;
+    private final UserConsentService userConsentService;
 
     public OAuthUserService(UserRepository userRepository,
                             UserOAuthAccountRepository oauthAccountRepository,
                             WorkspaceService workspaceService,
                             OAuthExchangeCodeStore codeStore,
-                            ClientRegistrationRepository clientRegistrationRepository) {
+                            ClientRegistrationRepository clientRegistrationRepository,
+                            UserConsentService userConsentService) {
         this.userRepository = userRepository;
         this.oauthAccountRepository = oauthAccountRepository;
         this.workspaceService = workspaceService;
         this.codeStore = codeStore;
         this.clientRegistrationRepository = clientRegistrationRepository;
+        this.userConsentService = userConsentService;
     }
 
-    @Transactional
-    public User findOrCreateUser(String provider, OAuth2UserInfo userInfo) {
+    /** 이 소셜 계정에 연결된 사용자. 없으면 신규 가입이므로 {@link #startSignup}으로 동의를 받는다. */
+    @Transactional(readOnly = true)
+    public Optional<User> findUser(String provider, OAuth2UserInfo userInfo) {
         String providerUserId = userInfo.getProviderUserId();
         log.info("[OAuth 로그인 요청] provider={} providerUserId={}", provider, providerUserId);
 
         var existingLink = oauthAccountRepository.findByProviderAndProviderUserId(provider, providerUserId);
-        if (existingLink.isPresent()) {
-            User user = userRepository.findById(existingLink.get().getUserId())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "연결된 사용자를 찾을 수 없습니다: userId=" + existingLink.get().getUserId()));
-            log.info("[OAuth 로그인 성공] provider={} userId={} link=existing_provider", provider, user.getId());
-            return user;
+        if (existingLink.isEmpty()) {
+            return Optional.empty();
         }
+        User user = userRepository.findById(existingLink.get().getUserId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "연결된 사용자를 찾을 수 없습니다: userId=" + existingLink.get().getUserId()));
+        log.info("[OAuth 로그인 성공] provider={} userId={} link=existing_provider", provider, user.getId());
+        return Optional.of(user);
+    }
 
+    /**
+     * 신규 소셜 가입. 약관 동의 전에는 계정과 워크스페이스를 만들지 않고, 소셜 계정 정보를 담은 가입 대기 토큰만 준다.
+     * 프론트가 동의를 받아 {@link #completeSignup}을 부른다.
+     */
+    public String startSignup(String provider, OAuth2UserInfo userInfo) {
         String email = userInfo.getEmail();
         if (email == null || email.isBlank()) {
             log.warn("[OAuth 로그인 실패] provider={} reason=email_not_provided", provider);
             throw new OAuthEmailNotProvidedException(provider);
         }
-        String normalizedEmail = email.trim().toLowerCase();
+        log.info("[OAuth 신규 가입 대기] provider={}", provider);
+        return codeStore.issueSignupToken(new OAuthExchangeCodeStore.PendingSignup(
+                provider, userInfo.getProviderUserId(), email.trim().toLowerCase(), userInfo.getName()));
+    }
 
-        // 같은 이메일의 다른 provider 계정과는 합치지 않는다. provider별로 독립 계정을 만든다.
-        User user = createUser(provider, normalizedEmail, userInfo.getName());
-
-        oauthAccountRepository.save(new UserOAuthAccount(user.getId(), provider, providerUserId));
-        log.info("[OAuth 계정 연결] provider={} userId={}", provider, user.getId());
+    /**
+     * 동의를 확인한 뒤 계정·소셜 연결·기본 워크스페이스를 만들고 동의 이력을 남긴다. 같은 이메일의 다른 provider
+     * 계정과는 합치지 않는다. 그사이 다른 탭에서 가입을 끝냈으면 그 계정을 돌려준다.
+     */
+    @Transactional
+    public User completeSignup(OAuthSignupConsentRequest request) {
+        userConsentService.validate(request.ageConfirmed(), request.termsVersion());
+        var pending = codeStore.consumeSignupToken(request.signupToken())
+                .orElseThrow(InvalidSignupTokenException::new);
+        var existingLink = oauthAccountRepository.findByProviderAndProviderUserId(
+                pending.provider(), pending.providerUserId());
+        if (existingLink.isPresent()) {
+            return userRepository.findById(existingLink.get().getUserId())
+                    .orElseThrow(InvalidSignupTokenException::new);
+        }
+        User user = createUser(pending.provider(), pending.email(), pending.name());
+        oauthAccountRepository.save(new UserOAuthAccount(user.getId(), pending.provider(), pending.providerUserId()));
+        userConsentService.record(user.getId(), Boolean.TRUE.equals(request.marketingOptIn()));
+        log.info("[OAuth 계정 연결] provider={} userId={}", pending.provider(), user.getId());
         return user;
     }
 
@@ -155,10 +185,9 @@ public class OAuthUserService {
         User user = new User(userId, email, provider, displayName, null);
         userRepository.save(user);
         workspaceService.createDefault(user.getId(), user.getDisplayName());
-        log.info("[OAuth 신규 사용자 생성] provider={} userId={} email={} displayNameSource={}",
+        log.info("[OAuth 신규 사용자 생성] provider={} userId={} displayNameSource={}",
                 provider,
                 user.getId(),
-                user.getEmail(),
                 displayNameSource);
         return user;
     }

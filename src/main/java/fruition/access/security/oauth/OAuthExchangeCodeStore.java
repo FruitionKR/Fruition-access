@@ -20,6 +20,12 @@ public class OAuthExchangeCodeStore {
     private static final String KEY_PREFIX = "oauth:exchange:";
     private static final String LINK_KEY_PREFIX = "oauth:link:";
     private static final String LINK_CODE_KEY_PREFIX = "oauth:link-code:";
+    private static final String SIGNUP_KEY_PREFIX = "oauth:signup:";
+    /** 소셜 신규 가입자가 약관을 읽고 동의할 시간. */
+    private static final Duration SIGNUP_TTL = Duration.ofMinutes(10);
+
+    /** 소셜 인증을 마쳤지만 약관 동의 전이라 아직 계정을 만들지 않은 신규 가입. */
+    public record PendingSignup(String provider, String providerUserId, String email, String name) {}
 
     /** 소셜 인증을 마쳤지만 아직 확정하지 않은 연동. */
     public record PendingLink(String userId, String provider, String providerUserId) {}
@@ -69,6 +75,20 @@ public class OAuthExchangeCodeStore {
         return Optional.ofNullable(redisTemplate.opsForValue().getAndDelete(LINK_CODE_KEY_PREFIX + code))
                 .map(value -> value.split(":", 3))
                 .map(parts -> new PendingLink(parts[0], parts[1], parts[2]));
+    }
+
+    public String issueSignupToken(PendingSignup signup) {
+        String token = generateCode();
+        String value = String.join("\n", signup.provider(), signup.providerUserId(), signup.email(),
+                signup.name() == null ? "" : signup.name());
+        redisTemplate.opsForValue().set(SIGNUP_KEY_PREFIX + token, value, SIGNUP_TTL);
+        return token;
+    }
+
+    public Optional<PendingSignup> consumeSignupToken(String token) {
+        return Optional.ofNullable(redisTemplate.opsForValue().getAndDelete(SIGNUP_KEY_PREFIX + token))
+                .map(value -> value.split("\n", 4))
+                .map(parts -> new PendingSignup(parts[0], parts[1], parts[2], parts[3].isEmpty() ? null : parts[3]));
     }
 
     private String generateCode() {

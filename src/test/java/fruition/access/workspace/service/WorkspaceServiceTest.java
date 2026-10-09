@@ -11,6 +11,7 @@ import fruition.access.workspace.dto.WorkspaceResponse;
 import fruition.access.workspace.dto.WorkspaceLifecycleResponse;
 import fruition.access.workspace.dto.WorkspaceTrashResponse;
 import fruition.access.workspace.exception.WorkspaceNotFoundException;
+import fruition.access.workspace.exception.WorkspaceTrashExpiredException;
 import fruition.access.workspace.repository.WorkspaceMemberRepository;
 import fruition.access.workspace.repository.WorkspaceRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,6 +20,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -52,7 +55,8 @@ class WorkspaceServiceTest {
                 userRepository,
                 documentInternalClient,
                 idempotencyService,
-                authzProjectionStore
+                authzProjectionStore,
+                Duration.ofDays(30)
         );
         lenient().when(userRepository.getReferenceById(any()))
                 .thenAnswer(invocation -> new User(invocation.getArgument(0), "test@example.com", User.PROVIDER_LOCAL, "test", null));
@@ -193,6 +197,33 @@ class WorkspaceServiceTest {
         assertThat(response.deleted()).isFalse();
         assertThat(workspace.getDeletedAt()).isNull();
         assertThat(workspace.getDeletedBy()).isNull();
+    }
+
+    @Test
+    void restore_pastTrashRetention_rejectsAndKeepsDeleted() {
+        Workspace workspace = new Workspace("ws_aaa11111", "워크스페이스 A");
+        workspace.softDelete("user_1f9a74af", Instant.now().minus(Duration.ofDays(31)));
+        when(workspaceMemberRepository.findOwnedWorkspaceIncludingDeleted(
+                "ws_aaa11111", "user_1f9a74af", WorkspaceRole.OWNER)).thenReturn(Optional.of(workspace));
+
+        assertThatThrownBy(() -> workspaceService.restore("user_1f9a74af", "ws_aaa11111", "restore-key"))
+                .isInstanceOf(WorkspaceTrashExpiredException.class);
+        assertThat(workspace.getDeletedAt()).isNotNull();
+        verifyNoInteractions(authzProjectionStore);
+    }
+
+    @Test
+    void trash_hidesWorkspacesPastRetention() {
+        Workspace recent = new Workspace("ws_recent", "최근 삭제");
+        recent.softDelete("user_1f9a74af", Instant.now().minus(Duration.ofDays(29)));
+        Workspace expired = new Workspace("ws_expired", "보관 기간 지남");
+        expired.softDelete("user_1f9a74af", Instant.now().minus(Duration.ofDays(31)));
+        when(workspaceMemberRepository.findDeletedOwnedWorkspaces("user_1f9a74af", WorkspaceRole.OWNER))
+                .thenReturn(List.of(recent, expired));
+
+        assertThat(workspaceService.trash("user_1f9a74af").workspaces())
+                .extracting(WorkspaceTrashResponse.WorkspaceTrashItem::id)
+                .containsExactly("ws_recent");
     }
 
     @Test

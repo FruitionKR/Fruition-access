@@ -1,5 +1,12 @@
 package fruition.access.user.controller;
 
+import fruition.access.user.dto.AccountDeletionBlockedResponse;
+import fruition.access.user.dto.AccountDeletionRequest;
+import fruition.access.user.dto.ConsentRequest;
+import fruition.access.user.dto.OAuthSignupConsentRequest;
+import fruition.access.user.service.AccountDeletionService;
+import fruition.access.user.service.UserConsentService;
+import fruition.shared.security.JwtTokenProvider;
 import fruition.access.user.dto.EmailAvailabilityRequest;
 import fruition.access.user.dto.OAuthLinkConfirmRequest;
 import fruition.access.user.dto.OAuthLinkStartResponse;
@@ -58,9 +65,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.CookieValue;
+
+import java.time.Instant;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -77,6 +87,9 @@ public class AuthController {
     private final PasswordChangeAttemptLimiter passwordChangeAttemptLimiter;
     private final EmailVerificationService emailVerificationService;
     private final OAuthUserService oAuthUserService;
+    private final AccountDeletionService accountDeletionService;
+    private final UserConsentService userConsentService;
+    private final JwtTokenProvider jwtTokenProvider;
     private final boolean refreshCookieSecure;
     private final long refreshTokenExpirationSeconds;
 
@@ -87,6 +100,9 @@ public class AuthController {
                           PasswordChangeAttemptLimiter passwordChangeAttemptLimiter,
                           EmailVerificationService emailVerificationService,
                           OAuthUserService oAuthUserService,
+                          AccountDeletionService accountDeletionService,
+                          UserConsentService userConsentService,
+                          JwtTokenProvider jwtTokenProvider,
                           @Value("${app.auth.refresh-cookie-secure}") boolean refreshCookieSecure,
                           @Value("${app.jwt.refresh-token-expiration-seconds}") long refreshTokenExpirationSeconds) {
         this.userService = userService;
@@ -97,6 +113,9 @@ public class AuthController {
         this.passwordChangeAttemptLimiter = passwordChangeAttemptLimiter;
         this.emailVerificationService = emailVerificationService;
         this.oAuthUserService = oAuthUserService;
+        this.accountDeletionService = accountDeletionService;
+        this.userConsentService = userConsentService;
+        this.jwtTokenProvider = jwtTokenProvider;
         this.refreshCookieSecure = refreshCookieSecure;
         this.refreshTokenExpirationSeconds = refreshTokenExpirationSeconds;
     }
@@ -252,6 +271,41 @@ public class AuthController {
         return authenticatedResponse(authService.exchangeOAuthCode(request));
     }
 
+    @Operation(summary = "소셜 신규 가입 확정",
+            description = "소셜 로그인으로 처음 들어온 사용자는 OAuth 콜백 주소에 ?signup_token=이 붙어 돌아옵니다."
+                    + " 만 18세 이상 확인과 이용약관 동의를 받아 이 API로 보내면 계정과 기본 워크스페이스를 만들고"
+                    + " 로그인 응답(access token과 HttpOnly refresh 쿠키)을 돌려줍니다. 토큰은 10분 동안 한 번만 쓸 수 있습니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "가입과 로그인 완료",
+            content = @Content(schema = @Schema(implementation = LoginResponse.class))),
+        @ApiResponse(responseCode = "400", description = "만 18세 이상 확인이나 현재 이용약관 동의가 없음(CONSENT_REQUIRED)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "401", description = "가입 대기 토큰이 없거나 만료됨(INVALID_SIGNUP_TOKEN)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/oauth/signup/consent")
+    public ResponseEntity<LoginResponse> completeOAuthSignup(@Valid @RequestBody OAuthSignupConsentRequest request) {
+        return authenticatedResponse(authService.issueForNewOAuthUser(oAuthUserService.completeSignup(request)));
+    }
+
+    @Operation(summary = "약관 재동의",
+            description = "이용약관이 바뀌어 로그인·내 정보 응답의 consent_required가 true일 때 다시 동의를 받습니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "동의 기록 완료"),
+        @ApiResponse(responseCode = "400", description = "만 18세 이상 확인이나 현재 이용약관 동의가 없음(CONSENT_REQUIRED)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/me/consents")
+    public ResponseEntity<Void> consent(
+            @AuthenticationPrincipal String userId,
+            @Valid @RequestBody ConsentRequest request) {
+        userConsentService.validate(request.ageConfirmed(), request.termsVersion());
+        userConsentService.record(userId, request.marketingOptIn());
+        return ResponseEntity.noContent().build();
+    }
+
     @Operation(summary = "내 정보 조회", description = "access token으로 인증된 사용자의 프로필을 반환합니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "조회 성공",
@@ -309,6 +363,42 @@ public class AuthController {
         }
         passwordChangeAttemptLimiter.recordSuccess(userId, clientAddress);
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "회원 탈퇴",
+            description = "본인을 다시 확인한 뒤 계정을 지웁니다. 비밀번호 계정은 password를, 소셜 전용 계정은"
+                    + " 10분 안에 다시 로그인해 받은 access token을 씁니다. MFA를 켰으면 mfa_code도 필요합니다."
+                    + " 혼자 쓰던 워크스페이스는 함께 지우고, 문서·채팅·회의 데이터는 탈퇴 직후 순서대로 파기합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "탈퇴 완료. refresh 쿠키도 제거한다"),
+        @ApiResponse(responseCode = "401", description = "인증되지 않았거나 비밀번호·MFA 코드가 다름,"
+                + " 또는 소셜 계정이 최근에 로그인하지 않음(REAUTHENTICATION_REQUIRED)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "409", description = "다른 멤버가 있는 워크스페이스의 유일한 OWNER",
+            content = @Content(schema = @Schema(implementation = AccountDeletionBlockedResponse.class))),
+        @ApiResponse(responseCode = "429", description = "비밀번호·MFA 확인 시도 횟수 제한 초과",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteAccount(
+            @AuthenticationPrincipal String userId,
+            @Valid @RequestBody(required = false) AccountDeletionRequest request,
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+            HttpServletRequest servletRequest) {
+        AccountDeletionRequest body = request == null ? new AccountDeletionRequest(null, null) : request;
+        Instant authTime = jwtTokenProvider.extractAuthTime(authorization.substring("Bearer ".length())).orElse(null);
+        // 비밀번호 확인은 비밀번호 변경과 같은 시도 제한을 받는다.
+        String clientAddress = ClientAddressResolver.of(servletRequest);
+        passwordChangeAttemptLimiter.check(userId, clientAddress);
+        try {
+            accountDeletionService.delete(userId, body, authTime);
+        } catch (InvalidCredentialsException e) {
+            passwordChangeAttemptLimiter.recordFailure(userId, clientAddress);
+            throw e;
+        }
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, refreshCookie("", 0).toString())
+                .build();
     }
 
     @Operation(summary = "이메일 변경",

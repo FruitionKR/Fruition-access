@@ -6,7 +6,7 @@
 
 | 도메인 | API 수 | 역할 | 호출 연결 |
 |---|---:|---|---|
-| [Auth](auth.md) | 23 | 가입·인증·로그인·토큰·프로필·소셜 계정 연동 관리 | 20개는 frontend, 3개(소셜 계정 연동)는 호출자 미확인(frontend 구현 예정). signup만 document-svc를 호출 |
+| [Auth](auth.md) | 26 | 가입·인증·로그인·토큰·프로필·소셜 계정 연동·가입 동의·회원 탈퇴 관리 | 20개는 frontend, 6개(소셜 계정 연동, 소셜 가입 동의, 약관 재동의, 회원 탈퇴)는 호출자 미확인(frontend 구현 예정). signup과 회원 탈퇴가 document-svc를 호출 |
 | [Workspaces](workspaces.md) | 16 | 워크스페이스·멤버 관리와 내부 인가·AI 모델 설정 | 9개는 frontend, 4개(`/internal/**`)는 document-svc·ai-svc, 3개는 호출자 미확인 |
 | [Invitations](invitations.md) | 5 | 이메일 초대 발송·취소·수락 | 3개는 frontend, 2개는 호출자 미확인 |
 
@@ -40,6 +40,9 @@
 | `POST /api/auth/password-reset` | frontend `src/entities/user/api/emailVerification.ts:82` | 없음 |
 | `GET /api/auth/me` | frontend `src/entities/user/api/account.ts:6` | 없음 |
 | `PATCH /api/auth/me` | frontend `src/entities/user/api/account.ts:11` | 없음 |
+| `DELETE /api/auth/me` | **호출자 미확인** (frontend 탈퇴 화면 구현 예정) | document-svc `purge/users`, `purge/workspaces`(`DataPurgeRequestJob`이 커밋 뒤 호출) |
+| `POST /api/auth/me/consents` | **호출자 미확인** (frontend 재동의 화면 구현 예정) | 없음 |
+| `POST /api/auth/oauth/signup/consent` | **호출자 미확인** (frontend 가입 동의 화면 구현 예정) | document-svc `initial-note`(기본 워크스페이스 생성) |
 | `PUT /api/auth/me/email` | frontend `src/entities/user/api/account.ts:29` | 없음 |
 | `PUT /api/auth/me/password` | frontend `src/entities/user/api/account.ts:20` | 없음 |
 | `GET /api/auth/me/sessions` | frontend `src/entities/user/api/sessions.ts:14` | 없음 |
