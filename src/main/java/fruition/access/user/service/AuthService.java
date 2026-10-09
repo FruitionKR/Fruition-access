@@ -378,9 +378,16 @@ public class AuthService {
         return token;
     }
 
-    /** 소셜 신규 가입을 마친 사용자에게 로그인 토큰을 준다. 방금 소셜 인증을 거쳤으므로 직접 로그인으로 본다. */
+    /**
+     * 소셜 신규 가입을 마친 사용자에게 로그인 토큰을 준다. 방금 소셜 인증을 거쳤으므로 직접 로그인으로 본다.
+     * 다른 탭이 먼저 가입을 끝내 기존 계정이 넘어왔고 그 계정이 MFA를 켰으면 일반 로그인처럼 MFA를 요구한다.
+     */
     @Transactional
     public LoginResponse issueForNewOAuthUser(User user) {
+        if (mfaService.isEnabled(user.getId())) {
+            log.info("[OAuth 가입 후 로그인 1단계 통과] userId={} mfa=required", user.getId());
+            return LoginResponse.mfaRequired(issueMfaChallenge(user));
+        }
         LoginResponse response = issueTokenPair(user, Instant.now());
         log.info("[OAuth 가입 후 로그인] userId={}", user.getId());
         return response;
