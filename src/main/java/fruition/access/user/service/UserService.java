@@ -74,7 +74,8 @@ public class UserService {
 
         String userId = "user_" + UUID.randomUUID().toString().replace("-", "");
         User user = new User(userId, email, User.PROVIDER_LOCAL, displayName, passwordEncoder.encode(request.password()));
-        userRepository.save(user);
+        // 동의 기록은 JDBC로 users(id)를 참조하므로 users 행을 먼저 flush한다.
+        userRepository.saveAndFlush(user);
         userConsentService.record(user.getId(), Boolean.TRUE.equals(request.marketingOptIn()));
 
         workspaceService.createDefault(user.getId(), user.getDisplayName());

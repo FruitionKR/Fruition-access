@@ -39,6 +39,7 @@ class UserConsentIntegrationTest {
     @Autowired JwtTokenProvider jwtTokenProvider;
     @Autowired JdbcTemplate jdbc;
     @MockitoBean DocumentInternalClient documentClient;
+    @MockitoBean EmailVerificationService emailVerificationService;
 
     @Test
     void socialSignupCreatesAccountOnlyAfterConsent() throws Exception {
@@ -70,6 +71,24 @@ class UserConsentIntegrationTest {
         signupConsent(token, true, "2026-10-01")
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("INVALID_SIGNUP_TOKEN"));
+    }
+
+    @Test
+    void emailSignupStoresConsentWithNewAccount() throws Exception {
+        String email = "local-" + UUID.randomUUID() + "@example.com";
+
+        // 동의 기록(JDBC)이 아직 flush되지 않은 users 행을 FK로 참조하지 않는지 실제 DB로 확인한다.
+        mockMvc.perform(post("/api/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"%s","password":"password1234","verification_token":"token",
+                                 "age_confirmed":true,"terms_version":"2026-10-01"}
+                                """.formatted(email)))
+                .andExpect(status().isCreated());
+
+        User user = users.findAllByEmail(email).get(0);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_consents WHERE user_id = ? AND NOT marketing_opt_in",
+                Integer.class, user.getId())).isOne();
     }
 
     @Test

@@ -125,6 +125,6 @@ class UserServiceTest {
                         userService.signup(new SignupRequest("jane.doe@example.com", "password123")))
                 .isInstanceOf(fruition.access.user.exception.InvalidConsentException.class);
         org.mockito.Mockito.verifyNoInteractions(emailVerificationService);
-        org.mockito.Mockito.verify(userRepository, org.mockito.Mockito.never()).save(org.mockito.ArgumentMatchers.any());
+        org.mockito.Mockito.verify(userRepository, org.mockito.Mockito.never()).saveAndFlush(org.mockito.ArgumentMatchers.any());
     }
 }
