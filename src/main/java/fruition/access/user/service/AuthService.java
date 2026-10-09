@@ -148,7 +148,7 @@ public class AuthService {
     @Transactional
     public LoginResponse exchangeOAuthCode(OAuthExchangeRequest request) {
         log.info("[OAuth code 교환 요청]");
-        String userId = oAuthExchangeCodeStore.consume(request.code())
+        String userId = oAuthExchangeCodeStore.consume(request.code(), request.codeVerifier())
                 .orElseThrow(() -> {
                     log.warn("[OAuth code 교환 실패] reason=invalid_code");
                     return new InvalidOAuthCodeException();

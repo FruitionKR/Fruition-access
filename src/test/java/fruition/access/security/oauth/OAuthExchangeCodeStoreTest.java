@@ -33,7 +33,7 @@ class OAuthExchangeCodeStoreTest {
 
     @Test
     void issue_storesUserIdInRedisWithTtl_andReturnsRandomCode() {
-        String code = store.issue("user_1f9a74af");
+        String code = store.issue("user_1f9a74af", null);
 
         assertThat(code).isNotBlank();
         ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
@@ -43,21 +43,21 @@ class OAuthExchangeCodeStoreTest {
 
     @Test
     void issue_generatesDifferentCodesEachTime() {
-        assertThat(store.issue("user_1f9a74af")).isNotEqualTo(store.issue("user_1f9a74af"));
+        assertThat(store.issue("user_1f9a74af", null)).isNotEqualTo(store.issue("user_1f9a74af", null));
     }
 
     @Test
     void consume_deletesAtomicallyViaGetAndDelete_andReturnsUserId() {
         when(valueOperations.getAndDelete("oauth:exchange:code-1")).thenReturn("user_1f9a74af");
 
-        assertThat(store.consume("code-1")).contains("user_1f9a74af");
+        assertThat(store.consume("code-1", null)).contains("user_1f9a74af");
     }
 
     @Test
     void consume_unknownOrAlreadyConsumedCode_returnsEmpty() {
         when(valueOperations.getAndDelete("oauth:exchange:unknown-code")).thenReturn(null);
 
-        assertThat(store.consume("unknown-code")).isEmpty();
+        assertThat(store.consume("unknown-code", null)).isEmpty();
     }
 
     @Test
@@ -71,5 +71,50 @@ class OAuthExchangeCodeStoreTest {
 
         assertThat(store.consumeLinkCode(code)).contains(pending);
         assertThat(store.consumeLinkToken("t", "kakao")).isEmpty();
+    }
+
+    /** RFC 7636 부록 B의 예시 값. */
+    private static final String VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+    private static final String CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+
+    /** issue로 저장한 값을 그대로 돌려주는 1회 GETDEL. */
+    private void storedValueIsReturnedOnce(String key, String value) {
+        when(valueOperations.getAndDelete(key)).thenReturn(value).thenReturn(null);
+    }
+
+    @Test
+    void consume_desktopCode_requiresMatchingVerifier() {
+        ArgumentCaptor<String> value = ArgumentCaptor.forClass(String.class);
+        String code = store.issue("user_1f9a74af", CHALLENGE);
+        verify(valueOperations).set(eq("oauth:exchange:" + code), value.capture(), eq(Duration.ofSeconds(60)));
+
+        storedValueIsReturnedOnce("oauth:exchange:" + code, value.getValue());
+        assertThat(store.consume(code, VERIFIER)).contains("user_1f9a74af");
+
+        storedValueIsReturnedOnce("oauth:exchange:" + code, value.getValue());
+        assertThat(store.consume(code, null)).isEmpty();
+
+        storedValueIsReturnedOnce("oauth:exchange:" + code, value.getValue());
+        assertThat(store.consume(code, VERIFIER + "x")).isEmpty();
+    }
+
+    @Test
+    void consumeSignupToken_roundTripsPendingSignup_andChecksVerifier() {
+        var web = new OAuthExchangeCodeStore.PendingSignup("google", "sub", "a@example.com", "이름\n둘째 줄", null);
+        var desktop = new OAuthExchangeCodeStore.PendingSignup("google", "sub", "a@example.com", null, CHALLENGE);
+        ArgumentCaptor<String> value = ArgumentCaptor.forClass(String.class);
+        String webToken = store.issueSignupToken(web);
+        String desktopToken = store.issueSignupToken(desktop);
+        verify(valueOperations).set(eq("oauth:signup:" + webToken), value.capture(), eq(Duration.ofMinutes(10)));
+        verify(valueOperations).set(eq("oauth:signup:" + desktopToken), value.capture(), eq(Duration.ofMinutes(10)));
+
+        storedValueIsReturnedOnce("oauth:signup:w", value.getAllValues().get(0));
+        assertThat(store.consumeSignupToken("w", null)).contains(web);
+
+        storedValueIsReturnedOnce("oauth:signup:d", value.getAllValues().get(1));
+        assertThat(store.consumeSignupToken("d", "wrong-verifier")).isEmpty();
+
+        storedValueIsReturnedOnce("oauth:signup:d", value.getAllValues().get(1));
+        assertThat(store.consumeSignupToken("d", VERIFIER)).contains(desktop);
     }
 }

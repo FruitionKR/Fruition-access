@@ -46,7 +46,7 @@ class UserConsentIntegrationTest {
         String providerUserId = "google-" + UUID.randomUUID();
         String email = providerUserId + "@example.com";
         String token = codeStore.issueSignupToken(
-                new OAuthExchangeCodeStore.PendingSignup("google", providerUserId, email, "새 사용자"));
+                new OAuthExchangeCodeStore.PendingSignup("google", providerUserId, email, "새 사용자", null));
 
         signupConsent(token, false, "2026-10-01")
                 .andExpect(status().isBadRequest())

@@ -389,7 +389,7 @@ class AuthControllerTest {
 
         mockMvc.perform(post("/api/auth/oauth/exchange")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new OAuthExchangeRequest("some-code"))))
+                        .content(objectMapper.writeValueAsString(new OAuthExchangeRequest("some-code", null))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.access_token").value("access-token"));
     }
@@ -400,7 +400,7 @@ class AuthControllerTest {
 
         mockMvc.perform(post("/api/auth/oauth/exchange")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new OAuthExchangeRequest("bad-code"))))
+                        .content(objectMapper.writeValueAsString(new OAuthExchangeRequest("bad-code", null))))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("INVALID_OAUTH_CODE"));
     }
