@@ -237,10 +237,10 @@ class AuthServiceTest {
 
     @Test
     void exchangeOAuthCode_validCode_issuesTokens() {
-        String code = oAuthExchangeCodeStore.issue("user_1f9a74af");
+        String code = oAuthExchangeCodeStore.issue("user_1f9a74af", null);
         when(userRepository.findById("user_1f9a74af")).thenReturn(Optional.of(newUser("password123")));
 
-        LoginResponse response = authService.exchangeOAuthCode(new OAuthExchangeRequest(code));
+        LoginResponse response = authService.exchangeOAuthCode(new OAuthExchangeRequest(code, null));
 
         assertThat(response.accessToken()).isNotBlank();
         assertThat(response.refreshToken()).isNotBlank();
@@ -248,17 +248,17 @@ class AuthServiceTest {
 
     @Test
     void exchangeOAuthCode_unknownCode_throwsInvalidOAuthCode() {
-        assertThatThrownBy(() -> authService.exchangeOAuthCode(new OAuthExchangeRequest("unknown-code")))
+        assertThatThrownBy(() -> authService.exchangeOAuthCode(new OAuthExchangeRequest("unknown-code", null)))
                 .isInstanceOf(InvalidOAuthCodeException.class);
     }
 
     @Test
     void exchangeOAuthCode_alreadyConsumedCode_throwsInvalidOAuthCode() {
-        String code = oAuthExchangeCodeStore.issue("user_1f9a74af");
+        String code = oAuthExchangeCodeStore.issue("user_1f9a74af", null);
         when(userRepository.findById("user_1f9a74af")).thenReturn(Optional.of(newUser("password123")));
-        authService.exchangeOAuthCode(new OAuthExchangeRequest(code));
+        authService.exchangeOAuthCode(new OAuthExchangeRequest(code, null));
 
-        assertThatThrownBy(() -> authService.exchangeOAuthCode(new OAuthExchangeRequest(code)))
+        assertThatThrownBy(() -> authService.exchangeOAuthCode(new OAuthExchangeRequest(code, null)))
                 .isInstanceOf(InvalidOAuthCodeException.class);
     }
 
@@ -580,9 +580,9 @@ class AuthServiceTest {
         User user = new User("oauth_mfa", "oauth@example.com", "google", "사용자", null);
         when(userRepository.findById("oauth_mfa")).thenReturn(Optional.of(user));
         when(mfaService.isEnabled("oauth_mfa")).thenReturn(true);
-        String code = oAuthExchangeCodeStore.issue("oauth_mfa");
+        String code = oAuthExchangeCodeStore.issue("oauth_mfa", null);
 
-        LoginResponse response = authService.exchangeOAuthCode(new OAuthExchangeRequest(code));
+        LoginResponse response = authService.exchangeOAuthCode(new OAuthExchangeRequest(code, null));
 
         assertThat(response.mfaRequired()).isTrue();
         assertThat(response.mfaToken()).isNotBlank();

@@ -23,7 +23,7 @@ class OAuth2AuthenticationFailureHandlerTest {
     @Test
     void failure_invalidatesHandshakeSessionAndRedirectsWithError() throws Exception {
         when(request.getSession(false)).thenReturn(session);
-        var handler = new OAuth2AuthenticationFailureHandler("http://localhost:3000/oauth/callback");
+        var handler = new OAuth2AuthenticationFailureHandler("http://localhost:3000/oauth/callback", "fruition://oauth/callback");
 
         handler.onAuthenticationFailure(request, response, exception);
 
@@ -33,12 +33,21 @@ class OAuth2AuthenticationFailureHandlerTest {
 
     @Test
     void linkFailure_redirectsWithLinkFailedInsteadOfLoginError() throws Exception {
-        var handler = new OAuth2AuthenticationFailureHandler("http://localhost:3000/oauth/callback");
+        var handler = new OAuth2AuthenticationFailureHandler("http://localhost:3000/oauth/callback", "fruition://oauth/callback");
         var denied = new org.springframework.security.oauth2.core.OAuth2AuthenticationException(
                 new org.springframework.security.oauth2.core.OAuth2Error("access_denied"));
 
         handler.onAuthenticationFailure(OAuth2AuthenticationSuccessHandlerTest.linkCallback("user_local"), response, denied);
 
         verify(response).sendRedirect("http://localhost:3000/oauth/callback?link=failed");
+    }
+
+    @Test
+    void desktopFailure_redirectsToDeepLink() throws Exception {
+        var handler = new OAuth2AuthenticationFailureHandler("http://localhost:3000/oauth/callback", "fruition://oauth/callback");
+
+        handler.onAuthenticationFailure(OAuth2AuthenticationSuccessHandlerTest.desktopCallback("challenge"), response, exception);
+
+        verify(response).sendRedirect("fruition://oauth/callback?error=oauth_failed");
     }
 }

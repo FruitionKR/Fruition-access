@@ -1893,10 +1893,10 @@ curl -X DELETE "$ACCESS/api/auth/me/oauth-accounts/kakao" \
 | 항목 | 내용 |
 |---|---|
 | 목적 | 소셜 신규 가입 확정. 만 18세 이상 확인과 이용약관 동의를 받아 계정·기본 워크스페이스를 만들고 로그인시킵니다. |
-| 입력 | **Body** — `OAuthSignupConsentRequest` `{ "signup_token", "age_confirmed", "terms_version", "marketing_opt_in" }` |
+| 입력 | **Body** — `OAuthSignupConsentRequest` `{ "signup_token", "age_confirmed", "terms_version", "marketing_opt_in", "code_verifier" }`(`code_verifier`는 데스크톱 로그인만) |
 | 출력 | `200` 가입과 로그인 완료 — `LoginResponse`(access token, HttpOnly refresh 쿠키). 다른 탭이 먼저 가입한 계정이 MFA를 켰으면 `mfa_required`·`mfa_token`만 온다 |
 | 조건 | 인증 불필요. `signup_token`은 10분 동안 한 번만 쓸 수 있다. |
-| 주요 오류 | `400` `CONSENT_REQUIRED` 만 18세 이상 확인·현재 이용약관 동의 없음(토큰은 소비하지 않아 다시 보낼 수 있다)<br>`401` `INVALID_SIGNUP_TOKEN` 토큰이 없거나 만료·사용됨. 소셜 로그인부터 다시 한다 |
+| 주요 오류 | `400` `CONSENT_REQUIRED` 만 18세 이상 확인·현재 이용약관 동의 없음(토큰은 소비하지 않아 다시 보낼 수 있다)<br>`401` `INVALID_SIGNUP_TOKEN` 토큰이 없거나 만료·사용됨, 또는 데스크톱 가입인데 `code_verifier`가 없거나 틀림(토큰은 소비된다). 소셜 로그인부터 다시 한다 |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -1915,6 +1915,9 @@ curl -X DELETE "$ACCESS/api/auth/me/oauth-accounts/kakao" \
 
 기존 회원의 소셜 로그인은 지금처럼 `?code=`로 돌아온다.
 
+데스크톱 로그인([데스크톱 앱 로그인](#데스크톱-앱-로그인딥링크--pkce))이면 `signup_token`이 앱 딥링크로 오고, 토큰에 로그인 시작 때의
+`code_challenge`가 묶인다. 이 API에 같은 로그인의 `code_verifier`를 함께 보내야 한다.
+
 #### 2. Request body
 
 ```json
@@ -1922,9 +1925,12 @@ curl -X DELETE "$ACCESS/api/auth/me/oauth-accounts/kakao" \
   "signup_token": "EXAMPLE-signup-token-not-real-000000000000",
   "age_confirmed": true,
   "terms_version": "2026-10-01",
-  "marketing_opt_in": false
+  "marketing_opt_in": false,
+  "code_verifier": "EXAMPLE-code-verifier-not-real-0000000000000"
 }
 ```
+
+- `code_verifier`: 데스크톱 로그인일 때만 보낸다. 웹 로그인 토큰에는 challenge가 없어 보내도 검사하지 않는다.
 
 #### 3. 구현 파일
 
@@ -1941,11 +1947,11 @@ curl -X DELETE "$ACCESS/api/auth/me/oauth-accounts/kakao" \
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | OAuth 로그인 성공 후 발급된 1회용 code를 access token과 HttpOnly refresh 쿠키로 교환합니다. |
-| 입력 | **Body** — `OAuthExchangeRequest` |
+| 목적 | OAuth 로그인 성공 후 발급된 1회용 code를 access token과 HttpOnly refresh 쿠키로 교환합니다. 데스크톱 로그인 code는 `code_verifier`가 맞아야 교환됩니다. |
+| 입력 | **Body** — `OAuthExchangeRequest` `{ "code", "code_verifier" }`(`code_verifier`는 데스크톱 로그인만) |
 | 출력 | `200` 교환 성공 — `LoginResponse` |
 | 조건 | 인증 불필요<br>인증 없이 호출할 수 있다.<br>공개 API이므로 별도의 사용자 권한 검증이 없다. |
-| 주요 오류 | `401` 유효하지 않거나 만료된 code — `ErrorResponse` |
+| 주요 오류 | `401` 유효하지 않거나 만료된 code, 또는 데스크톱 code인데 `code_verifier`가 없거나 틀림 — `ErrorResponse` |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -1974,9 +1980,34 @@ OAuth 로그인 성공 후 발급된 1회용 code를 access token과 HttpOnly re
 
 ```json
 {
-  "code": "string"
+  "code": "string",
+  "code_verifier": "string"
 }
 ```
+
+- `code_verifier`: 데스크톱 로그인일 때만 보낸다. 서버는 `BASE64URL(SHA256(code_verifier))`가 로그인 시작 때의 `code_challenge`와 같은지 본다.
+  다르거나 없거나 형식(43~128자, `[A-Za-z0-9-._~]`)이 틀리면 `401 INVALID_OAUTH_CODE`이고 code는 소비된다. 웹 로그인 code에는 challenge가 없어 지금처럼 `code`만 보내면 된다.
+- MFA를 켠 사용자는 웹과 똑같이 `mfa_required`와 `mfa_token`을 받고, 이어서 `POST /api/auth/login/mfa`로 로그인을 마친다.
+
+#### 데스크톱 앱 로그인(딥링크 + PKCE)
+
+데스크톱 앱은 시스템 브라우저로 소셜 로그인을 하고 앱 딥링크로 돌아온다. 딥링크를 다른 앱이 가로채도 `code_verifier`가 없으면
+code를 쓸 수 없다.
+
+1. 앱이 무작위 `code_verifier`(RFC 7636: 43~128자, `[A-Za-z0-9-._~]`)를 만들고 `code_challenge = BASE64URL(SHA256(code_verifier))`를 계산한다.
+2. 시스템 브라우저로 `/oauth2/authorization/{provider}?client=desktop&code_challenge=<challenge>&code_challenge_method=S256`을 연다.
+   - `code_challenge_method`는 `S256`만 받는다. `code_challenge`는 base64url 43~128자여야 한다.
+   - challenge가 없거나 형식이 틀리거나 `plain`이면, 또는 `mode=link`와 함께 쓰면 인가를 시작하지 않고 `400`을 돌려준다.
+3. 로그인이 끝나면 웹 주소 대신 `app.oauth.desktop-redirect-uri`(기본 `fruition://oauth/callback`)로 redirect한다.
+   쿼리 이름은 웹과 같다: 기존 회원 `?code=`, 신규 가입 `?signup_token=`, 실패 `?error=oauth_failed`.
+4. 앱이 `code`와 `code_verifier`로 이 API를 부른다. 신규 가입이면 `POST /api/auth/oauth/signup/consent`에 `code_verifier`를 함께 보낸다.
+
+한계: 콜백에서 인가 요청을 꺼내기 전에 실패하면(브라우저 세션 만료로 `authorization_request_not_found`, `state` 누락 등)
+서버가 데스크톱 로그인인지 알 수 없어 앱 딥링크 대신 웹 주소(`?error=oauth_failed`)로 보낸다. 앱은 딥링크를 기다리는 시간에
+제한을 두고, 시간이 지나면 새 `code_verifier`로 로그인을 다시 시작한다.
+
+refresh 쿠키는 `Max-Age`(기본 14일, `app.jwt.refresh-token-expiration-seconds`)가 붙은 영속 쿠키다. 앱을 다시 켜도
+쿠키가 남아 있으면 `POST /api/auth/refresh`로 이어서 로그인된다.
 
 #### 5. Response body
 
@@ -2039,6 +2070,7 @@ curl -X POST "$ACCESS/api/auth/oauth/exchange" \
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: exchangeOAuthCode`)
 - 호출자: Fruition-frontend `src/entities/user/api/login.ts:32`
+- PKCE·딥링크: `src/main/java/fruition/access/security/oauth/OAuthLinkFlow.java`(시작 요청 검사), `OAuthExchangeCodeStore.java`(challenge 저장·verifier 검증), `handler/OAuth2AuthenticationSuccessHandler.java`, `handler/OAuth2AuthenticationFailureHandler.java`
 - 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-post-api-auth-oauth-exchange)
@@ -2197,6 +2229,8 @@ HttpOnly refresh 쿠키를 검증하고 access token과 refresh 쿠키를 회전
 ```
 
 - 응답의 `Set-Cookie`가 기존 refresh 쿠키를 회전한 값으로 교체한다.
+- 같은 refresh token으로 동시에 여러 번 호출하면 한 번만 회전에 성공하고 나머지는 `401`이다. 회전 유예 시간은 없다.
+  여러 탭·창이 함께 refresh하는 클라이언트는 요청을 하나로 모아야 한다.
 
 #### 6. Error response
 

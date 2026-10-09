@@ -20,15 +20,19 @@ public class OAuth2AuthenticationFailureHandler implements AuthenticationFailure
     private static final Logger log = LoggerFactory.getLogger(OAuth2AuthenticationFailureHandler.class);
 
     private final String frontendRedirectUri;
+    private final String desktopRedirectUri;
 
-    public OAuth2AuthenticationFailureHandler(@Value("${app.oauth.frontend-redirect-uri}") String frontendRedirectUri) {
+    public OAuth2AuthenticationFailureHandler(@Value("${app.oauth.frontend-redirect-uri}") String frontendRedirectUri,
+                                              @Value("${app.oauth.desktop-redirect-uri}") String desktopRedirectUri) {
         this.frontendRedirectUri = frontendRedirectUri;
+        this.desktopRedirectUri = desktopRedirectUri;
     }
 
     @Override
     public void onAuthenticationFailure(HttpServletRequest request, HttpServletResponse response, AuthenticationException exception)
             throws IOException {
-        log.warn("[OAuth 인증 실패] errorType={} redirectUri={}", exception.getClass().getSimpleName(), frontendRedirectUri);
+        String redirectUri = OAuthLinkFlow.desktopCodeChallenge(request) != null ? desktopRedirectUri : frontendRedirectUri;
+        log.warn("[OAuth 인증 실패] errorType={} redirectUri={}", exception.getClass().getSimpleName(), redirectUri);
 
         SecurityContextHolder.clearContext();
         var session = request.getSession(false);
@@ -38,7 +42,7 @@ public class OAuth2AuthenticationFailureHandler implements AuthenticationFailure
 
         // 연동 모드였으면 로그인 실패와 구분해 ?link=failed로 돌려보낸다.
         boolean link = OAuthLinkFlow.linkUserId(request) != null;
-        String redirectUrl = UriComponentsBuilder.fromUriString(frontendRedirectUri)
+        String redirectUrl = UriComponentsBuilder.fromUriString(redirectUri)
                 .queryParam(link ? "link" : "error", link ? "failed" : "oauth_failed")
                 .build()
                 .toUriString();

@@ -72,9 +72,9 @@ public class OAuthUserService {
 
     /**
      * 신규 소셜 가입. 약관 동의 전에는 계정과 워크스페이스를 만들지 않고, 소셜 계정 정보를 담은 가입 대기 토큰만 준다.
-     * 프론트가 동의를 받아 {@link #completeSignup}을 부른다.
+     * 프론트가 동의를 받아 {@link #completeSignup}을 부른다. 데스크톱 로그인이면 PKCE challenge를 토큰에 묶는다.
      */
-    public String startSignup(String provider, OAuth2UserInfo userInfo) {
+    public String startSignup(String provider, OAuth2UserInfo userInfo, String codeChallenge) {
         String email = userInfo.getEmail();
         if (email == null || email.isBlank()) {
             log.warn("[OAuth 로그인 실패] provider={} reason=email_not_provided", provider);
@@ -82,7 +82,7 @@ public class OAuthUserService {
         }
         log.info("[OAuth 신규 가입 대기] provider={}", provider);
         return codeStore.issueSignupToken(new OAuthExchangeCodeStore.PendingSignup(
-                provider, userInfo.getProviderUserId(), email.trim().toLowerCase(), userInfo.getName()));
+                provider, userInfo.getProviderUserId(), email.trim().toLowerCase(), userInfo.getName(), codeChallenge));
     }
 
     /**
@@ -92,7 +92,7 @@ public class OAuthUserService {
     @Transactional
     public User completeSignup(OAuthSignupConsentRequest request) {
         userConsentService.validate(request.ageConfirmed(), request.termsVersion());
-        var pending = codeStore.consumeSignupToken(request.signupToken())
+        var pending = codeStore.consumeSignupToken(request.signupToken(), request.codeVerifier())
                 .orElseThrow(InvalidSignupTokenException::new);
         var existingLink = oauthAccountRepository.findByProviderAndProviderUserId(
                 pending.provider(), pending.providerUserId());

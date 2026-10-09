@@ -74,30 +74,30 @@ class OAuthUserServiceTest {
     void startSignup_newAccount_issuesPendingTokenWithoutCreatingUser() {
         when(codeStore.issueSignupToken(any())).thenReturn("signup-token");
 
-        String token = oAuthUserService.startSignup("google", googleUserInfo("google-sub-1", " New@Example.com ", "New User"));
+        String token = oAuthUserService.startSignup("google", googleUserInfo("google-sub-1", " New@Example.com ", "New User"), null);
 
         assertThat(token).isEqualTo("signup-token");
         verify(codeStore).issueSignupToken(
-                new OAuthExchangeCodeStore.PendingSignup("google", "google-sub-1", "new@example.com", "New User"));
+                new OAuthExchangeCodeStore.PendingSignup("google", "google-sub-1", "new@example.com", "New User", null));
         verify(userRepository, never()).save(any());
         verify(workspaceService, never()).createDefault(any(), any());
     }
 
     @Test
     void startSignup_noEmailProvided_throwsException() {
-        assertThatThrownBy(() -> oAuthUserService.startSignup("google", googleUserInfo("google-sub-1", null, "No Email")))
+        assertThatThrownBy(() -> oAuthUserService.startSignup("google", googleUserInfo("google-sub-1", null, "No Email"), null))
                 .isInstanceOf(OAuthEmailNotProvidedException.class);
     }
 
     @Test
     void completeSignup_withConsent_createsSeparateAccountWorkspaceAndConsent() {
-        when(codeStore.consumeSignupToken("signup-token")).thenReturn(Optional.of(
-                new OAuthExchangeCodeStore.PendingSignup("google", "google-sub-1", "new@example.com", "New User")));
+        when(codeStore.consumeSignupToken("signup-token", null)).thenReturn(Optional.of(
+                new OAuthExchangeCodeStore.PendingSignup("google", "google-sub-1", "new@example.com", "New User", null)));
         when(oauthAccountRepository.findByProviderAndProviderUserId("google", "google-sub-1"))
                 .thenReturn(Optional.empty());
 
         User user = oAuthUserService.completeSignup(
-                new OAuthSignupConsentRequest("signup-token", true, "2026-10-01", true));
+                new OAuthSignupConsentRequest("signup-token", true, "2026-10-01", true, null));
 
         assertThat(user.getEmail()).isEqualTo("new@example.com");
         assertThat(user.getProvider()).isEqualTo("google");
@@ -116,9 +116,9 @@ class OAuthUserServiceTest {
                 .when(userConsentService).validate(false, "2026-10-01");
 
         assertThatThrownBy(() -> oAuthUserService.completeSignup(
-                new OAuthSignupConsentRequest("signup-token", false, "2026-10-01", false)))
+                new OAuthSignupConsentRequest("signup-token", false, "2026-10-01", false, null)))
                 .isInstanceOf(fruition.access.user.exception.InvalidConsentException.class);
-        verify(codeStore, never()).consumeSignupToken(any());
+        verify(codeStore, never()).consumeSignupToken(any(), any());
         verify(userRepository, never()).save(any());
     }
 

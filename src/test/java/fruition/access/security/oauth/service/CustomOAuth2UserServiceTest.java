@@ -90,7 +90,7 @@ class CustomOAuth2UserServiceTest {
         callbackWithLinkTarget(null);
         org.mockito.Mockito.when(oAuthUserService.findUser(org.mockito.ArgumentMatchers.eq("google"), any()))
                 .thenReturn(java.util.Optional.empty());
-        org.mockito.Mockito.when(oAuthUserService.startSignup(org.mockito.ArgumentMatchers.eq("google"), any()))
+        org.mockito.Mockito.when(oAuthUserService.startSignup(org.mockito.ArgumentMatchers.eq("google"), any(), any()))
                 .thenReturn("signup-token");
 
         var user = service.loadUser(userRequest);

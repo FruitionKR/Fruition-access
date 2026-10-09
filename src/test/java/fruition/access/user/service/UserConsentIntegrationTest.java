@@ -51,7 +51,7 @@ class UserConsentIntegrationTest {
         String providerUserId = "google-" + UUID.randomUUID();
         String email = providerUserId + "@example.com";
         String token = codeStore.issueSignupToken(
-                new OAuthExchangeCodeStore.PendingSignup("google", providerUserId, email, "새 사용자"));
+                new OAuthExchangeCodeStore.PendingSignup("google", providerUserId, email, "새 사용자", null));
 
         signupConsent(token, false, "2026-10-01")
                 .andExpect(status().isBadRequest())
@@ -87,7 +87,7 @@ class UserConsentIntegrationTest {
         jdbc.update("INSERT INTO user_mfa(user_id, secret_cipher, secret_nonce, activated_at) VALUES (?, ?, ?, now())",
                 userId, new byte[]{1}, new byte[]{1});
         String token = codeStore.issueSignupToken(
-                new OAuthExchangeCodeStore.PendingSignup("google", providerUserId, userId + "@example.com", "새 사용자"));
+                new OAuthExchangeCodeStore.PendingSignup("google", providerUserId, userId + "@example.com", "새 사용자", null));
 
         signupConsent(token, true, "2026-10-01")
                 .andExpect(status().isOk())

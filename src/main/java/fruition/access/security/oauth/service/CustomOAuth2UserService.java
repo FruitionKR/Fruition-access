@@ -62,7 +62,8 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                 attributes.put(INTERNAL_USER_ID_ATTRIBUTE, user.get().getId());
             } else {
                 // 계정이 아직 없다. 인증 주체 이름은 비워 둘 수 없어 가입 대기 토큰을 그대로 쓴다.
-                String signupToken = oAuthUserService.startSignup(registrationId, userInfo);
+                String signupToken = oAuthUserService.startSignup(registrationId, userInfo,
+                        OAuthLinkFlow.currentDesktopCodeChallenge());
                 attributes.put(SIGNUP_TOKEN_ATTRIBUTE, signupToken);
                 attributes.put(INTERNAL_USER_ID_ATTRIBUTE, signupToken);
             }
