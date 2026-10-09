@@ -12,13 +12,16 @@ import fruition.access.workspace.dto.WorkspaceRenameRequest;
 import fruition.access.workspace.dto.WorkspaceResponse;
 import fruition.access.workspace.dto.WorkspaceTrashResponse;
 import fruition.access.workspace.exception.WorkspaceNotFoundException;
+import fruition.access.workspace.exception.WorkspaceTrashExpiredException;
 import fruition.access.workspace.repository.WorkspaceMemberRepository;
 import fruition.access.workspace.repository.WorkspaceRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
@@ -37,19 +40,23 @@ public class WorkspaceService {
     private final DocumentInternalClient documentInternalClient;
     private final IdempotencyService idempotencyService;
     private final AuthzProjectionStore authzProjectionStore;
+    /** ExpiredRecordCleanupJob이 영구 삭제하는 기준. 이 기간이 지난 휴지통 워크스페이스는 보이지도 복구되지도 않는다. */
+    private final Duration trashRetention;
 
     public WorkspaceService(WorkspaceRepository workspaceRepository,
                             WorkspaceMemberRepository workspaceMemberRepository,
                             UserRepository userRepository,
                             DocumentInternalClient documentInternalClient,
                             IdempotencyService idempotencyService,
-                            AuthzProjectionStore authzProjectionStore) {
+                            AuthzProjectionStore authzProjectionStore,
+                            @Value("${app.cleanup.workspace-trash-retention:30d}") Duration trashRetention) {
         this.workspaceRepository = workspaceRepository;
         this.workspaceMemberRepository = workspaceMemberRepository;
         this.userRepository = userRepository;
         this.documentInternalClient = documentInternalClient;
         this.idempotencyService = idempotencyService;
         this.authzProjectionStore = authzProjectionStore;
+        this.trashRetention = trashRetention;
     }
 
     @Transactional
@@ -151,6 +158,10 @@ public class WorkspaceService {
                     if (workspace.getDeletedAt() == null) {
                         throw new WorkspaceNotFoundException(workspaceId);
                     }
+                    // 영구 삭제가 document 파기 실패로 미뤄진 동안에도 데이터 일부가 지워졌을 수 있어 복구를 막는다.
+                    if (trashExpired(workspace)) {
+                        throw new WorkspaceTrashExpiredException(workspaceId);
+                    }
                     workspace.restore(Instant.now());
                     // 복구 즉시 캐시된 NONE 판정이 남지 않도록 projection을 무효화한다.
                     authzProjectionStore.evictWorkspace(workspaceId);
@@ -161,6 +172,7 @@ public class WorkspaceService {
     public WorkspaceTrashResponse trash(String userId) {
         return new WorkspaceTrashResponse(
                 workspaceMemberRepository.findDeletedOwnedWorkspaces(userId, WorkspaceRole.OWNER).stream()
+                        .filter(workspace -> !trashExpired(workspace))
                         .map(workspace -> new WorkspaceTrashResponse.WorkspaceTrashItem(
                                 workspace.getId(),
                                 workspace.getName(),
@@ -169,6 +181,10 @@ public class WorkspaceService {
                         ))
                         .toList()
         );
+    }
+
+    private boolean trashExpired(Workspace workspace) {
+        return workspace.getDeletedAt().isBefore(Instant.now().minus(trashRetention));
     }
 
     private Workspace createWorkspace(String userId, String name) {

@@ -80,23 +80,39 @@ public class ExpiredRecordCleanupJob {
                 verifications, refreshTokens, invitations, idempotency, workspaces);
     }
 
+    /**
+     * 대상이 없을 때까지 배치를 반복한다. (deleted_at, id) 순으로 지나온 자리 뒤만 조회하므로 실패하거나 건너뛴
+     * 워크스페이스가 다음 배치의 앞을 막지 않고, 같은 실행에서 다시 잡히지도 않는다. 다음 실행에서 다시 시도한다.
+     */
     private int purgeTrashedWorkspaces(Instant now) {
         Timestamp cutoff = before(now, workspaceTrashRetention);
-        List<String> candidates = jdbc.queryForList(
-                "SELECT id FROM workspaces WHERE deleted_at < ? ORDER BY deleted_at LIMIT ?",
-                String.class, cutoff, WORKSPACE_BATCH_SIZE);
+        Candidate last = new Candidate("", new Timestamp(0));
         int purged = 0;
-        for (String workspaceId : candidates) {
-            try {
-                Boolean deleted = transactionTemplate.execute(status -> purgeWorkspace(workspaceId, cutoff));
-                if (Boolean.TRUE.equals(deleted)) {
-                    purged++;
-                }
-            } catch (RuntimeException e) {
-                log.warn("[휴지통 워크스페이스 영구 삭제 실패, 다음 실행에서 다시 시도] workspaceId={}", workspaceId, e);
+        while (true) {
+            List<Candidate> candidates = jdbc.query("""
+                    SELECT id, deleted_at FROM workspaces
+                    WHERE deleted_at < ? AND (deleted_at, id) > (?, ?)
+                    ORDER BY deleted_at, id LIMIT ?
+                    """, (rs, n) -> new Candidate(rs.getString("id"), rs.getTimestamp("deleted_at")),
+                    cutoff, last.deletedAt(), last.id(), WORKSPACE_BATCH_SIZE);
+            if (candidates.isEmpty()) {
+                return purged;
             }
+            for (Candidate candidate : candidates) {
+                try {
+                    Boolean deleted = transactionTemplate.execute(status -> purgeWorkspace(candidate.id(), cutoff));
+                    if (Boolean.TRUE.equals(deleted)) {
+                        purged++;
+                    }
+                } catch (RuntimeException e) {
+                    log.warn("[휴지통 워크스페이스 영구 삭제 실패, 다음 실행에서 다시 시도] workspaceId={}", candidate.id(), e);
+                }
+            }
+            last = candidates.get(candidates.size() - 1);
         }
-        return purged;
+    }
+
+    private record Candidate(String id, Timestamp deletedAt) {
     }
 
     /**

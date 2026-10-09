@@ -21,11 +21,14 @@ import org.springframework.web.client.RestClientException;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /** 기한이 지난 기록과 휴지통 워크스페이스만 지워지는지 실제 Postgres FK·트리거로 확인한다. */
@@ -97,6 +100,22 @@ class ExpiredRecordCleanupJobIntegrationTest {
                 + "WHERE workspace_id = ? AND left_at IS NOT NULL", Integer.class, expired)).isOne();
         assertThat(exists("workspaces", failing)).isTrue();
         assertThat(exists("workspaces", recent)).isTrue();
+    }
+
+    @Test
+    void purgesAllBatchesWithoutRetryingFailedWorkspaceInSameRun() {
+        String owner = user();
+        // 가장 오래된 실패 건이 첫 배치 맨 앞에 온다. 같은 시각의 나머지는 배치 크기(100)를 넘긴다.
+        String failing = trashedWorkspace(owner, ago(40));
+        doThrow(new RestClientException("document 다운")).when(documentClient).purgeWorkspace(failing);
+        List<String> rest = IntStream.range(0, 101).mapToObj(i -> trashedWorkspace(owner, ago(31))).toList();
+
+        job.run(now);
+
+        verify(documentClient, times(1)).purgeWorkspace(failing);
+        assertThat(exists("workspaces", failing)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM workspaces WHERE id = ANY(?)", Integer.class,
+                (Object) rest.toArray(String[]::new))).isZero();
     }
 
     private String user() {
