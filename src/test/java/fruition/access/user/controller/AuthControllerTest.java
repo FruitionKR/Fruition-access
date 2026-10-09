@@ -2,6 +2,7 @@ package fruition.access.user.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fruition.shared.security.JwtAuthenticationFilter;
+import fruition.access.user.service.AccountDeletionService;
 import fruition.shared.security.JwtTokenProvider;
 import fruition.access.security.SecurityConfig;
 import fruition.access.security.oauth.service.CustomOAuth2UserService;
@@ -85,6 +86,7 @@ class AuthControllerTest {
     @MockBean EmailAvailabilityRateLimiter emailAvailabilityRateLimiter;
     @MockBean LoginAttemptLimiter loginAttemptLimiter;
     @MockBean PasswordChangeAttemptLimiter passwordChangeAttemptLimiter;
+    @MockBean AccountDeletionService accountDeletionService;
     @MockBean EmailVerificationService emailVerificationService;
     @MockBean CustomOAuth2UserService customOAuth2UserService;
     @MockBean fruition.access.user.service.OAuthUserService oAuthUserService;

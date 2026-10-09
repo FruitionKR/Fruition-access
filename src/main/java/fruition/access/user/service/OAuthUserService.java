@@ -155,10 +155,9 @@ public class OAuthUserService {
         User user = new User(userId, email, provider, displayName, null);
         userRepository.save(user);
         workspaceService.createDefault(user.getId(), user.getDisplayName());
-        log.info("[OAuth 신규 사용자 생성] provider={} userId={} email={} displayNameSource={}",
+        log.info("[OAuth 신규 사용자 생성] provider={} userId={} displayNameSource={}",
                 provider,
                 user.getId(),
-                user.getEmail(),
                 displayNameSource);
         return user;
     }

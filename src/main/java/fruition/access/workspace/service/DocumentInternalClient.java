@@ -87,4 +87,14 @@ public class DocumentInternalClient {
                 .retrieve()
                 .toBodilessEntity();
     }
+
+    /** 탈퇴 사용자가 공유 워크스페이스에 남긴 개인 데이터를 document에서 지운다. 같은 요청을 다시 보내도 결과가 같다. */
+    public void purgeUser(String userId) {
+        purgeClient.post()
+                .uri("/internal/purge/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("user_id", userId))
+                .retrieve()
+                .toBodilessEntity();
+    }
 }

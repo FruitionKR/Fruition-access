@@ -17,6 +17,7 @@ DB migration 원본은 `src/main/resources/db/migration/`입니다. 다른 서�
 | workspace_members | access-svc | 멤버십(N:M 대비) | 복합 PK `(workspace_id, user_id)`, `role`(owner/member) |
 | workspace_membership_periods | access-svc | 멤버였던 기간 이력(탈퇴·제거 후에도 보존) | PK `(workspace_id, user_id, joined_at)`, `left_at` NULL이면 현재 멤버. `workspace_members` INSERT·DELETE trigger가 기록, FK 없음; V21 |
 | workspace_invitations | access-svc | 이메일 초대(수락 전 상태) | `token_hash`(SHA-256, 원문 미저장), `expires_at`, `accepted_at`/`accepted_by`/`revoked_at`. 대기 중 초대는 `(workspace_id, email)` partial unique라 재초대는 새 행이 아니라 재발송이다. 계정이 `(email, provider)`로 분리돼 있어 어느 계정이 멤버가 될지는 수락 시점에 정해진다 |
+| data_purge_requests | access-svc | 회원 탈퇴 뒤 document에 요청할 데이터 파기 | PK `(kind, target_id)`, `kind`는 `user`(공유 워크스페이스의 개인 데이터)·`workspace`(혼자 쓰던 워크스페이스). `attempts`·`next_attempt_at`·`last_error`로 재시도. 계정이 지워진 뒤에도 남아야 해 FK 없음; V22 |
 
 ### 보관 기간과 정리
 
@@ -29,5 +30,7 @@ DB migration 원본은 `src/main/resources/db/migration/`입니다. 다른 서�
 | workspace_invitations | 수락·취소·만료 중 가장 이른 시각 + 30일 |
 | idempotency_records | `expires_at`(응답 보관 24시간)이 지나면 |
 | workspaces (휴지통) | `deleted_at` + 30일. document 내부 API `POST /internal/purge/workspaces`로 문서·채팅·회의·파일을 먼저 지운 뒤 행을 지운다. 멤버십·초대·아이콘은 CASCADE로 지워지고 `workspace_membership_periods`에는 `left_at`이 남는다. document 호출이 실패하면 행을 남겨 다음 실행에서 다시 시도한다 |
+
+회원 탈퇴는 계정을 지우는 트랜잭션에서 `data_purge_requests`를 남기고, `DataPurgeRequestJob`이 1분마다 document 파기를 호출한다. 성공하면 요청을 지우고(워크스페이스는 행도 지운다), 실패하면 1분부터 두 배씩 늘려 최대 6시간 간격으로 다시 시도한다.
 
 기록 정리는 조건부 DELETE라 여러 replica가 동시에 돌아도 결과가 같다. 워크스페이스는 행을 `FOR UPDATE SKIP LOCKED`로 잡고 처리해 한 replica만 document를 호출한다.

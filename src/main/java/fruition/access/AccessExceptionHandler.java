@@ -16,7 +16,10 @@ import fruition.access.user.exception.InvalidVerificationTokenException;
 import fruition.access.user.exception.LoginRateLimitedException;
 import fruition.access.user.exception.PasswordChangeRateLimitedException;
 import fruition.access.user.exception.OAuthEmailNotProvidedException;
+import fruition.access.user.dto.AccountDeletionBlockedResponse;
+import fruition.access.user.exception.AccountDeletionBlockedException;
 import fruition.access.user.exception.PasswordLoginUnavailableException;
+import fruition.access.user.exception.ReauthenticationRequiredException;
 import fruition.access.user.exception.SessionNotFoundException;
 import fruition.access.user.exception.InvalidOAuthLinkCodeException;
 import fruition.access.user.exception.OAuthAccountAlreadyLinkedException;
@@ -299,6 +302,24 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of("OAUTH_EMAIL_NOT_PROVIDED", e.getMessage()));
+    }
+
+    @ExceptionHandler(ReauthenticationRequiredException.class)
+    public ResponseEntity<ErrorResponse> handleReauthenticationRequired(ReauthenticationRequiredException e) {
+        logHandled(e, HttpStatus.UNAUTHORIZED, "REAUTHENTICATION_REQUIRED");
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("REAUTHENTICATION_REQUIRED", e.getMessage()));
+    }
+
+    @ExceptionHandler(AccountDeletionBlockedException.class)
+    public ResponseEntity<AccountDeletionBlockedResponse> handleAccountDeletionBlocked(AccountDeletionBlockedException e) {
+        logHandled(e, HttpStatus.CONFLICT, "SOLE_OWNER_OF_SHARED_WORKSPACE");
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(new AccountDeletionBlockedResponse(
+                        ErrorResponse.of("SOLE_OWNER_OF_SHARED_WORKSPACE", e.getMessage()).error(),
+                        e.getWorkspaces()));
     }
 
     @ExceptionHandler(PasswordLoginUnavailableException.class)

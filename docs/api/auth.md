@@ -4,7 +4,7 @@
 
 가입·이메일 인증·로그인·토큰 API다.
 
-- API 수: 23
+- API 수: 24
 - 호출 연결: [access-svc 호출 연결 요약](README.md#호출-연결-요약) 참고
 
 ## API 목차
@@ -18,6 +18,7 @@
 | [`POST /api/auth/logout`](#summary-post-api-auth-logout) | HttpOnly refresh 쿠키를 폐기하고 제거합니다. |
 | [`GET /api/auth/me`](#summary-get-api-auth-me) | access token으로 인증된 사용자의 프로필을 반환합니다. |
 | [`PATCH /api/auth/me`](#summary-patch-api-auth-me) | 인증된 사용자의 표시 이름을 변경합니다. |
+| [`DELETE /api/auth/me`](#summary-delete-api-auth-me) | 본인을 다시 확인한 뒤 계정을 지우고 데이터 파기를 요청합니다(회원 탈퇴). |
 | [`PUT /api/auth/me/email`](#summary-put-api-auth-me-email) | 새 이메일로 받은 인증번호 토큰으로 계정 이메일을 바꿉니다. |
 | [`GET /api/auth/me/sessions`](#summary-get-api-auth-me-sessions) | 폐기되지 않은 로그인 세션을 반환합니다. |
 | [`DELETE /api/auth/me/sessions/{session_id}`](#summary-delete-api-auth-me-sessions-session-id) | 지정한 세션의 refresh token을 폐기합니다. |
@@ -738,6 +739,57 @@ curl -X PATCH "$ACCESS/api/auth/me" \
 - 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-patch-api-auth-me)
+
+</details>
+
+<a id="summary-delete-api-auth-me"></a>
+### `DELETE /api/auth/me`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 회원 탈퇴. 본인을 다시 확인한 뒤 계정을 지우고, 혼자 쓰던 워크스페이스와 document 데이터 파기를 요청합니다. |
+| 입력 | **Header** — `Authorization: Bearer <access_token>`<br>**Body**(선택) — `AccountDeletionRequest` `{ "password", "mfa_code" }` |
+| 출력 | `204` 탈퇴 완료. refresh 쿠키도 `Max-Age=0`으로 지운다 |
+| 조건 | 비밀번호 계정은 `password`가 맞아야 한다.<br>비밀번호가 없는 소셜 계정은 10분 안에 로그인(OAuth code 교환·MFA 로그인 포함)해 받은 access token이어야 한다. refresh로 받은 토큰은 해당하지 않는다.<br>MFA를 켰으면 `mfa_code`도 맞아야 한다. |
+| 주요 오류 | `401` 비밀번호·MFA 코드가 다름 / `REAUTHENTICATION_REQUIRED` 최근 로그인 기록 없음<br>`409` `SOLE_OWNER_OF_SHARED_WORKSPACE` 다른 멤버가 있는 워크스페이스의 유일한 OWNER<br>`429` 비밀번호 확인 시도 제한(비밀번호 변경과 같은 제한) |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-delete-api-auth-me"></a>
+### `DELETE /api/auth/me` 상세
+
+#### 1. 처리
+
+한 트랜잭션에서 다음을 한다.
+
+1. 사용자가 속한 워크스페이스의 OWNER 행을 잠그고 멤버 구성을 읽는다(다른 OWNER의 동시 강등·탈퇴로 OWNER 없는 워크스페이스가 남지 않게 한다).
+2. 활성 워크스페이스 중 다른 멤버가 있는데 OWNER가 본인뿐인 곳이 있으면 `409`로 거절한다. 먼저 다른 멤버를 OWNER로 올려야 한다.
+3. 혼자 쓰던 워크스페이스와, 본인만 OWNER인 휴지통 워크스페이스는 파기 대상으로 정한다.
+4. `data_purge_requests`에 사용자·워크스페이스 파기 요청을 넣는다.
+5. refresh token을 지우고 `users` 행을 지운다. OAuth 연결·MFA·멤버십·멱등 기록은 CASCADE로 지워지고 멤버십 기간 이력에는 `left_at`이 남는다.
+
+커밋 뒤 `DataPurgeRequestJob`(1분 주기)이 document `POST /internal/purge/users`, `POST /internal/purge/workspaces`를 호출하고,
+워크스페이스 파기가 끝나면 `workspaces` 행을 지운다. 실패하면 1분부터 두 배씩 늘려 최대 6시간 간격으로 다시 시도하며, 탈퇴 자체는 되돌리지 않는다.
+
+탈퇴 직후 같은 이메일로 다시 가입할 수 있다. 지운 계정의 refresh token은 더 이상 쓸 수 없다.
+
+#### 2. 409 응답
+
+```json
+{
+  "error": { "code": "SOLE_OWNER_OF_SHARED_WORKSPACE", "message": "다른 멤버가 있는 워크스페이스의 OWNER를 먼저 넘겨 주세요." },
+  "workspaces": [ { "id": "ws_9d47a0e9a6324341b47562553b75f92a", "name": "디자인팀" } ]
+}
+```
+
+#### 3. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
+- 처리: `src/main/java/fruition/access/user/service/AccountDeletionService.java`, 파기 호출 `src/main/java/fruition/access/cleanup/DataPurgeRequestJob.java`
+- 하위 호출: document-svc `POST /internal/purge/users`, `POST /internal/purge/workspaces`
+
+[↑ 요약으로 돌아가기](#summary-delete-api-auth-me)
 
 </details>
 

@@ -1,5 +1,9 @@
 package fruition.access.user.controller;
 
+import fruition.access.user.dto.AccountDeletionBlockedResponse;
+import fruition.access.user.dto.AccountDeletionRequest;
+import fruition.access.user.service.AccountDeletionService;
+import fruition.shared.security.JwtTokenProvider;
 import fruition.access.user.dto.EmailAvailabilityRequest;
 import fruition.access.user.dto.OAuthLinkConfirmRequest;
 import fruition.access.user.dto.OAuthLinkStartResponse;
@@ -58,9 +62,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.CookieValue;
+
+import java.time.Instant;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -77,6 +84,8 @@ public class AuthController {
     private final PasswordChangeAttemptLimiter passwordChangeAttemptLimiter;
     private final EmailVerificationService emailVerificationService;
     private final OAuthUserService oAuthUserService;
+    private final AccountDeletionService accountDeletionService;
+    private final JwtTokenProvider jwtTokenProvider;
     private final boolean refreshCookieSecure;
     private final long refreshTokenExpirationSeconds;
 
@@ -87,6 +96,8 @@ public class AuthController {
                           PasswordChangeAttemptLimiter passwordChangeAttemptLimiter,
                           EmailVerificationService emailVerificationService,
                           OAuthUserService oAuthUserService,
+                          AccountDeletionService accountDeletionService,
+                          JwtTokenProvider jwtTokenProvider,
                           @Value("${app.auth.refresh-cookie-secure}") boolean refreshCookieSecure,
                           @Value("${app.jwt.refresh-token-expiration-seconds}") long refreshTokenExpirationSeconds) {
         this.userService = userService;
@@ -97,6 +108,8 @@ public class AuthController {
         this.passwordChangeAttemptLimiter = passwordChangeAttemptLimiter;
         this.emailVerificationService = emailVerificationService;
         this.oAuthUserService = oAuthUserService;
+        this.accountDeletionService = accountDeletionService;
+        this.jwtTokenProvider = jwtTokenProvider;
         this.refreshCookieSecure = refreshCookieSecure;
         this.refreshTokenExpirationSeconds = refreshTokenExpirationSeconds;
     }
@@ -309,6 +322,42 @@ public class AuthController {
         }
         passwordChangeAttemptLimiter.recordSuccess(userId, clientAddress);
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "회원 탈퇴",
+            description = "본인을 다시 확인한 뒤 계정을 지웁니다. 비밀번호 계정은 password를, 소셜 전용 계정은"
+                    + " 10분 안에 다시 로그인해 받은 access token을 씁니다. MFA를 켰으면 mfa_code도 필요합니다."
+                    + " 혼자 쓰던 워크스페이스는 함께 지우고, 문서·채팅·회의 데이터는 탈퇴 직후 순서대로 파기합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "탈퇴 완료. refresh 쿠키도 제거한다"),
+        @ApiResponse(responseCode = "401", description = "인증되지 않았거나 비밀번호·MFA 코드가 다름,"
+                + " 또는 소셜 계정이 최근에 로그인하지 않음(REAUTHENTICATION_REQUIRED)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "409", description = "다른 멤버가 있는 워크스페이스의 유일한 OWNER",
+            content = @Content(schema = @Schema(implementation = AccountDeletionBlockedResponse.class))),
+        @ApiResponse(responseCode = "429", description = "비밀번호·MFA 확인 시도 횟수 제한 초과",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteAccount(
+            @AuthenticationPrincipal String userId,
+            @Valid @RequestBody(required = false) AccountDeletionRequest request,
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+            HttpServletRequest servletRequest) {
+        AccountDeletionRequest body = request == null ? new AccountDeletionRequest(null, null) : request;
+        Instant authTime = jwtTokenProvider.extractAuthTime(authorization.substring("Bearer ".length())).orElse(null);
+        // 비밀번호 확인은 비밀번호 변경과 같은 시도 제한을 받는다.
+        String clientAddress = ClientAddressResolver.of(servletRequest);
+        passwordChangeAttemptLimiter.check(userId, clientAddress);
+        try {
+            accountDeletionService.delete(userId, body, authTime);
+        } catch (InvalidCredentialsException e) {
+            passwordChangeAttemptLimiter.recordFailure(userId, clientAddress);
+            throw e;
+        }
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, refreshCookie("", 0).toString())
+                .build();
     }
 
     @Operation(summary = "이메일 변경",

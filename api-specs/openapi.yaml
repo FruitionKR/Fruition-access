@@ -212,6 +212,44 @@ paths:
       tags:
       - Auth
   /api/auth/me:
+    delete:
+      description: "본인을 다시 확인한 뒤 계정을 지웁니다. 비밀번호 계정은 password를, 소셜 전용 계정은 10분 안에 다시 로그인해 받은 access token을 씁니다. MFA를 켰으면 mfa_code도 필요합니다. 혼자 쓰던 워크스페이스는 함께 지우고, 문서·채팅·회의 데이터는 탈퇴 직후 순서대로 파기합니다."
+      operationId: deleteAccount
+      parameters:
+      - in: header
+        name: Authorization
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountDeletionRequest"
+      responses:
+        "204":
+          description: 탈퇴 완료. refresh 쿠키도 제거한다
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: "인증되지 않았거나 비밀번호·MFA 코드가 다름, 또는 소셜 계정이 최근에 로그인하지 않음(REAUTHENTICATION_REQUIRED)"
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/AccountDeletionBlockedResponse"
+          description: 다른 멤버가 있는 워크스페이스의 유일한 OWNER
+        "429":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 비밀번호·MFA 확인 시도 횟수 제한 초과
+      summary: 회원 탈퇴
+      tags:
+      - Auth
     get:
       description: access token으로 인증된 사용자의 프로필을 반환합니다.
       operationId: me
@@ -1518,6 +1556,30 @@ paths:
       - internal-authz-controller
 components:
   schemas:
+    AccountDeletionBlockedResponse:
+      type: object
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+        workspaces:
+          type: array
+          description: 다른 멤버에게 OWNER를 넘겨야 하는 워크스페이스
+          items:
+            $ref: "#/components/schemas/Workspace"
+    AccountDeletionRequest:
+      type: object
+      properties:
+        mfa_code:
+          type: string
+          description: MFA를 켠 계정의 인증 앱 코드 또는 복구 코드
+          example: 482917
+          maxLength: 64
+          minLength: 0
+        password:
+          type: string
+          description: 비밀번호 계정의 현재 비밀번호. 소셜 전용 계정은 비우고 10분 안에 다시 로그인한 토큰으로 요청한다.
+          maxLength: 128
+          minLength: 0
     AiModelSelectionRequest:
       type: object
       description: 설정할 provider와 model 조합. 활성 catalog에 있는 짝만 허용된다.
@@ -2013,6 +2075,13 @@ components:
           type: string
           description: 1회용 토큰. signup 또는 password-reset 요청에 그대로 실어 보낸다.
           example: EXAMPLE-verification-token-not-real-0000000
+    Workspace:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
     WorkspaceAiModelRequest:
       type: object
       description: 워크스페이스 AI 모델 설정 변경 요청. OWNER만 호출할 수 있다.

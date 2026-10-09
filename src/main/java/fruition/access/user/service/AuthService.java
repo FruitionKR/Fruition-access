@@ -115,7 +115,7 @@ public class AuthService {
             return LoginResponse.mfaRequired(issueMfaChallenge(user));
         }
 
-        LoginResponse response = issueTokenPair(user);
+        LoginResponse response = issueTokenPair(user, Instant.now());
         log.info("[로그인 성공] userId={} email={}", user.getId(), user.getEmail());
         return response;
     }
@@ -133,7 +133,7 @@ public class AuthService {
         User user = userRepository.findById(tokenRow.getUserId())
                 .orElseThrow(InvalidRefreshTokenException::new);
 
-        return issueTokenPair(user);
+        return issueTokenPair(user, null);
     }
 
     @Transactional
@@ -159,7 +159,7 @@ public class AuthService {
             return LoginResponse.mfaRequired(issueMfaChallenge(user));
         }
 
-        LoginResponse response = issueTokenPair(user);
+        LoginResponse response = issueTokenPair(user, Instant.now());
         log.info("[OAuth code 교환 성공] userId={} email={}", user.getId(), user.getEmail());
         return response;
     }
@@ -359,7 +359,7 @@ public class AuthService {
         mfaService.verify(user.getId(), request.code());
         challenge.consume();
 
-        LoginResponse response = issueTokenPair(user);
+        LoginResponse response = issueTokenPair(user, Instant.now());
         log.info("[로그인 성공] userId={} email={} mfa=verified", user.getId(), user.getEmail());
         return response;
     }
@@ -374,8 +374,9 @@ public class AuthService {
         return token;
     }
 
-    private LoginResponse issueTokenPair(User user) {
-        String accessToken = jwtTokenProvider.generateAccessToken(user.getId(), user.getEmail());
+    /** {@code authTime}은 직접 로그인했을 때만 넘긴다. refresh로 이어 받은 토큰은 최근 인증으로 보지 않는다. */
+    private LoginResponse issueTokenPair(User user, Instant authTime) {
+        String accessToken = jwtTokenProvider.generateAccessToken(user.getId(), user.getEmail(), authTime);
 
         String refreshTokenValue = generateOpaqueToken();
         Instant expiresAt = Instant.now().plusSeconds(refreshTokenExpirationSeconds);
