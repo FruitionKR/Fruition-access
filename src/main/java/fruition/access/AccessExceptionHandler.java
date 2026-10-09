@@ -189,9 +189,9 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
 
     @ExceptionHandler(WorkspaceTrashExpiredException.class)
     public ResponseEntity<ErrorResponse> handleWorkspaceTrashExpired(WorkspaceTrashExpiredException e) {
-        logHandled(e, HttpStatus.GONE, "WORKSPACE_TRASH_EXPIRED");
+        logHandled(e, HttpStatus.CONFLICT, "WORKSPACE_TRASH_EXPIRED");
         return ResponseEntity
-                .status(HttpStatus.GONE)
+                .status(HttpStatus.CONFLICT)
                 .body(ErrorResponse.of("WORKSPACE_TRASH_EXPIRED", e.getMessage()));
     }
 

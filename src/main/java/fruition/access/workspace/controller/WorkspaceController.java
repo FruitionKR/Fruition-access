@@ -187,9 +187,7 @@ public class WorkspaceController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(responseCode = "404", description = "삭제 workspace 또는 소유권을 찾을 수 없음",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @ApiResponse(responseCode = "409", description = "Idempotency-Key 충돌",
-            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @ApiResponse(responseCode = "410", description = "휴지통 보관 기간이 지나 복구할 수 없음(WORKSPACE_TRASH_EXPIRED)",
+        @ApiResponse(responseCode = "409", description = "Idempotency-Key 충돌, 또는 휴지통 보관 기간이 지나 복구할 수 없음(WORKSPACE_TRASH_EXPIRED)",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PostMapping("/{workspace_id}/restore")

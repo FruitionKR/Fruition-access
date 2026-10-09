@@ -1220,7 +1220,7 @@ HTTP/1.1 204 No Content
 | 입력 | **Path** — `workspace_id`: `string`<br>**Header** — `Idempotency-Key`(선택): `string` |
 | 출력 | `200` 복구 성공 — `WorkspaceLifecycleResponse` |
 | 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다.<br>인증된 사용자만 호출할 수 있다.<br>path의 `workspace_id`에 대한 활성 멤버십을 검증한다. |
-| 주요 오류 | `400` 잘못된 Idempotency-Key — `ErrorResponse`<br>`404` 삭제 workspace 또는 소유권을 찾을 수 없음 — `ErrorResponse`<br>`409` Idempotency-Key 충돌 — `ErrorResponse`<br>`410` 휴지통 보관 기간이 지나 복구할 수 없음(`WORKSPACE_TRASH_EXPIRED`) — `ErrorResponse` |
+| 주요 오류 | `400` 잘못된 Idempotency-Key — `ErrorResponse`<br>`404` 삭제 workspace 또는 소유권을 찾을 수 없음 — `ErrorResponse`<br>`409` Idempotency-Key 충돌, 또는 휴지통 보관 기간이 지나 복구할 수 없음(`WORKSPACE_TRASH_EXPIRED`) — `ErrorResponse` |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -1234,7 +1234,7 @@ HTTP/1.1 204 No Content
 
 #### 2. 목적
 
-소프트 삭제한 워크스페이스와 기존 하위 데이터의 접근을 복구합니다. 삭제하고 휴지통 보관 기간(기본 30일)이 지났으면 `410 WORKSPACE_TRASH_EXPIRED`로 거절한다. 영구 삭제가 document 파기 실패로 미뤄져 행이 남아 있어도 데이터 일부가 이미 지워졌을 수 있기 때문이다.
+소프트 삭제한 워크스페이스와 기존 하위 데이터의 접근을 복구합니다. 삭제하고 휴지통 보관 기간(기본 30일)이 지났으면 `409 WORKSPACE_TRASH_EXPIRED`로 거절한다(document의 문서·폴더 휴지통 만료와 같은 상태 코드). 영구 삭제가 document 파기 실패로 미뤄져 행이 남아 있어도 데이터 일부가 이미 지워졌을 수 있기 때문이다.
 
 #### 3. Auth 필요 여부
 

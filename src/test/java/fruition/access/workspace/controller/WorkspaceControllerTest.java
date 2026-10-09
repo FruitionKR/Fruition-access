@@ -158,14 +158,14 @@ class WorkspaceControllerTest {
     }
 
     @Test
-    void restore_pastTrashRetention_returns410() throws Exception {
+    void restore_pastTrashRetention_returns409() throws Exception {
         when(workspaceService.restore(USER_ID, "ws_aaa11111", "restore-key"))
                 .thenThrow(new WorkspaceTrashExpiredException("ws_aaa11111"));
 
         mockMvc.perform(post("/api/workspaces/ws_aaa11111/restore")
                         .header("Authorization", bearerToken())
                         .header("Idempotency-Key", "restore-key"))
-                .andExpect(status().isGone())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("WORKSPACE_TRASH_EXPIRED"));
     }
 

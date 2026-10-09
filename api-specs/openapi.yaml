@@ -1465,13 +1465,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-          description: Idempotency-Key 충돌
-        "410":
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-          description: 휴지통 보관 기간이 지나 복구할 수 없음(WORKSPACE_TRASH_EXPIRED)
+          description: "Idempotency-Key 충돌, 또는 휴지통 보관 기간이 지나 복구할 수 없음(WORKSPACE_TRASH_EXPIRED)"
       summary: 워크스페이스 복구
       tags:
       - Workspaces
