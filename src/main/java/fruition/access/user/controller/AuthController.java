@@ -2,7 +2,10 @@ package fruition.access.user.controller;
 
 import fruition.access.user.dto.AccountDeletionBlockedResponse;
 import fruition.access.user.dto.AccountDeletionRequest;
+import fruition.access.user.dto.ConsentRequest;
+import fruition.access.user.dto.OAuthSignupConsentRequest;
 import fruition.access.user.service.AccountDeletionService;
+import fruition.access.user.service.UserConsentService;
 import fruition.shared.security.JwtTokenProvider;
 import fruition.access.user.dto.EmailAvailabilityRequest;
 import fruition.access.user.dto.OAuthLinkConfirmRequest;
@@ -85,6 +88,7 @@ public class AuthController {
     private final EmailVerificationService emailVerificationService;
     private final OAuthUserService oAuthUserService;
     private final AccountDeletionService accountDeletionService;
+    private final UserConsentService userConsentService;
     private final JwtTokenProvider jwtTokenProvider;
     private final boolean refreshCookieSecure;
     private final long refreshTokenExpirationSeconds;
@@ -97,6 +101,7 @@ public class AuthController {
                           EmailVerificationService emailVerificationService,
                           OAuthUserService oAuthUserService,
                           AccountDeletionService accountDeletionService,
+                          UserConsentService userConsentService,
                           JwtTokenProvider jwtTokenProvider,
                           @Value("${app.auth.refresh-cookie-secure}") boolean refreshCookieSecure,
                           @Value("${app.jwt.refresh-token-expiration-seconds}") long refreshTokenExpirationSeconds) {
@@ -109,6 +114,7 @@ public class AuthController {
         this.emailVerificationService = emailVerificationService;
         this.oAuthUserService = oAuthUserService;
         this.accountDeletionService = accountDeletionService;
+        this.userConsentService = userConsentService;
         this.jwtTokenProvider = jwtTokenProvider;
         this.refreshCookieSecure = refreshCookieSecure;
         this.refreshTokenExpirationSeconds = refreshTokenExpirationSeconds;
@@ -263,6 +269,41 @@ public class AuthController {
     @PostMapping("/oauth/exchange")
     public ResponseEntity<LoginResponse> exchangeOAuthCode(@Valid @RequestBody OAuthExchangeRequest request) {
         return authenticatedResponse(authService.exchangeOAuthCode(request));
+    }
+
+    @Operation(summary = "소셜 신규 가입 확정",
+            description = "소셜 로그인으로 처음 들어온 사용자는 OAuth 콜백 주소에 ?signup_token=이 붙어 돌아옵니다."
+                    + " 만 18세 이상 확인과 이용약관 동의를 받아 이 API로 보내면 계정과 기본 워크스페이스를 만들고"
+                    + " 로그인 응답(access token과 HttpOnly refresh 쿠키)을 돌려줍니다. 토큰은 10분 동안 한 번만 쓸 수 있습니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "가입과 로그인 완료",
+            content = @Content(schema = @Schema(implementation = LoginResponse.class))),
+        @ApiResponse(responseCode = "400", description = "만 18세 이상 확인이나 현재 이용약관 동의가 없음(CONSENT_REQUIRED)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "401", description = "가입 대기 토큰이 없거나 만료됨(INVALID_SIGNUP_TOKEN)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/oauth/signup/consent")
+    public ResponseEntity<LoginResponse> completeOAuthSignup(@Valid @RequestBody OAuthSignupConsentRequest request) {
+        return authenticatedResponse(authService.issueForNewOAuthUser(oAuthUserService.completeSignup(request)));
+    }
+
+    @Operation(summary = "약관 재동의",
+            description = "이용약관이 바뀌어 로그인·내 정보 응답의 consent_required가 true일 때 다시 동의를 받습니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "동의 기록 완료"),
+        @ApiResponse(responseCode = "400", description = "만 18세 이상 확인이나 현재 이용약관 동의가 없음(CONSENT_REQUIRED)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/me/consents")
+    public ResponseEntity<Void> consent(
+            @AuthenticationPrincipal String userId,
+            @Valid @RequestBody ConsentRequest request) {
+        userConsentService.validate(request.ageConfirmed(), request.termsVersion());
+        userConsentService.record(userId, request.marketingOptIn());
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "내 정보 조회", description = "access token으로 인증된 사용자의 프로필을 반환합니다.")

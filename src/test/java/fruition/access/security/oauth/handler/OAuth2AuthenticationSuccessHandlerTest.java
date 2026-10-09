@@ -67,4 +67,21 @@ class OAuth2AuthenticationSuccessHandlerTest {
         verify(exchangeCodeStore, org.mockito.Mockito.never()).issue(org.mockito.ArgumentMatchers.any());
         verify(response).sendRedirect("http://localhost:3000/oauth/callback?link_code=link-code");
     }
+
+    @Test
+    void newSocialUser_redirectsWithSignupTokenInsteadOfLoginCode() throws Exception {
+        var principal = new org.springframework.security.oauth2.core.user.DefaultOAuth2User(java.util.List.of(),
+                java.util.Map.of("internal_user_id", "signup-token", "signup_token", "signup-token"),
+                "internal_user_id");
+        var signupAuthentication = new org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken(
+                principal, java.util.List.of(), "google");
+        var handler = new OAuth2AuthenticationSuccessHandler(
+                exchangeCodeStore, "http://localhost:3000/oauth/callback");
+
+        handler.onAuthenticationSuccess(new org.springframework.mock.web.MockHttpServletRequest(), response,
+                signupAuthentication);
+
+        verify(exchangeCodeStore, org.mockito.Mockito.never()).issue(org.mockito.ArgumentMatchers.any());
+        verify(response).sendRedirect("http://localhost:3000/oauth/callback?signup_token=signup-token");
+    }
 }

@@ -40,13 +40,22 @@ public record LoginResponse(
 
         @JsonProperty("mfa_token")
         @Schema(description = "코드 검증에 쓸 1회용 토큰. mfa_required일 때만 나온다.", nullable = true)
-        String mfaToken
+        String mfaToken,
+
+        @JsonProperty("consent_required")
+        @Schema(description = "true면 이용약관이 바뀌어 다시 동의받아야 한다. POST /api/auth/me/consents로 받는다."
+                + " 토큰을 발급할 때만 나온다.", example = "false", nullable = true)
+        Boolean consentRequired
 ) {
     public static LoginResponse tokens(String accessToken, String refreshToken, long expiresIn) {
-        return new LoginResponse(accessToken, refreshToken, "Bearer", expiresIn, null, null);
+        return tokens(accessToken, refreshToken, expiresIn, false);
+    }
+
+    public static LoginResponse tokens(String accessToken, String refreshToken, long expiresIn, boolean consentRequired) {
+        return new LoginResponse(accessToken, refreshToken, "Bearer", expiresIn, null, null, consentRequired);
     }
 
     public static LoginResponse mfaRequired(String mfaToken) {
-        return new LoginResponse(null, null, null, null, true, mfaToken);
+        return new LoginResponse(null, null, null, null, true, mfaToken, null);
     }
 }

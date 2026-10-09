@@ -23,5 +23,10 @@ public record MeResponse(
 
         @JsonProperty("oauth_providers")
         @Schema(description = "로그인에 쓸 수 있도록 연결된 소셜 provider(google, kakao, naver)", example = "[\"google\"]")
-        List<String> oauthProviders
+        List<String> oauthProviders,
+
+        @JsonProperty("consent_required")
+        @Schema(description = "true면 이용약관이 바뀌어 다시 동의받아야 한다. POST /api/auth/me/consents로 받는다.",
+                example = "false")
+        boolean consentRequired
 ) {}

@@ -300,6 +300,34 @@ paths:
       summary: 표시 이름 변경
       tags:
       - Auth
+  /api/auth/me/consents:
+    post:
+      description: 이용약관이 바뀌어 로그인·내 정보 응답의 consent_required가 true일 때 다시 동의를 받습니다.
+      operationId: consent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsentRequest"
+        required: true
+      responses:
+        "204":
+          description: 동의 기록 완료
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 만 18세 이상 확인이나 현재 이용약관 동의가 없음(CONSENT_REQUIRED)
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 인증되지 않음
+      summary: 약관 재동의
+      tags:
+      - Auth
   /api/auth/me/email:
     put:
       description: 새 이메일로 받은 인증번호 토큰으로 본인 확인 후 계정 이메일을 바꿉니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.
@@ -682,6 +710,38 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
           description: 유효하지 않거나 만료된 code
       summary: OAuth code 교환
+      tags:
+      - Auth
+  /api/auth/oauth/signup/consent:
+    post:
+      description: 소셜 로그인으로 처음 들어온 사용자는 OAuth 콜백 주소에 ?signup_token=이 붙어 돌아옵니다. 만 18세 이상 확인과 이용약관 동의를 받아 이 API로 보내면 계정과 기본 워크스페이스를 만들고 로그인 응답(access token과 HttpOnly refresh 쿠키)을 돌려줍니다. 토큰은 10분 동안 한 번만 쓸 수 있습니다.
+      operationId: completeOAuthSignup
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OAuthSignupConsentRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+          description: 가입과 로그인 완료
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 만 18세 이상 확인이나 현재 이용약관 동의가 없음(CONSENT_REQUIRED)
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 가입 대기 토큰이 없거나 만료됨(INVALID_SIGNUP_TOKEN)
+      summary: 소셜 신규 가입 확정
       tags:
       - Auth
   /api/auth/password-reset:
@@ -1601,6 +1661,25 @@ components:
       required:
       - model
       - provider
+    ConsentRequest:
+      type: object
+      properties:
+        age_confirmed:
+          type: boolean
+          description: 만 18세 이상 확인. true여야 한다.
+          example: true
+        marketing_opt_in:
+          type: boolean
+          description: 마케팅 정보 수신 동의(선택 항목)
+          example: false
+        terms_version:
+          type: string
+          description: 화면에 보여 준 이용약관 버전. 서버의 현재 버전과 같아야 한다.
+          example: 2026-10-01
+          maxLength: 32
+          minLength: 0
+      required:
+      - marketing_opt_in
     DisplayNameUpdateRequest:
       type: object
       properties:
@@ -1801,6 +1880,10 @@ components:
         access_token:
           type: string
           description: "API 호출에 쓰는 JWT. Authorization: Bearer <access_token>으로 보낸다. payload의 sub(사용자 ID)·email·exp(만료 Unix seconds)를 갱신 타이밍 계산에 쓸 수 있다."
+        consent_required:
+          type: boolean
+          description: true면 이용약관이 바뀌어 다시 동의받아야 한다. POST /api/auth/me/consents로 받는다. 토큰을 발급할 때만 나온다.
+          example: false
         expires_in:
           type: integer
           format: int64
@@ -1820,6 +1903,10 @@ components:
     MeResponse:
       type: object
       properties:
+        consent_required:
+          type: boolean
+          description: true면 이용약관이 바뀌어 다시 동의받아야 한다. POST /api/auth/me/consents로 받는다.
+          example: false
         created_at:
           type: string
           format: date-time
@@ -1927,6 +2014,30 @@ components:
         link_token:
           type: string
           description: "1회용 연동 토큰(60초). /oauth2/authorization/{provider}?mode=link&link_token=... 로 이동할 때 쓴다"
+    OAuthSignupConsentRequest:
+      type: object
+      properties:
+        age_confirmed:
+          type: boolean
+          description: 만 18세 이상 확인. true여야 한다.
+          example: true
+        marketing_opt_in:
+          type: boolean
+          description: 마케팅 정보 수신 동의(선택 항목)
+          example: false
+        signup_token:
+          type: string
+          description: OAuth 콜백 주소에 ?signup_token=으로 붙어 온 1회용 토큰
+          minLength: 1
+        terms_version:
+          type: string
+          description: 화면에 보여 준 이용약관 버전. 서버의 현재 버전과 같아야 한다.
+          example: 2026-10-01
+          maxLength: 32
+          minLength: 0
+      required:
+      - marketing_opt_in
+      - signup_token
     PasswordChangeRequest:
       type: object
       properties:
@@ -2005,6 +2116,10 @@ components:
     SignupRequest:
       type: object
       properties:
+        age_confirmed:
+          type: boolean
+          description: 만 18세 이상 확인. true여야 가입할 수 있다.
+          example: true
         display_name:
           type: string
           description: 표시명(50자 이하). 생략하면 이메일의 @ 앞부분이 표시명이 된다.
@@ -2017,12 +2132,22 @@ components:
           description: 가입할 이메일. 이미 가입된 이메일이면 토큰 유효성과 무관하게 409 DUPLICATE_EMAIL이 먼저 나온다.
           example: user@example.com
           minLength: 1
+        marketing_opt_in:
+          type: boolean
+          description: 마케팅 정보 수신 동의(선택 항목). 생략하면 false다.
+          example: false
         password:
           type: string
           description: 비밀번호(8~72자)
           example: password1234
           maxLength: 72
           minLength: 8
+        terms_version:
+          type: string
+          description: 화면에 보여 준 이용약관 버전. 서버의 현재 버전과 같아야 한다.
+          example: 2026-10-01
+          maxLength: 32
+          minLength: 0
         verification_token:
           type: string
           description: 인증번호 검증으로 받은 1회용 토큰

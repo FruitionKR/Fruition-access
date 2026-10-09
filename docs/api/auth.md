@@ -4,7 +4,7 @@
 
 가입·이메일 인증·로그인·토큰 API다.
 
-- API 수: 24
+- API 수: 26
 - 호출 연결: [access-svc 호출 연결 요약](README.md#호출-연결-요약) 참고
 
 ## API 목차
@@ -19,6 +19,7 @@
 | [`GET /api/auth/me`](#summary-get-api-auth-me) | access token으로 인증된 사용자의 프로필을 반환합니다. |
 | [`PATCH /api/auth/me`](#summary-patch-api-auth-me) | 인증된 사용자의 표시 이름을 변경합니다. |
 | [`DELETE /api/auth/me`](#summary-delete-api-auth-me) | 본인을 다시 확인한 뒤 계정을 지우고 데이터 파기를 요청합니다(회원 탈퇴). |
+| [`POST /api/auth/me/consents`](#summary-post-api-auth-me-consents) | 이용약관이 바뀐 뒤 기존 회원의 동의를 다시 받습니다. |
 | [`PUT /api/auth/me/email`](#summary-put-api-auth-me-email) | 새 이메일로 받은 인증번호 토큰으로 계정 이메일을 바꿉니다. |
 | [`GET /api/auth/me/sessions`](#summary-get-api-auth-me-sessions) | 폐기되지 않은 로그인 세션을 반환합니다. |
 | [`DELETE /api/auth/me/sessions/{session_id}`](#summary-delete-api-auth-me-sessions-session-id) | 지정한 세션의 refresh token을 폐기합니다. |
@@ -32,6 +33,7 @@
 | [`POST /api/auth/me/oauth-accounts/link/confirm`](#summary-post-api-auth-me-oauth-accounts-link-confirm) | 연동 콜백이 넘긴 `link_code`로 소셜 계정을 현재 계정에 연결합니다. |
 | [`DELETE /api/auth/me/oauth-accounts/{provider}`](#summary-delete-api-auth-me-oauth-accounts-provider) | 연결된 소셜 계정의 연동을 해제합니다. |
 | [`POST /api/auth/oauth/exchange`](#summary-post-api-auth-oauth-exchange) | OAuth code를 access token과 HttpOnly refresh 쿠키로 교환합니다. |
+| [`POST /api/auth/oauth/signup/consent`](#summary-post-api-auth-oauth-signup-consent) | 소셜 신규 가입자의 만 18세 이상 확인과 약관 동의를 받아 계정을 만들고 로그인시킵니다. |
 | [`POST /api/auth/password-reset`](#summary-post-api-auth-password-reset) | verification_token으로 본인 확인 후 비밀번호를 변경하고 기존 세션을 폐기합니다. |
 | [`POST /api/auth/refresh`](#summary-post-api-auth-refresh) | HttpOnly refresh 쿠키를 검증하고 access token과 refresh 쿠키를 회전합니다. |
 | [`POST /api/auth/signup`](#summary-post-api-auth-signup) | 이메일/비밀번호로 신규 사용자를 생성합니다. |
@@ -792,6 +794,17 @@ curl -X PATCH "$ACCESS/api/auth/me" \
 [↑ 요약으로 돌아가기](#summary-delete-api-auth-me)
 
 </details>
+
+<a id="summary-post-api-auth-me-consents"></a>
+### `POST /api/auth/me/consents`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 이용약관 버전이 바뀌어 로그인 응답·`GET /api/auth/me`의 `consent_required`가 `true`일 때 다시 동의를 받습니다. |
+| 입력 | **Header** — `Authorization: Bearer <access_token>`<br>**Body** — `ConsentRequest` `{ "age_confirmed", "terms_version", "marketing_opt_in" }` |
+| 출력 | `204` 동의 기록 완료 |
+| 조건 | 가장 최근 동의의 이용약관 버전이 서버 현재 버전과 다르면(동의 기록이 없는 기존 회원 포함) `consent_required`가 `true`다. |
+| 주요 오류 | `400` `CONSENT_REQUIRED` 만 18세 이상 확인·현재 이용약관 동의 없음<br>`401` 인증되지 않음 |
 
 <a id="summary-put-api-auth-me-email"></a>
 ### `PUT /api/auth/me/email`
@@ -1874,6 +1887,54 @@ curl -X DELETE "$ACCESS/api/auth/me/oauth-accounts/kakao" \
 
 </details>
 
+<a id="summary-post-api-auth-oauth-signup-consent"></a>
+### `POST /api/auth/oauth/signup/consent`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 소셜 신규 가입 확정. 만 18세 이상 확인과 이용약관 동의를 받아 계정·기본 워크스페이스를 만들고 로그인시킵니다. |
+| 입력 | **Body** — `OAuthSignupConsentRequest` `{ "signup_token", "age_confirmed", "terms_version", "marketing_opt_in" }` |
+| 출력 | `200` 가입과 로그인 완료 — `LoginResponse`(access token, HttpOnly refresh 쿠키) |
+| 조건 | 인증 불필요. `signup_token`은 10분 동안 한 번만 쓸 수 있다. |
+| 주요 오류 | `400` `CONSENT_REQUIRED` 만 18세 이상 확인·현재 이용약관 동의 없음(토큰은 소비하지 않아 다시 보낼 수 있다)<br>`401` `INVALID_SIGNUP_TOKEN` 토큰이 없거나 만료·사용됨. 소셜 로그인부터 다시 한다 |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-post-api-auth-oauth-signup-consent"></a>
+### `POST /api/auth/oauth/signup/consent` 상세
+
+#### 1. 흐름
+
+1. 소셜 로그인 콜백에서 그 소셜 계정에 연결된 사용자가 없으면 계정을 만들지 않는다. 소셜 계정 정보(provider, provider 사용자 ID, 이메일, 이름)를
+   Redis `oauth:signup:{token}`에 10분 보관하고, OAuth 콜백 주소에 `?code=` 대신 `?signup_token=`을 붙여 돌려보낸다.
+2. 프론트는 동의 화면을 보여 주고 이 API를 부른다.
+3. 서버는 동의를 확인한 뒤 토큰을 소비하고 계정·소셜 연결·기본 워크스페이스·동의 기록을 만들고 로그인 토큰을 준다.
+   그사이 다른 탭에서 같은 소셜 계정으로 가입을 끝냈으면 그 계정으로 로그인시킨다.
+
+기존 회원의 소셜 로그인은 지금처럼 `?code=`로 돌아온다.
+
+#### 2. Request body
+
+```json
+{
+  "signup_token": "EXAMPLE-signup-token-not-real-000000000000",
+  "age_confirmed": true,
+  "terms_version": "2026-10-01",
+  "marketing_opt_in": false
+}
+```
+
+#### 3. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
+- 처리: `src/main/java/fruition/access/user/service/OAuthUserService.java`(`startSignup`, `completeSignup`), `UserConsentService.java`
+- 호출자: 없음(frontend 동의 화면 구현 예정)
+
+[↑ 요약으로 돌아가기](#summary-post-api-auth-oauth-signup-consent)
+
+</details>
+
 <a id="summary-post-api-auth-oauth-exchange"></a>
 ### `POST /api/auth/oauth/exchange`
 
@@ -2191,11 +2252,11 @@ curl -X POST "$ACCESS/api/auth/refresh" \
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | 이메일/비밀번호로 신규 사용자를 생성합니다. |
+| 목적 | 이메일/비밀번호로 신규 사용자를 생성합니다. 만 18세 이상 확인과 현재 이용약관 동의가 있어야 합니다. |
 | 입력 | **Body** — `SignupRequest` |
 | 출력 | `201` 회원가입 성공 — `SignupResponse` |
 | 조건 | 인증 불필요<br>인증 없이 호출할 수 있다.<br>공개 API이므로 별도의 사용자 권한 검증이 없다. |
-| 주요 오류 | `400` 잘못된 요청 — `ErrorResponse`<br>`409` 이미 가입된 이메일 — `ErrorResponse` |
+| 주요 오류 | `400` 잘못된 요청, 또는 `CONSENT_REQUIRED` 만 18세 이상 확인·현재 이용약관 동의 없음(인증 토큰은 소비하지 않는다) — `ErrorResponse`<br>`409` 이미 가입된 이메일 — `ErrorResponse` |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -2227,9 +2288,17 @@ curl -X POST "$ACCESS/api/auth/refresh" \
   "display_name": "표시 이름",
   "email": "user@example.com",
   "password": "password1234",
-  "verification_token": "EXAMPLE-verification-token-not-real-0000000"
+  "verification_token": "EXAMPLE-verification-token-not-real-0000000",
+  "age_confirmed": true,
+  "terms_version": "2026-10-01",
+  "marketing_opt_in": false
 }
 ```
+
+- `age_confirmed`: 만 18세 이상 확인. `true`여야 한다.
+- `terms_version`: 화면에 보여 준 이용약관 버전. 서버의 현재 버전(`app.legal.terms-version`)과 같아야 한다.
+- `marketing_opt_in`: 마케팅 수신 동의(선택). 생략하면 `false`.
+- 동의는 `user_consents`에 이용약관·처리방침 버전, 시각과 함께 쌓인다. 처리방침은 열람한 버전만 남기고 따로 동의받지 않는다.
 
 #### 5. Response body
 

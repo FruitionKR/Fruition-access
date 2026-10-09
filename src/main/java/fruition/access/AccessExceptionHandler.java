@@ -20,6 +20,8 @@ import fruition.access.user.dto.AccountDeletionBlockedResponse;
 import fruition.access.user.exception.AccountDeletionBlockedException;
 import fruition.access.user.exception.PasswordLoginUnavailableException;
 import fruition.access.user.exception.ReauthenticationRequiredException;
+import fruition.access.user.exception.InvalidConsentException;
+import fruition.access.user.exception.InvalidSignupTokenException;
 import fruition.access.user.exception.SessionNotFoundException;
 import fruition.access.user.exception.InvalidOAuthLinkCodeException;
 import fruition.access.user.exception.OAuthAccountAlreadyLinkedException;
@@ -302,6 +304,22 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of("OAUTH_EMAIL_NOT_PROVIDED", e.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidConsentException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidConsent(InvalidConsentException e) {
+        logHandled(e, HttpStatus.BAD_REQUEST, "CONSENT_REQUIRED");
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("CONSENT_REQUIRED", e.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidSignupTokenException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidSignupToken(InvalidSignupTokenException e) {
+        logHandled(e, HttpStatus.UNAUTHORIZED, "INVALID_SIGNUP_TOKEN");
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("INVALID_SIGNUP_TOKEN", e.getMessage()));
     }
 
     @ExceptionHandler(ReauthenticationRequiredException.class)

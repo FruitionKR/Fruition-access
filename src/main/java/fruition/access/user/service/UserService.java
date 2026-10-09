@@ -27,13 +27,16 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final WorkspaceService workspaceService;
     private final EmailVerificationService emailVerificationService;
+    private final UserConsentService userConsentService;
 
     public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder,
-                       WorkspaceService workspaceService, EmailVerificationService emailVerificationService) {
+                       WorkspaceService workspaceService, EmailVerificationService emailVerificationService,
+                       UserConsentService userConsentService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.workspaceService = workspaceService;
         this.emailVerificationService = emailVerificationService;
+        this.userConsentService = userConsentService;
     }
 
     @Transactional(readOnly = true)
@@ -62,6 +65,8 @@ public class UserService {
             throw new DuplicateEmailException(email);
         }
 
+        // 동의가 빠진 요청이 인증 토큰을 소비하지 않도록 먼저 확인한다.
+        userConsentService.validate(request.ageConfirmed(), request.termsVersion());
         emailVerificationService.consumeForSignup(email, request.verificationToken());
 
         String displayName = DisplayNames.resolve(request.displayName(), email);
@@ -70,6 +75,7 @@ public class UserService {
         String userId = "user_" + UUID.randomUUID().toString().replace("-", "");
         User user = new User(userId, email, User.PROVIDER_LOCAL, displayName, passwordEncoder.encode(request.password()));
         userRepository.save(user);
+        userConsentService.record(user.getId(), Boolean.TRUE.equals(request.marketingOptIn()));
 
         workspaceService.createDefault(user.getId(), user.getDisplayName());
         log.info("[회원가입 성공] userId={} email={} displayNameSource={}", user.getId(), user.getEmail(), displayNameSource);

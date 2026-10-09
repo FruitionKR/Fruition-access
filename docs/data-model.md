@@ -18,6 +18,7 @@ DB migration 원본은 `src/main/resources/db/migration/`입니다. 다른 서�
 | workspace_membership_periods | access-svc | 멤버였던 기간 이력(탈퇴·제거 후에도 보존) | PK `(workspace_id, user_id, joined_at)`, `left_at` NULL이면 현재 멤버. `workspace_members` INSERT·DELETE trigger가 기록, FK 없음; V21 |
 | workspace_invitations | access-svc | 이메일 초대(수락 전 상태) | `token_hash`(SHA-256, 원문 미저장), `expires_at`, `accepted_at`/`accepted_by`/`revoked_at`. 대기 중 초대는 `(workspace_id, email)` partial unique라 재초대는 새 행이 아니라 재발송이다. 계정이 `(email, provider)`로 분리돼 있어 어느 계정이 멤버가 될지는 수락 시점에 정해진다 |
 | data_purge_requests | access-svc | 회원 탈퇴 뒤 document에 요청할 데이터 파기 | PK `(kind, target_id)`, `kind`는 `user`(공유 워크스페이스의 개인 데이터)·`workspace`(혼자 쓰던 워크스페이스). `attempts`·`next_attempt_at`·`last_error`로 재시도. 계정이 지워진 뒤에도 남아야 해 FK 없음; V22 |
+| user_consents | access-svc | 가입·재동의 이력(덮어쓰지 않고 쌓음) | users FK `ON DELETE CASCADE`, `terms_version`·`privacy_version`(설정 `app.legal.*`), `age_confirmed`(만 18세 이상), `marketing_opt_in`(선택), `consented_at`. 최근 행의 이용약관 버전이 현재와 다르면 재동의 대상; V23 |
 
 ### 보관 기간과 정리
 

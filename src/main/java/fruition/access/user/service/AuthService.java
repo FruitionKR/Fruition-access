@@ -67,6 +67,7 @@ public class AuthService {
     private final MfaService mfaService;
     private final UserMfaChallengeRepository mfaChallengeRepository;
     private final UserOAuthAccountRepository oauthAccountRepository;
+    private final UserConsentService userConsentService;
     private final long refreshTokenExpirationSeconds;
     private final long mfaChallengeTtlSeconds;
 
@@ -79,6 +80,7 @@ public class AuthService {
                        MfaService mfaService,
                        UserMfaChallengeRepository mfaChallengeRepository,
                        UserOAuthAccountRepository oauthAccountRepository,
+                       UserConsentService userConsentService,
                        @Value("${app.jwt.refresh-token-expiration-seconds}") long refreshTokenExpirationSeconds,
                        @Value("${app.auth.mfa.challenge-ttl-seconds:300}") long mfaChallengeTtlSeconds) {
         this.userRepository = userRepository;
@@ -90,6 +92,7 @@ public class AuthService {
         this.mfaService = mfaService;
         this.mfaChallengeRepository = mfaChallengeRepository;
         this.oauthAccountRepository = oauthAccountRepository;
+        this.userConsentService = userConsentService;
         this.refreshTokenExpirationSeconds = refreshTokenExpirationSeconds;
         this.mfaChallengeTtlSeconds = mfaChallengeTtlSeconds;
     }
@@ -174,7 +177,8 @@ public class AuthService {
         List<String> providers = oauthAccountRepository.findAllByUserIdOrderByProvider(user.getId()).stream()
                 .map(UserOAuthAccount::getProvider)
                 .toList();
-        return new MeResponse(user.getId(), user.getEmail(), user.getDisplayName(), user.getCreatedAt(), providers);
+        return new MeResponse(user.getId(), user.getEmail(), user.getDisplayName(), user.getCreatedAt(), providers,
+                userConsentService.consentRequired(user.getId()));
     }
 
     @Transactional
@@ -374,6 +378,14 @@ public class AuthService {
         return token;
     }
 
+    /** 소셜 신규 가입을 마친 사용자에게 로그인 토큰을 준다. 방금 소셜 인증을 거쳤으므로 직접 로그인으로 본다. */
+    @Transactional
+    public LoginResponse issueForNewOAuthUser(User user) {
+        LoginResponse response = issueTokenPair(user, Instant.now());
+        log.info("[OAuth 가입 후 로그인] userId={}", user.getId());
+        return response;
+    }
+
     /** {@code authTime}은 직접 로그인했을 때만 넘긴다. refresh로 이어 받은 토큰은 최근 인증으로 보지 않는다. */
     private LoginResponse issueTokenPair(User user, Instant authTime) {
         String accessToken = jwtTokenProvider.generateAccessToken(user.getId(), user.getEmail(), authTime);
@@ -383,8 +395,8 @@ public class AuthService {
         refreshTokenRepository.save(new UserRefreshToken(
                 user.getId(), sha256(refreshTokenValue), expiresAt, currentUserAgent()));
 
-        return LoginResponse.tokens(
-                accessToken, refreshTokenValue, jwtTokenProvider.getAccessTokenExpirationSeconds());
+        return LoginResponse.tokens(accessToken, refreshTokenValue, jwtTokenProvider.getAccessTokenExpirationSeconds(),
+                userConsentService.consentRequired(user.getId()));
     }
 
     private String generateOpaqueToken() {
