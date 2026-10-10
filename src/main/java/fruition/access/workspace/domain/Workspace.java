@@ -8,7 +8,7 @@ import java.time.Instant;
 public class Workspace {
 
     private static final String DEFAULT_AI_PROVIDER = "gemini";
-    private static final String DEFAULT_AI_MODEL = "gemini-3.1-flash-lite";
+    private static final String DEFAULT_AI_MODEL = "gemini-3.5-flash-lite";
 
     @Id
     private String id;

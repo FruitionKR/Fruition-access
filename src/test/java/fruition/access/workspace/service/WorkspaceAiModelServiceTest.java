@@ -36,7 +36,7 @@ class WorkspaceAiModelServiceTest {
         var response = service.getInternal("ws_1");
 
         assertThat(response.ingestLint().provider()).isEqualTo("gemini");
-        assertThat(response.ingestLint().model()).isEqualTo("gemini-3.1-flash-lite");
+        assertThat(response.ingestLint().model()).isEqualTo("gemini-3.5-flash-lite");
     }
 
     @Test
