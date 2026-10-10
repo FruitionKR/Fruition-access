@@ -1,5 +1,6 @@
 package fruition.access.cleanup;
 
+import fruition.access.workspace.service.AiInternalClient;
 import fruition.access.workspace.service.DocumentInternalClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,8 +14,9 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * 회원 탈퇴가 남긴 데이터 파기 요청을 document에 보낸다. 성공하면 요청을 지우고, 실패하면 시도 횟수에 따라
- * 간격을 늘려 가며 다시 시도한다. 요청 행을 {@code FOR UPDATE SKIP LOCKED}로 잡아 한 replica만 처리한다.
+ * 회원 탈퇴가 남긴 데이터 파기 요청을 document에 보낸 뒤, 성공하면 이어서 ai-svc에 보낸다. 둘 다 성공하면 요청을 지우고, 실패하면 시도 횟수에 따라
+ * 간격을 늘려 가며 순서 전체(document → ai)를 다시 시도한다. 두 파기 API 모두 같은 요청을 다시 받아도 결과가 같다.
+ * document가 미발행 AI 명령을 먼저 지우므로 ai 파기 뒤에 남는 명령이 없다. 요청 행을 {@code FOR UPDATE SKIP LOCKED}로 잡아 한 replica만 처리한다.
  */
 @Component
 public class DataPurgeRequestJob {
@@ -25,12 +27,14 @@ public class DataPurgeRequestJob {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactionTemplate;
     private final DocumentInternalClient documentClient;
+    private final AiInternalClient aiClient;
 
     public DataPurgeRequestJob(JdbcTemplate jdbc, TransactionTemplate transactionTemplate,
-                               DocumentInternalClient documentClient) {
+                               DocumentInternalClient documentClient, AiInternalClient aiClient) {
         this.jdbc = jdbc;
         this.transactionTemplate = transactionTemplate;
         this.documentClient = documentClient;
+        this.aiClient = aiClient;
     }
 
     @Scheduled(fixedDelayString = "${app.purge.retry-delay-ms:60000}")
@@ -63,8 +67,10 @@ public class DataPurgeRequestJob {
         }
         if ("user".equals(request.kind())) {
             documentClient.purgeUser(request.targetId());
+            aiClient.purgeUser(request.targetId());
         } else {
             documentClient.purgeWorkspace(request.targetId());
+            aiClient.purgeWorkspace(request.targetId());
             jdbc.update("DELETE FROM workspaces WHERE id = ?", request.targetId());
         }
         jdbc.update("DELETE FROM data_purge_requests WHERE kind = ? AND target_id = ?",

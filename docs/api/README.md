@@ -40,7 +40,7 @@
 | `POST /api/auth/password-reset` | frontend `src/entities/user/api/emailVerification.ts:82` | 없음 |
 | `GET /api/auth/me` | frontend `src/entities/user/api/account.ts:6` | 없음 |
 | `PATCH /api/auth/me` | frontend `src/entities/user/api/account.ts:11` | 없음 |
-| `DELETE /api/auth/me` | **호출자 미확인** (frontend 탈퇴 화면 구현 예정) | document-svc `purge/users`, `purge/workspaces`(`DataPurgeRequestJob`이 커밋 뒤 호출) |
+| `DELETE /api/auth/me` | **호출자 미확인** (frontend 탈퇴 화면 구현 예정) | document-svc `purge/users`, `purge/workspaces` 다음 ai-svc `ai/purge/users`, `ai/purge/workspaces`(`DataPurgeRequestJob`이 커밋 뒤 호출) |
 | `POST /api/auth/me/consents` | **호출자 미확인** (frontend 재동의 화면 구현 예정) | 없음 |
 | `POST /api/auth/oauth/signup/consent` | **호출자 미확인** (frontend 가입 동의 화면 구현 예정) | document-svc `initial-note`(기본 워크스페이스 생성) |
 | `PUT /api/auth/me/email` | frontend `src/entities/user/api/account.ts:29` | 없음 |

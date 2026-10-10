@@ -9,10 +9,12 @@ import fruition.access.workspace.domain.WorkspaceMember;
 import fruition.access.workspace.domain.WorkspaceRole;
 import fruition.access.workspace.repository.WorkspaceMemberRepository;
 import fruition.access.workspace.repository.WorkspaceRepository;
+import fruition.access.workspace.service.AiInternalClient;
 import fruition.access.workspace.service.DocumentInternalClient;
 import fruition.shared.security.JwtTokenProvider;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -35,7 +37,11 @@ import java.util.HexFormat;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -60,6 +66,7 @@ class AccountDeletionIntegrationTest {
     @Autowired DataPurgeRequestJob purgeJob;
     @Autowired JdbcTemplate jdbc;
     @MockitoBean DocumentInternalClient documentClient;
+    @MockitoBean AiInternalClient aiClient;
 
     @Test
     void passwordAccountDeletesUserSessionsAndSoloWorkspaceThenPurgesDocumentData() throws Exception {
@@ -83,8 +90,11 @@ class AccountDeletionIntegrationTest {
 
         purgeJob.run(Instant.now().plus(Duration.ofDays(1)));
 
-        verify(documentClient).purgeUser(user);
-        verify(documentClient).purgeWorkspace(solo);
+        InOrder order = inOrder(documentClient, aiClient);
+        order.verify(documentClient).purgeUser(user);
+        order.verify(aiClient).purgeUser(user);
+        order.verify(documentClient).purgeWorkspace(solo);
+        order.verify(aiClient).purgeWorkspace(solo);
         assertThat(workspaces.existsById(solo)).isFalse();
         assertThat(count("SELECT count(*) FROM data_purge_requests WHERE target_id IN (?, ?)", user, solo)).isZero();
 
@@ -139,6 +149,42 @@ class AccountDeletionIntegrationTest {
         assertThat(nextAttempt.toInstant()).isAfter(now);
         assertThat(count("SELECT count(*) FROM data_purge_requests WHERE target_id = ? AND last_error IS NOT NULL",
                 user)).isOne();
+    }
+
+    @Test
+    void aiPurgeFailureKeepsRequestsPendingAndRetriesWholeSequence() throws Exception {
+        String user = passwordUser();
+        String solo = workspace(user, WorkspaceRole.OWNER);
+        doThrow(new RestClientException("ai 다운")).when(aiClient).purgeWorkspace(solo);
+
+        deleteAccount(user, null, "{\"password\":\"" + PASSWORD + "\"}").andExpect(status().isNoContent());
+        Instant first = Instant.now().plus(Duration.ofDays(1));
+        purgeJob.run(first);
+
+        // 워크스페이스 요청은 남고 workspaces 행도 지워지지 않는다. 사용자 요청은 끝난다.
+        assertThat(workspaces.existsById(solo)).isTrue();
+        assertThat(count("SELECT count(*) FROM data_purge_requests WHERE kind = 'workspace' AND target_id = ? AND attempts = 1 AND last_error IS NOT NULL",
+                solo)).isOne();
+        assertThat(count("SELECT count(*) FROM data_purge_requests WHERE kind = 'user' AND target_id = ?", user)).isZero();
+
+        doNothing().when(aiClient).purgeWorkspace(solo);
+        purgeJob.run(first.plus(Duration.ofDays(1)));
+
+        verify(documentClient, times(2)).purgeWorkspace(solo);
+        verify(aiClient, times(2)).purgeWorkspace(solo);
+        assertThat(workspaces.existsById(solo)).isFalse();
+        assertThat(count("SELECT count(*) FROM data_purge_requests WHERE target_id = ?", solo)).isZero();
+    }
+
+    @Test
+    void documentFailureSkipsAiPurge() throws Exception {
+        String user = passwordUser();
+        doThrow(new RestClientException("document 다운")).when(documentClient).purgeUser(user);
+
+        deleteAccount(user, null, "{\"password\":\"" + PASSWORD + "\"}").andExpect(status().isNoContent());
+        purgeJob.run(Instant.now().plus(Duration.ofDays(1)));
+
+        verify(aiClient, never()).purgeUser(user);
     }
 
     private ResultActions deleteAccount(String userId, Instant authTime, String body) throws Exception {
