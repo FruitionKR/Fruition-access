@@ -1650,7 +1650,7 @@ curl -X GET "$ACCESS/internal/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/ai-
 ```json
 {
   "ingest_lint": {
-    "model": "gpt-5-nano",
+    "model": "gpt-6-luna",
     "provider": "openai"
   }
 }
@@ -1688,7 +1688,7 @@ curl -X GET "$ACCESS/internal/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/ai-
 curl -X PUT "$ACCESS/internal/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/ai-model-settings" \
   -H 'X-Internal-Token: <value>' \
   -H 'Content-Type: application/json' \
-  --data '{"ingest_lint":{"model":"gpt-5-nano","provider":"openai"}}'
+  --data '{"ingest_lint":{"model":"gpt-6-luna","provider":"openai"}}'
 ```
 
 ```json
