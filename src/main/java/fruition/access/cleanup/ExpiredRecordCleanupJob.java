@@ -1,6 +1,7 @@
 package fruition.access.cleanup;
 
 import fruition.access.workspace.service.AuthzProjectionStore;
+import fruition.access.workspace.service.AiInternalClient;
 import fruition.access.workspace.service.DocumentInternalClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,8 +20,8 @@ import java.util.List;
  * 만료된 인증·세션·초대·멱등 기록을 지우고, 휴지통 보관 기간이 지난 워크스페이스를 영구 삭제한다.
  *
  * <p>기록 정리는 조건부 DELETE라 여러 replica가 동시에 돌아도 결과가 같다. 워크스페이스는 행을
- * {@code FOR UPDATE SKIP LOCKED}로 잡은 채 document 파기를 호출하므로 한 replica만 처리한다.
- * document 파기가 실패하면 행을 남겨 다음 실행에서 다시 시도한다.
+ * {@code FOR UPDATE SKIP LOCKED}로 잡은 채 document → ai 파기를 호출하므로 한 replica만 처리한다.
+ * document 또는 ai 파기가 실패하면 행을 남겨 다음 실행에서 다시 시도한다.
  */
 @Component
 public class ExpiredRecordCleanupJob {
@@ -31,6 +32,7 @@ public class ExpiredRecordCleanupJob {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactionTemplate;
     private final DocumentInternalClient documentClient;
+    private final AiInternalClient aiClient;
     private final AuthzProjectionStore authzProjectionStore;
     private final Duration verificationRetention;
     private final Duration refreshTokenRetention;
@@ -41,6 +43,7 @@ public class ExpiredRecordCleanupJob {
             JdbcTemplate jdbc,
             TransactionTemplate transactionTemplate,
             DocumentInternalClient documentClient,
+            AiInternalClient aiClient,
             AuthzProjectionStore authzProjectionStore,
             @Value("${app.cleanup.verification-retention:7d}") Duration verificationRetention,
             @Value("${app.cleanup.refresh-token-retention:7d}") Duration refreshTokenRetention,
@@ -49,6 +52,7 @@ public class ExpiredRecordCleanupJob {
         this.jdbc = jdbc;
         this.transactionTemplate = transactionTemplate;
         this.documentClient = documentClient;
+        this.aiClient = aiClient;
         this.authzProjectionStore = authzProjectionStore;
         this.verificationRetention = verificationRetention;
         this.refreshTokenRetention = refreshTokenRetention;
@@ -116,7 +120,7 @@ public class ExpiredRecordCleanupJob {
     }
 
     /**
-     * 그사이 복구됐거나 다른 replica가 잡은 워크스페이스는 건너뛴다. document를 먼저 지우고 행을 지운다.
+     * 그사이 복구됐거나 다른 replica가 잡은 워크스페이스는 건너뛴다. document, ai 순서로 지우고 행을 지운다.
      * 행을 지우면 멤버십·초대·아이콘은 CASCADE로 지워지고, 멤버십 기간 이력은 트리거가 left_at을 채운다.
      */
     private boolean purgeWorkspace(String workspaceId, Timestamp cutoff) {
@@ -127,6 +131,7 @@ public class ExpiredRecordCleanupJob {
             return false;
         }
         documentClient.purgeWorkspace(workspaceId);
+        aiClient.purgeWorkspace(workspaceId);
         jdbc.update("DELETE FROM workspaces WHERE id = ?", workspaceId);
         authzProjectionStore.evictWorkspace(workspaceId);
         return true;

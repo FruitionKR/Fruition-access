@@ -772,7 +772,8 @@ curl -X PATCH "$ACCESS/api/auth/me" \
 5. refresh token을 지우고 `users` 행을 지운다. OAuth 연결·MFA·멤버십·멱등 기록은 CASCADE로 지워지고 멤버십 기간 이력에는 `left_at`이 남는다.
 
 커밋 뒤 `DataPurgeRequestJob`(1분 주기)이 document `POST /internal/purge/users`, `POST /internal/purge/workspaces`를 호출하고,
-워크스페이스 파기가 끝나면 `workspaces` 행을 지운다. 실패하면 1분부터 두 배씩 늘려 최대 6시간 간격으로 다시 시도하며, 탈퇴 자체는 되돌리지 않는다.
+성공하면 이어서 ai-svc `POST /internal/ai/purge/users`(`{"user_id"}`), `POST /internal/ai/purge/workspaces`(`{"workspace_ids"}`)를 호출한다.
+둘 다 성공해야 요청을 지우고 워크스페이스 행을 지운다. 어느 한쪽이라도 1분부터 두 배씩 늘려 최대 6시간 간격으로 document부터 다시 시도하며(두 API 모두 멱등), 탈퇴 자체는 되돌리지 않는다.
 
 탈퇴 직후 같은 이메일로 다시 가입할 수 있다. 지운 계정의 refresh token은 더 이상 쓸 수 없다.
 
@@ -789,7 +790,7 @@ curl -X PATCH "$ACCESS/api/auth/me" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 처리: `src/main/java/fruition/access/user/service/AccountDeletionService.java`, 파기 호출 `src/main/java/fruition/access/cleanup/DataPurgeRequestJob.java`
-- 하위 호출: document-svc `POST /internal/purge/users`, `POST /internal/purge/workspaces`
+- 하위 호출: document-svc `POST /internal/purge/users`, `POST /internal/purge/workspaces`, 이어서 ai-svc `POST /internal/ai/purge/users`, `POST /internal/ai/purge/workspaces`(`AiInternalClient`)
 
 [↑ 요약으로 돌아가기](#summary-delete-api-auth-me)
 
