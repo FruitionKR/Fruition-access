@@ -28,10 +28,23 @@ public record SignupRequest(
         @NotBlank(message = "verification_token은 필수입니다.")
         @Schema(description = "인증번호 검증으로 받은 1회용 토큰",
                 example = "EXAMPLE-verification-token-not-real-0000000")
-        String verificationToken
+        String verificationToken,
+
+        @JsonProperty("age_confirmed")
+        @Schema(description = "만 18세 이상 확인. true여야 가입할 수 있다.", example = "true")
+        Boolean ageConfirmed,
+
+        @JsonProperty("terms_version")
+        @Size(max = 32)
+        @Schema(description = "화면에 보여 준 이용약관 버전. 서버의 현재 버전과 같아야 한다.", example = "2026-10-01")
+        String termsVersion,
+
+        @JsonProperty("marketing_opt_in")
+        @Schema(description = "마케팅 정보 수신 동의(선택 항목). 생략하면 false다.", example = "false")
+        Boolean marketingOptIn
 ) {
         // 서비스 단위 테스트용 편의 생성자(인증 토큰 검증은 EmailVerificationService에서 별도 처리).
         public SignupRequest(String email, String password) {
-                this(email, password, null, null);
+                this(email, password, null, null, null, null, null);
         }
 }

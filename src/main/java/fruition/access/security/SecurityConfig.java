@@ -10,11 +10,14 @@ import fruition.shared.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.ObjectPostProcessor;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
+import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
@@ -112,7 +115,22 @@ public class SecurityConfig {
                                 .authorizationRequestRepository(OAuthLinkFlow.repository()))
                         .userInfoEndpoint(userInfo -> userInfo.userService(customOAuth2UserService))
                         .successHandler(oAuth2AuthenticationSuccessHandler)
-                        .failureHandler(oAuth2AuthenticationFailureHandler))
+                        .failureHandler(oAuth2AuthenticationFailureHandler)
+                        // 잘못된 데스크톱 로그인 시작(PKCE 누락 등)은 기본 500 대신 400으로 끝낸다.
+                        // sendError는 /error로 넘어가 인증 단계에서 401이 되므로 상태만 쓴다.
+                        .withObjectPostProcessor(new ObjectPostProcessor<OAuth2AuthorizationRequestRedirectFilter>() {
+                            @Override
+                            public <O extends OAuth2AuthorizationRequestRedirectFilter> O postProcess(O filter) {
+                                filter.setAuthenticationFailureHandler((request, response, exception) -> {
+                                    if (exception.getCause() instanceof OAuth2AuthorizationException) {
+                                        response.setStatus(HttpStatus.BAD_REQUEST.value());
+                                    } else {
+                                        response.sendError(HttpStatus.INTERNAL_SERVER_ERROR.value());
+                                    }
+                                });
+                                return filter;
+                            }
+                        }))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

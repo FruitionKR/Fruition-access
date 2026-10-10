@@ -84,4 +84,18 @@ class CustomOAuth2UserServiceTest {
                         assertThat(e.getError().getErrorCode()).isEqualTo(CustomOAuth2UserService.LINK_FAILED));
         verify(service, never()).loadProviderUser(any());
     }
+
+    @Test
+    void newSocialAccount_getsSignupTokenInsteadOfAccount() {
+        callbackWithLinkTarget(null);
+        org.mockito.Mockito.when(oAuthUserService.findUser(org.mockito.ArgumentMatchers.eq("google"), any()))
+                .thenReturn(java.util.Optional.empty());
+        org.mockito.Mockito.when(oAuthUserService.startSignup(org.mockito.ArgumentMatchers.eq("google"), any(), any()))
+                .thenReturn("signup-token");
+
+        var user = service.loadUser(userRequest);
+
+        assertThat((String) user.getAttribute(CustomOAuth2UserService.SIGNUP_TOKEN_ATTRIBUTE)).isEqualTo("signup-token");
+        assertThat(user.getName()).isEqualTo("signup-token");
+    }
 }

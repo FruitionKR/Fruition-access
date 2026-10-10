@@ -1,5 +1,6 @@
 package fruition.access.user.service;
 
+import fruition.access.user.dto.OAuthSignupConsentRequest;
 import fruition.access.security.oauth.domain.GoogleOAuth2UserInfo;
 import fruition.access.user.domain.User;
 import fruition.access.user.domain.UserOAuthAccount;
@@ -38,13 +39,14 @@ class OAuthUserServiceTest {
     @Mock WorkspaceService workspaceService;
     @Mock OAuthExchangeCodeStore codeStore;
     @Mock org.springframework.security.oauth2.client.registration.ClientRegistrationRepository clientRegistrationRepository;
+    @Mock UserConsentService userConsentService;
 
     OAuthUserService oAuthUserService;
 
     @BeforeEach
     void setUp() {
         oAuthUserService = new OAuthUserService(userRepository, oauthAccountRepository, workspaceService,
-                codeStore, clientRegistrationRepository);
+                codeStore, clientRegistrationRepository, userConsentService);
     }
 
     private GoogleOAuth2UserInfo googleUserInfo(String sub, String email, String name) {
@@ -56,54 +58,68 @@ class OAuthUserServiceTest {
     }
 
     @Test
-    void findOrCreateUser_existingLink_returnsLinkedUser() {
+    void findUser_existingLink_returnsLinkedUser() {
         when(oauthAccountRepository.findByProviderAndProviderUserId("google", "google-sub-1"))
                 .thenReturn(Optional.of(new UserOAuthAccount("user_1f9a74af", "google", "google-sub-1")));
         when(userRepository.findById("user_1f9a74af"))
                 .thenReturn(Optional.of(new User("user_1f9a74af", "test@example.com", "google", "tes", null)));
 
-        User user = oAuthUserService.findOrCreateUser("google", googleUserInfo("google-sub-1", "test@example.com", "Tester"));
+        var user = oAuthUserService.findUser("google", googleUserInfo("google-sub-1", "test@example.com", "Tester"));
 
-        assertThat(user.getId()).isEqualTo("user_1f9a74af");
+        assertThat(user).get().extracting(User::getId).isEqualTo("user_1f9a74af");
         verify(userRepository, never()).save(any());
     }
 
     @Test
-    void findOrCreateUser_existingEmailNoLink_createsSeparateAccount() {
-        when(oauthAccountRepository.findByProviderAndProviderUserId("google", "google-sub-1"))
-                .thenReturn(Optional.empty());
+    void startSignup_newAccount_issuesPendingTokenWithoutCreatingUser() {
+        when(codeStore.issueSignupToken(any())).thenReturn("signup-token");
 
-        User user = oAuthUserService.findOrCreateUser("google", googleUserInfo("google-sub-1", "test@example.com", "Tester"));
+        String token = oAuthUserService.startSignup("google", googleUserInfo("google-sub-1", " New@Example.com ", "New User"), null);
 
-        assertThat(user.getEmail()).isEqualTo("test@example.com");
-        assertThat(user.getProvider()).isEqualTo("google");
-        verify(userRepository).save(any());
-        verify(oauthAccountRepository).save(any());
+        assertThat(token).isEqualTo("signup-token");
+        verify(codeStore).issueSignupToken(
+                new OAuthExchangeCodeStore.PendingSignup("google", "google-sub-1", "new@example.com", "New User", null));
+        verify(userRepository, never()).save(any());
+        verify(workspaceService, never()).createDefault(any(), any());
     }
 
     @Test
-    void findOrCreateUser_newEmail_createsUserAndDefaultWorkspace() {
+    void startSignup_noEmailProvided_throwsException() {
+        assertThatThrownBy(() -> oAuthUserService.startSignup("google", googleUserInfo("google-sub-1", null, "No Email"), null))
+                .isInstanceOf(OAuthEmailNotProvidedException.class);
+    }
+
+    @Test
+    void completeSignup_withConsent_createsSeparateAccountWorkspaceAndConsent() {
+        when(codeStore.consumeSignupToken("signup-token", null)).thenReturn(Optional.of(
+                new OAuthExchangeCodeStore.PendingSignup("google", "google-sub-1", "new@example.com", "New User", null)));
         when(oauthAccountRepository.findByProviderAndProviderUserId("google", "google-sub-1"))
                 .thenReturn(Optional.empty());
 
-        User user = oAuthUserService.findOrCreateUser("google", googleUserInfo("google-sub-1", "new@example.com", "New User"));
+        User user = oAuthUserService.completeSignup(
+                new OAuthSignupConsentRequest("signup-token", true, "2026-10-01", true, null));
 
         assertThat(user.getEmail()).isEqualTo("new@example.com");
         assertThat(user.getProvider()).isEqualTo("google");
         assertThat(user.getDisplayName()).isEqualTo("New User");
         assertThat(user.getPasswordHash()).isNull();
+        verify(userConsentService).validate(true, "2026-10-01");
         verify(userRepository).save(any());
         verify(workspaceService).createDefault(user.getId(), user.getDisplayName());
         verify(oauthAccountRepository).save(any());
+        verify(userConsentService).record(user.getId(), true);
     }
 
     @Test
-    void findOrCreateUser_noEmailProvided_throwsException() {
-        when(oauthAccountRepository.findByProviderAndProviderUserId("google", "google-sub-1"))
-                .thenReturn(Optional.empty());
+    void completeSignup_withoutConsent_keepsTokenAndCreatesNothing() {
+        org.mockito.Mockito.doThrow(new fruition.access.user.exception.InvalidConsentException())
+                .when(userConsentService).validate(false, "2026-10-01");
 
-        assertThatThrownBy(() -> oAuthUserService.findOrCreateUser("google", googleUserInfo("google-sub-1", null, "No Email")))
-                .isInstanceOf(OAuthEmailNotProvidedException.class);
+        assertThatThrownBy(() -> oAuthUserService.completeSignup(
+                new OAuthSignupConsentRequest("signup-token", false, "2026-10-01", false, null)))
+                .isInstanceOf(fruition.access.user.exception.InvalidConsentException.class);
+        verify(codeStore, never()).consumeSignupToken(any(), any());
+        verify(userRepository, never()).save(any());
     }
 
     private void localUserWithPassword() {

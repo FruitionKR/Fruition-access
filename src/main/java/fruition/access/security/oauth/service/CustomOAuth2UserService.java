@@ -28,6 +28,8 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     /** 연동 모드에서 확정 단계로 넘길 provider 사용자 ID. */
     public static final String PROVIDER_USER_ID_ATTRIBUTE = "link_provider_user_id";
     public static final String LINK_FAILED = "link_failed";
+    /** 약관 동의 전인 신규 소셜 가입. 값은 가입 대기 토큰이고, 성공 handler가 로그인 code 대신 프론트에 넘긴다. */
+    public static final String SIGNUP_TOKEN_ATTRIBUTE = "signup_token";
 
     private final OAuthUserService oAuthUserService;
 
@@ -54,9 +56,17 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
             attributes.put(INTERNAL_USER_ID_ATTRIBUTE, linkUserId);
             attributes.put(PROVIDER_USER_ID_ATTRIBUTE, userInfo.getProviderUserId());
         } else {
-            User user = oAuthUserService.findOrCreateUser(registrationId, userInfo);
-            log.info("[OAuth 사용자 매핑 완료] provider={} userId={} email={}", registrationId, user.getId(), user.getEmail());
-            attributes.put(INTERNAL_USER_ID_ATTRIBUTE, user.getId());
+            var user = oAuthUserService.findUser(registrationId, userInfo);
+            if (user.isPresent()) {
+                log.info("[OAuth 사용자 매핑 완료] provider={} userId={}", registrationId, user.get().getId());
+                attributes.put(INTERNAL_USER_ID_ATTRIBUTE, user.get().getId());
+            } else {
+                // 계정이 아직 없다. 인증 주체 이름은 비워 둘 수 없어 가입 대기 토큰을 그대로 쓴다.
+                String signupToken = oAuthUserService.startSignup(registrationId, userInfo,
+                        OAuthLinkFlow.currentDesktopCodeChallenge());
+                attributes.put(SIGNUP_TOKEN_ATTRIBUTE, signupToken);
+                attributes.put(INTERNAL_USER_ID_ATTRIBUTE, signupToken);
+            }
         }
 
         return new DefaultOAuth2User(

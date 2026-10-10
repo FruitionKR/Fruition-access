@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -26,11 +27,14 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
 
     private final OAuthExchangeCodeStore exchangeCodeStore;
     private final String frontendRedirectUri;
+    private final String desktopRedirectUri;
 
     public OAuth2AuthenticationSuccessHandler(OAuthExchangeCodeStore exchangeCodeStore,
-                                              @Value("${app.oauth.frontend-redirect-uri}") String frontendRedirectUri) {
+                                              @Value("${app.oauth.frontend-redirect-uri}") String frontendRedirectUri,
+                                              @Value("${app.oauth.desktop-redirect-uri}") String desktopRedirectUri) {
         this.exchangeCodeStore = exchangeCodeStore;
         this.frontendRedirectUri = frontendRedirectUri;
+        this.desktopRedirectUri = desktopRedirectUri;
     }
 
     @Override
@@ -38,10 +42,26 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
             throws IOException {
         String userId = authentication.getName();
         // 연동이면 로그인 code 대신, 로그인한 프론트가 확정 API에 낼 연동 code를 발급한다.
+        // 신규 가입이면 동의 화면에서 쓸 가입 대기 토큰을 넘긴다. 계정은 동의를 받은 뒤에 만든다.
         boolean link = OAuthLinkFlow.linkUserId(request) != null;
-        String code = link ? exchangeCodeStore.issueLinkCode(pendingLink(userId, authentication))
-                : exchangeCodeStore.issue(userId);
-        log.info("[OAuth 인증 성공] userId={} link={} redirectUri={}", userId, link, frontendRedirectUri);
+        // 데스크톱 로그인이면 앱 딥링크로 보낸다. 가입 대기 토큰에는 user service가 이미 challenge를 묶었다.
+        String codeChallenge = OAuthLinkFlow.desktopCodeChallenge(request);
+        String redirectUri = codeChallenge != null ? desktopRedirectUri : frontendRedirectUri;
+        String signupToken = signupToken(authentication);
+        String param;
+        String code;
+        if (link) {
+            param = "link_code";
+            code = exchangeCodeStore.issueLinkCode(pendingLink(userId, authentication));
+        } else if (signupToken != null) {
+            param = "signup_token";
+            code = signupToken;
+        } else {
+            param = "code";
+            code = exchangeCodeStore.issue(userId, codeChallenge);
+        }
+        log.info("[OAuth 인증 성공] userId={} link={} signup={} redirectUri={}",
+                signupToken != null ? "-" : userId, link, signupToken != null, redirectUri);
 
         // OAuth handshake에만 필요한 세션 인증이 이후 JWT API 요청에 섞이면
         // @AuthenticationPrincipal이 OAuth2User를 String으로 해석하지 못해 null이 된다.
@@ -51,11 +71,16 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
             session.invalidate();
         }
 
-        String redirectUrl = UriComponentsBuilder.fromUriString(frontendRedirectUri)
-                .queryParam(link ? "link_code" : "code", code)
+        String redirectUrl = UriComponentsBuilder.fromUriString(redirectUri)
+                .queryParam(param, code)
                 .build()
                 .toUriString();
         response.sendRedirect(redirectUrl);
+    }
+
+    private static String signupToken(Authentication authentication) {
+        return authentication.getPrincipal() instanceof OAuth2User user
+                ? user.getAttribute(CustomOAuth2UserService.SIGNUP_TOKEN_ATTRIBUTE) : null;
     }
 
     private static PendingLink pendingLink(String userId, Authentication authentication) {

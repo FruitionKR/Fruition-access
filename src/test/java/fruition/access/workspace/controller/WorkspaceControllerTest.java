@@ -22,6 +22,7 @@ import org.springframework.http.HttpMethod;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import fruition.access.workspace.exception.WorkspaceNotFoundException;
+import fruition.access.workspace.exception.WorkspaceTrashExpiredException;
 import fruition.access.workspace.service.WorkspaceIconService;
 import fruition.access.workspace.service.WorkspaceService;
 import org.junit.jupiter.api.Test;
@@ -154,6 +155,18 @@ class WorkspaceControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.deleted").value(false))
                 .andExpect(jsonPath("$.deleted_at").doesNotExist());
+    }
+
+    @Test
+    void restore_pastTrashRetention_returns409() throws Exception {
+        when(workspaceService.restore(USER_ID, "ws_aaa11111", "restore-key"))
+                .thenThrow(new WorkspaceTrashExpiredException("ws_aaa11111"));
+
+        mockMvc.perform(post("/api/workspaces/ws_aaa11111/restore")
+                        .header("Authorization", bearerToken())
+                        .header("Idempotency-Key", "restore-key"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("WORKSPACE_TRASH_EXPIRED"));
     }
 
     @Test
