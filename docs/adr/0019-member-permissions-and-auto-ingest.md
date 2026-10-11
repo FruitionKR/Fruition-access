@@ -26,7 +26,7 @@ Fruition-ai ADR 0033으로 wiki는 개인 자산이 아니라 워크스페이스
    `PATCH /api/workspaces/{ws}`가 `{name?, auto_ingest_on_upload?}`를 받는다. 비용이 드는 동작이라 기본은 끈다.
 5. document용 내부 계약: 인가 조회는 `{"role", "permissions"}`를 돌려주고(`role`은 그대로, NONE은 `[]`,
    OWNER는 전부), `GET /internal/workspaces/{ws}/settings`가 `{"auto_ingest_on_upload"}`를 돌려준다
-   (없거나 삭제되면 404). Redis 키 `authz:role:{ws}:{uid}`는 그대로이며 캐시 값의 형식은 document가 소유한다.
+   (없거나 삭제되면 404). document는 역할만 담던 `authz:role:{ws}:{uid}` 대신 새 키 `authz:role:v2:{ws}:{uid}`에 역할과 권한을 JSON으로 캐시한다(값 형식은 document 소유). 키 이름이 달라 새 버전과 옛 버전 pod가 섞여 떠도 옛 pod가 JSON을 역할로 잘못 읽지 않고, 기존 Redis ACL 패턴 `authz:role:*` 안에 있다. access는 무효화할 때 두 키를 모두 지운다.
 6. 서비스가 출시 전이므로 V25는 기존 멤버에게 권한을 이관(부여)하지 않는다. 기존 멤버도 모두 권한 없이 시작하고 OWNER가 부여한다.
 
 ### 권한 항목

@@ -1359,7 +1359,7 @@ curl -X POST "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/restore
 | 주요 오류 | `401` 내부 인증 토큰 누락 또는 불일치 |
 
 - `permissions`는 정렬된 배열이다. `NONE`(비멤버·삭제된 워크스페이스)은 `[]`, `OWNER`는 항상 전부, `MEMBER`는 부여된 항목이다. `role`은 기존과 같다.
-- Redis 키 `authz:role:{ws}:{uid}`는 그대로이며 캐시 값의 형식은 document가 소유한다. 권한 변경·멤버 제거 시 access가 키를 무효화한다.
+- document는 이 응답을 `authz:role:v2:{ws}:{uid}`에 캐시한다(값 형식은 document 소유). 역할·권한 변경과 멤버 제거 시 access가 옛 키 `authz:role:{ws}:{uid}`와 새 키를 모두 무효화한다.
 
 <details>
 <summary>상세 계약 보기</summary>
