@@ -13,7 +13,7 @@ Fruition-ai ADR 0033으로 wiki는 개인 자산이 아니라 워크스페이스
 ## 결정
 
 1. 권한 항목을 별도 테이블 `workspace_member_permissions(workspace_id, user_id, permission)`에 둔다.
-   PK는 세 컬럼 전부, `workspace_members`로 복합 FK(`ON DELETE CASCADE`), CHECK `permission IN ('wiki.ingest')`.
+   PK는 세 컬럼 전부, `workspace_members`로 복합 FK(`ON DELETE CASCADE`), CHECK `permission IN`(다섯 항목, 아래 표).
    멤버를 제거하면 권한도 사라지고 재초대하면 권한 없이 시작한다. JPA는 `WorkspaceMember`의
    `@ElementCollection`과 변환기로 매핑하며 API·DB·Redis 표기는 `"wiki.ingest"`다.
 2. OWNER는 항상 모든 권한을 가진다. OWNER 행은 저장하지 않고 응답을 만들 때 전부로 계산한다.
@@ -27,7 +27,22 @@ Fruition-ai ADR 0033으로 wiki는 개인 자산이 아니라 워크스페이스
 5. document용 내부 계약: 인가 조회는 `{"role", "permissions"}`를 돌려주고(`role`은 그대로, NONE은 `[]`,
    OWNER는 전부), `GET /internal/workspaces/{ws}/settings`가 `{"auto_ingest_on_upload"}`를 돌려준다
    (없거나 삭제되면 404). Redis 키 `authz:role:{ws}:{uid}`는 그대로이며 캐시 값의 형식은 document가 소유한다.
-6. V25는 배포 당일 기존 MEMBER가 갑자기 ingest를 못 하지 않도록 모든 기존 MEMBER에 `wiki.ingest`를 부여한다.
+6. 서비스가 출시 전이므로 V25는 기존 멤버에게 권한을 이관(부여)하지 않는다. 기존 멤버도 모두 권한 없이 시작하고 OWNER가 부여한다.
+
+### 권한 항목
+
+| 값 | 의미 | 비고 |
+|---|---|---|
+| `wiki.ingest` | 편입, 채팅→위키 내보내기 | OWNER가 부여 |
+| `wiki.lint` | 위키 정리(lint) | OWNER가 부여 |
+| `skill.author` | 스킬 작성·게시 | OWNER가 부여 |
+| `wiki.restore` | 남이 실행한 AI 작업 되돌리기 | 실행자 본인과 OWNER는 항상 가능. 타인의 작업에만 필요. 강제는 document가 한다 |
+| `document.convert` | 남이 올린 PDF 변환 | 업로더 본인과 OWNER는 항상 가능. 타인의 PDF에만 필요. 강제는 document가 한다 |
+
+access는 항목을 저장하고 내려줄 뿐이며 판정은 document가 한다.
+
+권한 항목으로 만들지 않은 기능: 채팅 질의, AI 문서 편집, AI 작업 로그 조회, 회의 전사·노트, 받아쓰기·TTS, 원본 업로드.
+이들은 워크스페이스 멤버면 누구나 쓴다. 문서 편집은 document#74의 문서별 기본 편집(Notion식)을 유지한다.
 
 ## 대안과 기각 사유
 
@@ -40,7 +55,7 @@ Fruition-ai ADR 0033으로 wiki는 개인 자산이 아니라 워크스페이스
 
 ## 결과
 
-- 항목을 늘릴 때는 enum과 CHECK 제약, 기존 멤버 부여 여부를 함께 정한다.
+- 항목을 늘릴 때는 enum과 CHECK 제약을 함께 바꾼다. 출시 후에는 기존 멤버에게 부여할지도 정한다.
 - document는 `permissions`로 ingest를 인가하고 `auto_ingest_on_upload`로 자동 수집을 결정한다(호출자 구현은 별도).
   document가 캐시한 값은 access의 evict 또는 TTL로 갱신된다.
 - `LAST_OWNER` 규칙은 그대로다. OWNER를 강등하면 부여받은 권한 항목이 없는 한 편입할 수 없으므로, 필요하면 OWNER가 따로 부여한다.

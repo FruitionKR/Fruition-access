@@ -187,6 +187,28 @@ class WorkspaceMemberServiceTest {
     }
 
     @Test
+    void changePermissions_multipleItems_responseSorted() {
+        actorRole(OWNER_ID, WorkspaceRole.OWNER);
+        WorkspaceMember target = memberTarget();
+
+        WorkspaceMemberResponse response = workspaceMemberService.changeRole(OWNER_ID, WORKSPACE_ID, MEMBER_ID,
+                new WorkspaceMemberRoleUpdateRequest(null,
+                        List.of(WorkspacePermission.WIKI_LINT, WorkspacePermission.SKILL_AUTHOR)));
+
+        assertThat(response.permissions()).containsExactly("skill.author", "wiki.lint");
+        assertThat(target.getPermissions())
+                .containsExactlyInAnyOrder(WorkspacePermission.WIKI_LINT, WorkspacePermission.SKILL_AUTHOR);
+    }
+
+    @Test
+    void ownerEffectivePermissions_areAllFiveSorted() {
+        WorkspaceMember owner = member(OWNER_ID, WorkspaceRole.OWNER);
+
+        assertThat(WorkspaceMemberResponse.from(owner).permissions()).containsExactly(
+                "document.convert", "skill.author", "wiki.ingest", "wiki.lint", "wiki.restore");
+    }
+
+    @Test
     void changePermissions_replacesWholeSet() {
         actorRole(OWNER_ID, WorkspaceRole.OWNER);
         WorkspaceMember target = memberTarget(WorkspacePermission.WIKI_INGEST);
@@ -252,7 +274,7 @@ class WorkspaceMemberServiceTest {
                 new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.OWNER, null));
 
         assertThat(target.getPermissions()).containsExactly(WorkspacePermission.WIKI_INGEST);
-        assertThat(response.permissions()).containsExactly("wiki.ingest");
+        assertThat(response.permissions()).hasSize(WorkspacePermission.values().length);
     }
 
     @Test

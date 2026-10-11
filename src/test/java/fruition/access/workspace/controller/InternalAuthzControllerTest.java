@@ -77,21 +77,22 @@ class InternalAuthzControllerTest {
         mockMvc.perform(get(ROLE_URL).header("X-Internal-Token", internalToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("OWNER"))
-                .andExpect(jsonPath("$.permissions[0]").value("wiki.ingest"));
+                .andExpect(jsonPath("$.permissions").value(org.hamcrest.Matchers.contains(
+                        "document.convert", "skill.author", "wiki.ingest", "wiki.lint", "wiki.restore")));
     }
 
     @Test
     @DisplayName("MEMBER는 부여된 권한만, 없으면 빈 배열을 돌려준다")
     void role_member_returnsGrantedPermissions() throws Exception {
         WorkspaceMember granted = member(WorkspaceRole.MEMBER);
-        granted.replacePermissions(java.util.Set.of(WorkspacePermission.WIKI_INGEST));
+        granted.replacePermissions(java.util.Set.of(WorkspacePermission.WIKI_LINT, WorkspacePermission.SKILL_AUTHOR));
         when(workspaceMemberRepository.findActiveMember("ws_1", "user_1")).thenReturn(Optional.of(granted));
         when(workspaceMemberRepository.findActiveMember("ws_1", "user_2"))
                 .thenReturn(Optional.of(member(WorkspaceRole.MEMBER)));
 
         mockMvc.perform(get(ROLE_URL).header("X-Internal-Token", internalToken))
                 .andExpect(jsonPath("$.role").value("MEMBER"))
-                .andExpect(jsonPath("$.permissions[0]").value("wiki.ingest"));
+                .andExpect(jsonPath("$.permissions").value(org.hamcrest.Matchers.contains("skill.author", "wiki.lint")));
         mockMvc.perform(get("/internal/authz/workspaces/ws_1/users/user_2").header("X-Internal-Token", internalToken))
                 .andExpect(jsonPath("$.role").value("MEMBER"))
                 .andExpect(jsonPath("$.permissions").isEmpty());

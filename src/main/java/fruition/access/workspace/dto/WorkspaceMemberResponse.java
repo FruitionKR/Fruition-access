@@ -28,7 +28,7 @@ public record WorkspaceMemberResponse(
                 allowableValues = {"OWNER", "MEMBER"})
         String role,
 
-        @Schema(description = "권한 항목(정렬됨). OWNER는 항상 전부.", example = "[\"wiki.ingest\"]")
+        @Schema(description = "권한 항목(정렬됨). OWNER는 항상 전부.", example = "[\"skill.author\", \"wiki.ingest\"]")
         List<String> permissions,
 
         @JsonProperty("joined_at")

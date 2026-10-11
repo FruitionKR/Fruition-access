@@ -2386,6 +2386,7 @@ components:
           type: array
           description: 권한 항목(정렬됨). OWNER는 항상 전부.
           example:
+          - skill.author
           - wiki.ingest
           items:
             type: string
@@ -2409,13 +2410,18 @@ components:
       properties:
         permissions:
           type: array
-          description: MEMBER의 권한 항목 전체(교체). 생략하면 바꾸지 않는다. 결과 역할이 OWNER이면 보낼 수 없다(400 OWNER_PERMISSIONS_FIXED).
+          description: "MEMBER의 권한 항목 전체(교체). 값: wiki.ingest, wiki.lint, skill.author, wiki.restore, document.convert. 생략하면 바꾸지 않는다. 결과 역할이 OWNER이면 보낼 수 없다(400 OWNER_PERMISSIONS_FIXED)."
           example:
+          - skill.author
           - wiki.ingest
           items:
             type: string
             enum:
             - wiki.ingest
+            - wiki.lint
+            - skill.author
+            - wiki.restore
+            - document.convert
         role:
           type: string
           description: 새 역할. 생략하면 바꾸지 않는다.

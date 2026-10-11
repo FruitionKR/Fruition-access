@@ -1041,7 +1041,7 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members" \
 | path | `workspace_id` | `string` | 예 | 워크스페이스 ID |
 | path | `user_id` | `string` | 예 | 대상 멤버 사용자 ID |
 | body | `role` | `string` | 아니오 | 새 역할. `OWNER` 또는 `MEMBER`. 생략하면 바꾸지 않는다. |
-| body | `permissions` | `string[]` | 아니오 | MEMBER의 권한 항목 전체(교체). 현재 값은 `wiki.ingest`뿐이다. 생략하면 바꾸지 않는다. |
+| body | `permissions` | `string[]` | 아니오 | MEMBER의 권한 항목 전체(교체). 값은 `wiki.ingest`(편입·채팅→위키 내보내기), `wiki.lint`(위키 정리), `skill.author`(스킬 작성·게시), `wiki.restore`(남이 실행한 AI 작업 되돌리기), `document.convert`(남이 올린 PDF 변환) 다섯 가지다. 생략하면 바꾸지 않는다. |
 
 - 둘 중 하나는 있어야 한다. 둘 다 없으면 `400 INVALID_REQUEST`다.
 - 결과 역할이 OWNER인데 `permissions`를 보내면 `400 OWNER_PERMISSIONS_FIXED`다. OWNER는 항상 모든 권한을 가지므로 자신을 포함한 어떤 OWNER의 권한도 바꿀 수 없다.
@@ -1354,7 +1354,7 @@ curl -X POST "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/restore
 |---|---|
 | 목적 | 워크스페이스의 AI 모델 설정을 조회합니다. |
 | 입력 | **Path** — `workspace_id`: `string`, `user_id`: `string`<br>**Header** — `X-Internal-Token`(필수, 인증 계층 검증): `string` |
-| 출력 | `200` 성공 — `{"role": "OWNER"｜"MEMBER"｜"NONE", "permissions": ["wiki.ingest"]}` |
+| 출력 | `200` 성공 — `{"role": "OWNER"｜"MEMBER"｜"NONE", "permissions": ["wiki.ingest", "wiki.lint"]}` |
 | 조건 | 인증 필요<br>서비스 간 내부 인증 토큰을 검증한다.<br>올바른 내부 서비스 토큰을 가진 서비스만 호출할 수 있다.<br>요청에 포함된 workspace/user scope는 해당 route의 서비스 계층에서 추가 검증한다. |
 | 주요 오류 | `401` 내부 인증 토큰 누락 또는 불일치 |
 
