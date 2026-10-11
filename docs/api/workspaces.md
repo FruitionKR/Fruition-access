@@ -6,7 +6,7 @@
 
 워크스페이스명은 중복을 허용한다. 구분은 `workspace_id`로 한다. 다만 생성 시 요청한 이름이 사용자에게 이미 보이는 이름과 같으면 `내 워크스페이스 2`처럼 번호를 붙여 저장한다. `name`을 비우거나 공백만 보내면 `새 워크스페이스`를 기준으로 같은 규칙을 적용한다. 번호는 목록에서 서로를 구분하기 위한 것이라 동시 생성 시 같은 번호가 나올 수 있고, 이름 변경에는 적용하지 않는다. 번호를 붙여 255자를 넘으면 번호 길이만큼 이름 앞부분을 잘라 255자(요청 검증과 같은 UTF-16 기준)에 맞춘다.
 
-- API 수: 16
+- API 수: 17
 - 호출 연결: [access-svc 호출 연결 요약](README.md#호출-연결-요약) 참고
 
 ## API 목차
@@ -16,18 +16,19 @@
 | [`GET /api/workspaces`](#summary-get-api-workspaces) | 로그인한 사용자가 소유한 워크스페이스 목록을 반환합니다. |
 | [`POST /api/workspaces`](#summary-post-api-workspaces) | 로그인한 사용자 소유의 워크스페이스를 생성합니다. |
 | [`GET /api/workspaces/trash`](#summary-get-api-workspaces-trash) | 소유자가 삭제한 워크스페이스를 반환합니다. |
-| [`PATCH /api/workspaces/{workspace_id}`](#summary-patch-api-workspaces-workspace-id) | 로그인한 사용자가 소유한 워크스페이스의 이름을 변경합니다. |
+| [`PATCH /api/workspaces/{workspace_id}`](#summary-patch-api-workspaces-workspace-id) | 로그인한 사용자가 소유한 워크스페이스의 이름(`name`)과 업로드 시 자동 ingest 여부(`auto_ingest_on_upload`)를 변경합니다. |
 | [`DELETE /api/workspaces/{workspace_id}`](#summary-delete-api-workspaces-workspace-id) | 소유한 워크스페이스를 하위 데이터 변경 없이 소프트 삭제합니다. |
 | [`PUT /api/workspaces/{workspace_id}/icon`](#summary-put-api-workspaces-workspace-id-icon) | 소유한 워크스페이스의 아이콘 이모지를 설정하거나 지웁니다. |
 | [`PUT /api/workspaces/{workspace_id}/icon/image`](#summary-put-api-workspaces-workspace-id-icon-image) | 아이콘으로 쓸 이미지를 업로드합니다. |
 | [`GET /api/workspaces/{workspace_id}/icon/image`](#summary-get-api-workspaces-workspace-id-icon-image) | 멤버에게 아이콘 이미지 bytes를 반환합니다. |
 | [`GET /api/workspaces/{workspace_id}/members`](#summary-get-api-workspaces-workspace-id-members) | 워크스페이스의 활성 멤버를 합류 순으로 반환합니다. 멤버만 조회할 수 있습니다. |
-| [`PATCH /api/workspaces/{workspace_id}/members/{user_id}`](#summary-patch-api-workspaces-workspace-id-members-user-id) | 멤버의 역할을 OWNER 또는 MEMBER로 변경합니다. OWNER만 호출할 수 있습니다. |
+| [`PATCH /api/workspaces/{workspace_id}/members/{user_id}`](#summary-patch-api-workspaces-workspace-id-members-user-id) | 멤버의 역할(`role`)과 권한 항목(`permissions`)을 변경합니다. OWNER만 호출할 수 있습니다. |
 | [`DELETE /api/workspaces/{workspace_id}/members/{user_id}`](#summary-delete-api-workspaces-workspace-id-members-user-id) | OWNER는 다른 멤버를 제거할 수 있고, 멤버는 자신을 제거해 탈퇴할 수 있습니다. |
 | [`POST /api/workspaces/{workspace_id}/restore`](#summary-post-api-workspaces-workspace-id-restore) | 소프트 삭제한 워크스페이스와 기존 하위 데이터의 접근을 복구합니다. |
-| [`GET /internal/authz/workspaces/{workspace_id}/users/{user_id}`](#summary-get-internal-authz-workspaces-workspace-id-users-user-id) | 워크스페이스에서 사용자의 활성 역할을 조회합니다. |
+| [`GET /internal/authz/workspaces/{workspace_id}/users/{user_id}`](#summary-get-internal-authz-workspaces-workspace-id-users-user-id) | 워크스페이스에서 사용자의 활성 역할과 권한 항목을 조회합니다. |
 | [`GET /internal/users/{user_id}`](#summary-get-internal-users-user-id) | 워크스페이스에서 사용자의 활성 역할을 조회합니다. |
 | [`GET /internal/workspaces/{workspace_id}/member-users`](#summary-get-internal-workspaces-workspace-id-member-users) | 기간 중 멤버였던 사용자 ID를 조회합니다(탈퇴·제거 포함). |
+| [`GET /internal/workspaces/{workspace_id}/settings`](#summary-get-internal-workspaces-workspace-id-settings) | 워크스페이스 설정(`auto_ingest_on_upload`)을 조회합니다. |
 | [`GET /internal/workspaces/{workspace_id}/ai-model-settings`](#summary-get-internal-workspaces-workspace-id-ai-model-settings) | 내부 서비스가 사용자의 표시 이름을 조회합니다. |
 | [`PUT /internal/workspaces/{workspace_id}/ai-model-settings`](#summary-put-internal-workspaces-workspace-id-ai-model-settings) | 내부 서비스가 사용자의 표시 이름을 조회합니다. |
 
@@ -78,6 +79,7 @@
 {
   "workspaces": [
     {
+      "auto_ingest_on_upload": false,
       "created_at": "2026-08-13T04:25:24.371948Z",
       "id": "ws_9d47a0e9a6324341b47562553b75f92a",
       "name": "내 워크스페이스",
@@ -111,6 +113,7 @@ curl -X GET "$ACCESS/api/workspaces" \
 {
   "workspaces": [
     {
+      "auto_ingest_on_upload": false,
       "created_at": "2026-08-13T04:25:24.371948Z",
       "id": "ws_9d47a0e9a6324341b47562553b75f92a",
       "name": "내 워크스페이스",
@@ -180,6 +183,7 @@ curl -X GET "$ACCESS/api/workspaces" \
 
 ```json
 {
+  "auto_ingest_on_upload": false,
   "created_at": "2026-08-13T04:25:24.371948Z",
   "id": "ws_9d47a0e9a6324341b47562553b75f92a",
   "name": "내 워크스페이스",
@@ -228,6 +232,7 @@ curl -X POST "$ACCESS/api/workspaces" \
 
 ```json
 {
+  "auto_ingest_on_upload": false,
   "created_at": "2026-08-13T04:25:24.371948Z",
   "id": "ws_9d47a0e9a6324341b47562553b75f92a",
   "name": "내 워크스페이스",
@@ -349,11 +354,11 @@ curl -X GET "$ACCESS/api/workspaces/trash" \
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | 로그인한 사용자가 소유한 워크스페이스의 이름을 변경합니다. |
+| 목적 | 로그인한 사용자가 소유한 워크스페이스의 이름(`name`)과 업로드 시 자동 ingest 여부(`auto_ingest_on_upload`)를 변경합니다. 둘 다 선택이지만 하나는 필요합니다. |
 | 입력 | **Path** — `workspace_id`: `string`<br>**Body** — `WorkspaceRenameRequest` |
 | 출력 | `200` 변경 성공 — `WorkspaceResponse` |
 | 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다.<br>인증된 사용자만 호출할 수 있다.<br>path의 `workspace_id`에 대한 활성 멤버십을 검증한다. |
-| 주요 오류 | `404` 워크스페이스를 찾을 수 없음 — `ErrorResponse` |
+| 주요 오류 | `400` `name`·`auto_ingest_on_upload`가 모두 없음, `name`이 공백이거나 255자 초과 — `ErrorResponse`<br>`404` 워크스페이스를 찾을 수 없음 — `ErrorResponse` |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -367,7 +372,7 @@ curl -X GET "$ACCESS/api/workspaces/trash" \
 
 #### 2. 목적
 
-로그인한 사용자가 소유한 워크스페이스의 이름을 변경합니다.
+로그인한 사용자가 소유한 워크스페이스의 이름(`name`)과 업로드 시 자동 ingest 여부(`auto_ingest_on_upload`)를 변경합니다.
 
 #### 3. Auth 필요 여부
 
@@ -379,12 +384,16 @@ curl -X GET "$ACCESS/api/workspaces/trash" \
 | 위치 | 이름 | 타입 | 필수 | 설명 |
 |---|---|---|---|---|
 | path | `workspace_id` | `string` | 예 | 워크스페이스 ID |
+| body | `name` | `string` | 아니오 | 새 이름. 공백만으로는 불가, 255자 이하. 생략하면 바꾸지 않는다. |
+| body | `auto_ingest_on_upload` | `boolean` | 아니오 | 업로드 시 자동 ingest 여부(기본 `false`). 생략하면 바꾸지 않는다. |
 
+- 두 필드 중 하나는 있어야 한다. 둘 다 없으면 `400 INVALID_REQUEST`다.
 - Content-Type: `application/json` (`WorkspaceRenameRequest`)
 
 ```json
 {
-  "name": "이름 바꾼 워크스페이스"
+  "name": "이름 바꾼 워크스페이스",
+  "auto_ingest_on_upload": true
 }
 ```
 
@@ -395,6 +404,7 @@ curl -X GET "$ACCESS/api/workspaces/trash" \
 
 ```json
 {
+  "auto_ingest_on_upload": false,
   "created_at": "2026-08-13T04:25:24.371948Z",
   "id": "ws_9d47a0e9a6324341b47562553b75f92a",
   "name": "내 워크스페이스",
@@ -438,6 +448,7 @@ curl -X PATCH "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a" \
 
 ```json
 {
+  "auto_ingest_on_upload": false,
   "created_at": "2026-08-13T04:25:24.371948Z",
   "id": "ws_9d47a0e9a6324341b47562553b75f92a",
   "name": "내 워크스페이스",
@@ -911,6 +922,7 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/icon/image" \
       "display_name": "홍길동",
       "provider": "local",
       "role": "OWNER",
+      "permissions": ["wiki.ingest"],
       "joined_at": "2026-08-13T04:25:24.371948Z"
     },
     {
@@ -919,6 +931,7 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/icon/image" \
       "display_name": "김철수",
       "provider": "google",
       "role": "MEMBER",
+      "permissions": ["wiki.ingest"],
       "joined_at": "2026-08-20T09:11:03.882014Z"
     }
   ]
@@ -973,6 +986,7 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members" \
       "display_name": "홍길동",
       "provider": "local",
       "role": "OWNER",
+      "permissions": ["wiki.ingest"],
       "joined_at": "2026-08-13T04:25:24.371948Z"
     }
   ]
@@ -995,11 +1009,11 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members" \
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | 멤버의 역할을 OWNER 또는 MEMBER로 변경합니다. OWNER만 호출할 수 있습니다. |
+| 목적 | 멤버의 역할(`role`)과 권한 항목(`permissions`)을 변경합니다. OWNER만 호출할 수 있습니다. |
 | 입력 | **Path** — `workspace_id`: `string`, `user_id`: `string`<br>**Body** — `WorkspaceMemberRoleUpdateRequest` |
 | 출력 | `200` 변경 성공 — `WorkspaceMemberResponse` |
 | 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다.<br>호출자의 역할이 `OWNER`여야 한다. |
-| 주요 오류 | `403` OWNER 권한 없음 — `ErrorResponse`<br>`404` 워크스페이스 또는 대상 멤버를 찾을 수 없음 — `ErrorResponse`<br>`409` 마지막 OWNER는 강등할 수 없음 — `ErrorResponse` |
+| 주요 오류 | `400` 빈 body, 알 수 없거나 중복된 권한 항목, `OWNER_PERMISSIONS_FIXED` — `ErrorResponse`<br>`403` OWNER 권한 없음 — `ErrorResponse`<br>`404` 워크스페이스 또는 대상 멤버를 찾을 수 없음 — `ErrorResponse`<br>`409` 마지막 OWNER는 강등할 수 없음 — `ErrorResponse` |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -1013,7 +1027,7 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members" \
 
 #### 2. 목적
 
-멤버의 역할을 OWNER 또는 MEMBER로 변경합니다. OWNER만 호출할 수 있습니다.
+멤버의 역할(`role`)과 권한 항목(`permissions`)을 변경합니다. OWNER만 호출할 수 있습니다.
 
 #### 3. Auth 필요 여부
 
@@ -1026,13 +1040,20 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members" \
 |---|---|---|---|---|
 | path | `workspace_id` | `string` | 예 | 워크스페이스 ID |
 | path | `user_id` | `string` | 예 | 대상 멤버 사용자 ID |
-| body | `role` | `string` | 예 | 새 역할. `OWNER` 또는 `MEMBER` |
+| body | `role` | `string` | 아니오 | 새 역할. `OWNER` 또는 `MEMBER`. 생략하면 바꾸지 않는다. |
+| body | `permissions` | `string[]` | 아니오 | MEMBER의 권한 항목 전체(교체). 현재 값은 `wiki.ingest`뿐이다. 생략하면 바꾸지 않는다. |
 
+- 둘 중 하나는 있어야 한다. 둘 다 없으면 `400 INVALID_REQUEST`다.
+- 결과 역할이 OWNER인데 `permissions`를 보내면 `400 OWNER_PERMISSIONS_FIXED`다. OWNER는 항상 모든 권한을 가지므로 자신을 포함한 어떤 OWNER의 권한도 바꿀 수 없다.
+- MEMBER를 OWNER로 승격하면 저장된 권한이 비워진다(응답 `permissions`는 OWNER라 전부).
+- OWNER를 MEMBER로 강등할 때 `permissions`를 생략하면 모든 권한이 저장되고, 보내면 그 집합이 저장된다.
+- 알 수 없는 권한 문자열, 중복 항목, `null` 항목은 `400 INVALID_REQUEST`다.
+- 권한이 실제로 바뀌면 인가 projection(`authz:role:{ws}:{user}`)을 무효화한다.
 - Content-Type: `application/json` (`WorkspaceMemberRoleUpdateRequest`)
 
 ```json
 {
-  "role": "OWNER"
+  "permissions": ["wiki.ingest"]
 }
 ```
 
@@ -1048,16 +1069,18 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members" \
   "display_name": "김철수",
   "provider": "google",
   "role": "OWNER",
+  "permissions": ["wiki.ingest"],
   "joined_at": "2026-08-20T09:11:03.882014Z"
 }
 ```
 
-이미 같은 역할이면 아무것도 바꾸지 않고 현재 상태를 그대로 돌려준다.
+바꿀 내용이 현재 상태와 같으면 아무것도 바꾸지 않고 현재 상태를 그대로 돌려준다. `permissions`는 정렬된 문자열 배열이며 OWNER는 항상 전부다. 멤버 목록의 각 항목에도 같은 필드가 있다.
 
 #### 6. Error response
 
 | HTTP 상태 | 설명 | 응답 스키마 |
 |---|---|---|
+| `400` | 빈 body·알 수 없거나 중복된 권한 (`INVALID_REQUEST`), OWNER 권한 변경 시도 (`OWNER_PERMISSIONS_FIXED`) | `ErrorResponse` |
 | `403` | OWNER 권한 없음 (`WORKSPACE_ACCESS_DENIED`) | `ErrorResponse` |
 | `404` | 워크스페이스를 찾을 수 없거나 호출자가 멤버가 아님 (`WORKSPACE_NOT_FOUND`), 대상이 멤버가 아님 (`WORKSPACE_MEMBER_NOT_FOUND`) | `ErrorResponse` |
 | `409` | 마지막 OWNER는 강등할 수 없음 (`LAST_OWNER`) | `ErrorResponse` |
@@ -1089,7 +1112,7 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members" \
 curl -X PATCH "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members/user_8b21c530" \
   -H 'Authorization: Bearer <access_token>' \
   -H 'Content-Type: application/json' \
-  --data '{"role":"OWNER"}'
+  --data '{"permissions":["wiki.ingest"]}'
 ```
 
 ```json
@@ -1099,6 +1122,7 @@ curl -X PATCH "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/member
   "display_name": "김철수",
   "provider": "google",
   "role": "OWNER",
+  "permissions": ["wiki.ingest"],
   "joined_at": "2026-08-20T09:11:03.882014Z"
 }
 ```
@@ -1331,9 +1355,12 @@ curl -X POST "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/restore
 |---|---|
 | 목적 | 워크스페이스의 AI 모델 설정을 조회합니다. |
 | 입력 | **Path** — `workspace_id`: `string`, `user_id`: `string`<br>**Header** — `X-Internal-Token`(필수, 인증 계층 검증): `string` |
-| 출력 | `200` 성공 — `object` |
+| 출력 | `200` 성공 — `{"role": "OWNER"｜"MEMBER"｜"NONE", "permissions": ["wiki.ingest"]}` |
 | 조건 | 인증 필요<br>서비스 간 내부 인증 토큰을 검증한다.<br>올바른 내부 서비스 토큰을 가진 서비스만 호출할 수 있다.<br>요청에 포함된 workspace/user scope는 해당 route의 서비스 계층에서 추가 검증한다. |
 | 주요 오류 | `401` 내부 인증 토큰 누락 또는 불일치 |
+
+- `permissions`는 정렬된 배열이다. `NONE`(비멤버·삭제된 워크스페이스)은 `[]`, `OWNER`는 항상 전부, `MEMBER`는 부여된 항목이다. `role`은 기존과 같다.
+- Redis 키 `authz:role:{ws}:{uid}`는 그대로이며 캐시 값의 형식은 document가 소유한다. 권한 변경·멤버 제거 시 access가 키를 무효화한다.
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -1515,6 +1542,19 @@ curl -X GET "$ACCESS/internal/users/<value>" \
 - 근거 데이터는 `workspace_membership_periods`(V21)다. `workspace_members`의 INSERT·DELETE trigger가 기록한다.
 - 이력은 V21 배포 시점부터 쌓인다. 배포 전에 이미 제거된 멤버는 포함되지 않는다.
 - 구현: `src/main/java/fruition/access/workspace/controller/InternalAuthzController.java`, `operationId: memberUsers`
+
+<a id="summary-get-internal-workspaces-workspace-id-settings"></a>
+### `GET /internal/workspaces/{workspace_id}/settings`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 워크스페이스 설정을 조회합니다. document가 업로드 시 자동 ingest 여부를 판단할 때 씁니다. |
+| 입력 | **Path** — `workspace_id`: `string`<br>**Header** — `X-Internal-Token`(필수): `string` |
+| 출력 | `200` 성공 — `{"auto_ingest_on_upload": false}` |
+| 조건 | 내부 서비스 토큰을 가진 서비스만 호출할 수 있다. |
+| 주요 오류 | `401` `INVALID_INTERNAL_TOKEN`, `404` `WORKSPACE_NOT_FOUND`(없거나 소프트 삭제됨) |
+
+- 구현: `src/main/java/fruition/access/workspace/controller/InternalAuthzController.java`, `operationId: settings`
 
 <a id="summary-get-internal-workspaces-workspace-id-ai-model-settings"></a>
 ### `GET /internal/workspaces/{workspace_id}/ai-model-settings`

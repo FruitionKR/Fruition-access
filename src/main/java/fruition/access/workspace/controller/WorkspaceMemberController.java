@@ -50,11 +50,18 @@ public class WorkspaceMemberController {
         return ResponseEntity.ok(workspaceMemberService.list(userId, workspaceId));
     }
 
-    @Operation(summary = "멤버 역할 변경",
-            description = "멤버의 역할을 OWNER 또는 MEMBER로 변경합니다. OWNER만 호출할 수 있습니다.")
+    @Operation(summary = "멤버 역할·권한 변경",
+            description = "멤버의 역할(role)과 권한 항목(permissions)을 변경합니다. 둘 다 선택이지만 하나는 필요하며, "
+                    + "permissions는 전체 집합을 교체합니다. OWNER만 호출할 수 있습니다. "
+                    + "결과 역할이 OWNER인데 permissions를 보내면 400 OWNER_PERMISSIONS_FIXED입니다. "
+                    + "MEMBER를 OWNER로 승격하면 저장된 권한이 비워지고, OWNER를 MEMBER로 강등할 때 "
+                    + "permissions를 생략하면 모든 권한이 부여됩니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "변경 성공",
             content = @Content(schema = @Schema(implementation = WorkspaceMemberResponse.class))),
+        @ApiResponse(responseCode = "400",
+            description = "role·permissions가 모두 없음, 알 수 없거나 중복된 권한 항목, 또는 OWNER_PERMISSIONS_FIXED",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(responseCode = "403", description = "OWNER 권한 없음",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(responseCode = "404", description = "워크스페이스 또는 대상 멤버를 찾을 수 없음",

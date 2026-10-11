@@ -12,6 +12,7 @@ import fruition.access.workspace.dto.WorkspaceMemberListResponse;
 import fruition.access.workspace.dto.WorkspaceMemberResponse;
 import fruition.access.workspace.dto.WorkspaceMemberRoleUpdateRequest;
 import fruition.access.workspace.exception.LastOwnerException;
+import fruition.access.workspace.exception.OwnerPermissionsFixedException;
 import fruition.access.workspace.exception.WorkspaceAccessDeniedException;
 import fruition.access.workspace.exception.WorkspaceMemberNotFoundException;
 import fruition.access.workspace.exception.WorkspaceNotFoundException;
@@ -64,7 +65,7 @@ class WorkspaceMemberControllerTest {
 
     private WorkspaceMemberResponse response(String userId, String role) {
         return new WorkspaceMemberResponse(
-                userId, userId + "@example.com", "표시이름", "local", role, Instant.parse("2026-08-13T04:25:24Z"));
+                userId, userId + "@example.com", "표시이름", "local", role, List.of("wiki.ingest"), Instant.parse("2026-08-13T04:25:24Z"));
     }
 
     @Test
@@ -108,7 +109,7 @@ class WorkspaceMemberControllerTest {
                         .header("Authorization", bearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.OWNER))))
+                                new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.OWNER, null))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("OWNER"));
     }
@@ -124,6 +125,45 @@ class WorkspaceMemberControllerTest {
     }
 
     @Test
+    void changePermissions_returns200WithPermissions() throws Exception {
+        when(workspaceMemberService.changeRole(eq(USER_ID), eq(WORKSPACE_ID), eq(TARGET_ID), any()))
+                .thenReturn(response(TARGET_ID, "MEMBER"));
+
+        mockMvc.perform(patch("/api/workspaces/" + WORKSPACE_ID + "/members/" + TARGET_ID)
+                        .header("Authorization", bearerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"permissions\":[\"wiki.ingest\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.permissions[0]").value("wiki.ingest"));
+    }
+
+    @Test
+    void changePermissions_unknownOrDuplicate_returns400() throws Exception {
+        for (String body : List.of("{\"permissions\":[\"wiki.delete\"]}",
+                "{\"permissions\":[\"wiki.ingest\",\"wiki.ingest\"]}", "{\"permissions\":[null]}")) {
+            mockMvc.perform(patch("/api/workspaces/" + WORKSPACE_ID + "/members/" + TARGET_ID)
+                            .header("Authorization", bearerToken())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+        }
+    }
+
+    @Test
+    void changePermissions_onOwner_returns400OwnerPermissionsFixed() throws Exception {
+        when(workspaceMemberService.changeRole(eq(USER_ID), eq(WORKSPACE_ID), eq(TARGET_ID), any()))
+                .thenThrow(new OwnerPermissionsFixedException());
+
+        mockMvc.perform(patch("/api/workspaces/" + WORKSPACE_ID + "/members/" + TARGET_ID)
+                        .header("Authorization", bearerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"permissions\":[\"wiki.ingest\"]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("OWNER_PERMISSIONS_FIXED"));
+    }
+
+    @Test
     void changeRole_nonOwner_returns403() throws Exception {
         when(workspaceMemberService.changeRole(eq(USER_ID), eq(WORKSPACE_ID), eq(TARGET_ID), any()))
                 .thenThrow(new WorkspaceAccessDeniedException("멤버 역할을 변경하려면 OWNER 권한이 필요합니다."));
@@ -132,7 +172,7 @@ class WorkspaceMemberControllerTest {
                         .header("Authorization", bearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER))))
+                                new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER, null))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("WORKSPACE_ACCESS_DENIED"));
     }
@@ -146,7 +186,7 @@ class WorkspaceMemberControllerTest {
                         .header("Authorization", bearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER))))
+                                new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER, null))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("LAST_OWNER"));
     }

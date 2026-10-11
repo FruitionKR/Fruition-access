@@ -7,6 +7,6 @@ Access는 인증·OAuth·세션·워크스페이스·멤버·초대를 담당하
 - `src/main/resources/db/migration/`: access_db Flyway migration
 - `api-specs/openapi.yaml`: 실행 코드와 비교하는 HTTP 계약
 
-Document는 내부 API와 Redis 권한 projection으로 Access의 권한 정보를 사용합니다. workspace 생성 시 초기 노트 생성을 Document에 요청합니다. Access는 Document·AI 테이블을 직접 수정하지 않습니다.
+Document는 내부 API와 Redis 권한 projection으로 Access의 권한 정보를 사용합니다. workspace 생성 시 초기 노트 생성을 Document에 요청합니다. Access는 Document·AI 테이블을 직접 수정하지 않습니다. 멤버는 역할(OWNER/MEMBER) 외에 `workspace_member_permissions`의 권한 항목(`wiki.ingest`)을 가지며, 내부 인가 조회(`GET /internal/authz/workspaces/{ws}/users/{uid}`)가 `role`과 함께 `permissions`를 돌려줍니다. 업로드 자동 ingest 여부는 `GET /internal/workspaces/{ws}/settings`로 조회합니다([ADR 0019](adr/0019-member-permissions-and-auto-ingest.md)).
 
 자세한 인가·내부 토큰·네트워크 계약은 [공통 아키텍처](https://github.com/FruitionKR/Fruition-flatform/blob/main/docs/architecture.md), 각 endpoint는 [API 문서](api/README.md)를 따릅니다.

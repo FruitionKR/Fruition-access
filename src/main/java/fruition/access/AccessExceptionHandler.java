@@ -46,6 +46,7 @@ import fruition.access.workspace.exception.WorkspaceIconNotFoundException;
 import fruition.access.workspace.exception.WorkspaceIconTooLargeException;
 import fruition.access.workspace.exception.WorkspaceAccessDeniedException;
 import fruition.access.workspace.exception.WorkspaceMemberNotFoundException;
+import fruition.access.workspace.exception.OwnerPermissionsFixedException;
 import fruition.access.workspace.exception.WorkspaceNotFoundException;
 import fruition.access.workspace.exception.WorkspaceTrashExpiredException;
 import fruition.shared.util.BaseExceptionHandler;
@@ -217,6 +218,14 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
                 .body(ErrorResponse.of("LAST_OWNER", e.getMessage()));
+    }
+
+    @ExceptionHandler(OwnerPermissionsFixedException.class)
+    public ResponseEntity<ErrorResponse> handleOwnerPermissionsFixed(OwnerPermissionsFixedException e) {
+        logHandled(e, HttpStatus.BAD_REQUEST, "OWNER_PERMISSIONS_FIXED");
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("OWNER_PERMISSIONS_FIXED", e.getMessage()));
     }
 
     @ExceptionHandler(InvitationNotFoundException.class)

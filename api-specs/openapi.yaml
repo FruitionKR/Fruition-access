@@ -1010,7 +1010,7 @@ paths:
       tags:
       - Workspaces
     patch:
-      description: 로그인한 사용자가 소유한 워크스페이스의 이름을 변경합니다.
+      description: 로그인한 사용자가 소유한 워크스페이스의 이름(name)과 업로드 시 자동 ingest 여부(auto_ingest_on_upload)를 변경합니다. 둘 다 선택이지만 하나는 필요합니다.
       operationId: rename
       parameters:
       - description: 워크스페이스 ID
@@ -1034,13 +1034,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorkspaceResponse"
           description: 변경 성공
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: name·auto_ingest_on_upload가 모두 없거나 name이 공백이거나 255자 초과
         "404":
           content:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
           description: 워크스페이스를 찾을 수 없음
-      summary: 워크스페이스 이름 변경
+      summary: 워크스페이스 설정 변경
       tags:
       - Workspaces
   /api/workspaces/{workspace_id}/icon:
@@ -1371,7 +1377,7 @@ paths:
       tags:
       - Workspace Members
     patch:
-      description: 멤버의 역할을 OWNER 또는 MEMBER로 변경합니다. OWNER만 호출할 수 있습니다.
+      description: "멤버의 역할(role)과 권한 항목(permissions)을 변경합니다. 둘 다 선택이지만 하나는 필요하며, permissions는 전체 집합을 교체합니다. OWNER만 호출할 수 있습니다. 결과 역할이 OWNER인데 permissions를 보내면 400 OWNER_PERMISSIONS_FIXED입니다. MEMBER를 OWNER로 승격하면 저장된 권한이 비워지고, OWNER를 MEMBER로 강등할 때 permissions를 생략하면 모든 권한이 부여됩니다."
       operationId: changeRole
       parameters:
       - description: 워크스페이스 ID
@@ -1402,6 +1408,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorkspaceMemberResponse"
           description: 변경 성공
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: "role·permissions가 모두 없음, 알 수 없거나 중복된 권한 항목, 또는 OWNER_PERMISSIONS_FIXED"
         "403":
           content:
             '*/*':
@@ -1420,7 +1432,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
           description: 마지막 OWNER는 강등할 수 없음
-      summary: 멤버 역할 변경
+      summary: 멤버 역할·권한 변경
       tags:
       - Workspace Members
   /api/workspaces/{workspace_id}/restore:
@@ -1600,6 +1612,31 @@ paths:
         schema:
           type: string
           format: date-time
+      - in: header
+        name: X-Internal-Token
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: object
+          description: OK
+      tags:
+      - internal-authz-controller
+  /internal/workspaces/{workspace_id}/settings:
+    get:
+      operationId: settings
+      parameters:
+      - example: ws_9d47a0e9a6324341b47562553b75f92a
+        in: path
+        name: workspace_id
+        required: true
+        schema:
+          type: string
+          default: ws_9d47a0e9a6324341b47562553b75f92a
       - in: header
         name: X-Internal-Token
         required: false
@@ -2345,6 +2382,13 @@ components:
           format: date-time
           description: 합류 시각(ISO-8601 UTC)
           example: 2026-08-13T04:25:24.371948Z
+        permissions:
+          type: array
+          description: 권한 항목(정렬됨). OWNER는 항상 전부.
+          example:
+          - wiki.ingest
+          items:
+            type: string
         provider:
           type: string
           description: "계정을 만든 수단. 일반 가입은 local, OAuth는 provider 등록 ID. 같은 이메일이라도 provider가 다르면 다른 계정이다."
@@ -2363,29 +2407,42 @@ components:
     WorkspaceMemberRoleUpdateRequest:
       type: object
       properties:
+        permissions:
+          type: array
+          description: MEMBER의 권한 항목 전체(교체). 생략하면 바꾸지 않는다. 결과 역할이 OWNER이면 보낼 수 없다(400 OWNER_PERMISSIONS_FIXED). OWNER를 MEMBER로 강등할 때 생략하면 모든 권한이 부여된다.
+          example:
+          - wiki.ingest
+          items:
+            type: string
+            enum:
+            - wiki.ingest
         role:
           type: string
-          description: 새 역할
+          description: 새 역할. 생략하면 바꾸지 않는다.
           enum:
           - OWNER
           - MEMBER
-          example: OWNER
-      required:
-      - role
+          example: MEMBER
     WorkspaceRenameRequest:
       type: object
       properties:
+        auto_ingest_on_upload:
+          type: boolean
+          description: 업로드 시 자동으로 ingest할지 여부. 생략하면 바꾸지 않는다.
+          example: false
         name:
           type: string
-          description: 새 워크스페이스 이름(255자 이하)
+          description: "새 워크스페이스 이름(255자 이하, 공백만으로는 불가). 생략하면 바꾸지 않는다."
           example: 이름 바꾼 워크스페이스
           maxLength: 255
           minLength: 0
-      required:
-      - name
     WorkspaceResponse:
       type: object
       properties:
+        auto_ingest_on_upload:
+          type: boolean
+          description: 업로드 시 자동으로 ingest할지 여부
+          example: false
         created_at:
           type: string
           format: date-time

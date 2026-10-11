@@ -42,6 +42,19 @@ public interface WorkspaceMemberRepository extends JpaRepository<WorkspaceMember
             @Param("userId") String userId
     );
 
+    /** 역할과 권한을 한 번에 읽는다(내부 인가 조회용). 삭제된 워크스페이스는 제외한다. */
+    @Query("""
+            SELECT m
+            FROM WorkspaceMember m
+            WHERE m.workspace.id = :workspaceId
+              AND m.user.id = :userId
+              AND m.workspace.deletedAt IS NULL
+            """)
+    Optional<WorkspaceMember> findActiveMember(
+            @Param("workspaceId") String workspaceId,
+            @Param("userId") String userId
+    );
+
     @Query("""
             SELECT m.workspace
             FROM WorkspaceMember m
