@@ -19,8 +19,8 @@ Fruition-ai ADR 0033으로 wiki는 개인 자산이 아니라 워크스페이스
 2. OWNER는 항상 모든 권한을 가진다. OWNER 행은 저장하지 않고 응답을 만들 때 전부로 계산한다.
    OWNER의 권한은 바꿀 수 없다(`400 OWNER_PERMISSIONS_FIXED`, 호출자 본인 포함).
 3. `PATCH /api/workspaces/{ws}/members/{user}` 본문을 `{role?, permissions?}`로 확장한다. 하나는 필요하고
-   `permissions`는 전체 집합을 교체한다. MEMBER를 OWNER로 승격하면 저장 권한을 비우고, OWNER를 MEMBER로
-   강등하면 요청의 `permissions`를, 없으면 모든 권한을 저장한다. 실제로 바뀔 때만 인가 projection을 무효화한다.
+   `permissions`는 전체 집합을 교체한다. 권한 항목은 기능마다 OWNER가 부여하며 역할과 독립이다. 역할을 바꿔도
+   부여된 권한은 그대로이고, 강등된 멤버는 부여받은 항목만 가진다. 실제로 바뀔 때만 인가 projection을 무효화한다.
    새 멤버(초대 수락, OWNER 초대, 워크스페이스 생성자)는 저장된 권한 없이 시작한다.
 4. `workspaces.auto_ingest_on_upload boolean NOT NULL DEFAULT false`를 추가하고 기존
    `PATCH /api/workspaces/{ws}`가 `{name?, auto_ingest_on_upload?}`를 받는다. 비용이 드는 동작이라 기본은 끈다.
@@ -31,6 +31,7 @@ Fruition-ai ADR 0033으로 wiki는 개인 자산이 아니라 워크스페이스
 
 ## 대안과 기각 사유
 
+- 역할 변경에 권한을 연동(승격 시 비우고 강등 시 전부 부여): 역할과 권한이 서로를 바꿔 규칙이 숨는다. 권한은 기능마다 OWNER가 명시적으로 부여하는 편이 예측 가능하다.
 - 역할 추가(EDITOR 등): 항목이 늘 때마다 역할 조합이 폭발하고 기존 `OWNER`/`MEMBER` 판정 코드 전반에 영향을 준다.
 - 워크스페이스 전체 토글: 사람별 통제가 안 된다. 비용을 쓰는 사람만 골라 허용할 수 없다.
 - 승인 흐름(요청 후 OWNER 승인): 지금 단계에는 과하다. 상태·알림·만료 설계가 필요하다.
@@ -42,4 +43,4 @@ Fruition-ai ADR 0033으로 wiki는 개인 자산이 아니라 워크스페이스
 - 항목을 늘릴 때는 enum과 CHECK 제약, 기존 멤버 부여 여부를 함께 정한다.
 - document는 `permissions`로 ingest를 인가하고 `auto_ingest_on_upload`로 자동 수집을 결정한다(호출자 구현은 별도).
   document가 캐시한 값은 access의 evict 또는 TTL로 갱신된다.
-- OWNER 수에 변화가 없는 한 `LAST_OWNER` 규칙은 그대로다. 강등된 OWNER의 권한은 강등 시점에 확정된다.
+- `LAST_OWNER` 규칙은 그대로다. OWNER를 강등하면 부여받은 권한 항목이 없는 한 편입할 수 없으므로, 필요하면 OWNER가 따로 부여한다.

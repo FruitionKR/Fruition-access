@@ -1045,8 +1045,7 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members" \
 
 - 둘 중 하나는 있어야 한다. 둘 다 없으면 `400 INVALID_REQUEST`다.
 - 결과 역할이 OWNER인데 `permissions`를 보내면 `400 OWNER_PERMISSIONS_FIXED`다. OWNER는 항상 모든 권한을 가지므로 자신을 포함한 어떤 OWNER의 권한도 바꿀 수 없다.
-- MEMBER를 OWNER로 승격하면 저장된 권한이 비워진다(응답 `permissions`는 OWNER라 전부).
-- OWNER를 MEMBER로 강등할 때 `permissions`를 생략하면 모든 권한이 저장되고, 보내면 그 집합이 저장된다.
+- 권한 항목은 기능마다 OWNER가 부여한다. 역할과 독립이라 역할을 바꿔도 부여된 권한은 그대로다. 강등된 멤버는 부여받은 항목만 가진다.
 - 알 수 없는 권한 문자열, 중복 항목, `null` 항목은 `400 INVALID_REQUEST`다.
 - 권한이 실제로 바뀌면 인가 projection(`authz:role:{ws}:{user}`)을 무효화한다.
 - Content-Type: `application/json` (`WorkspaceMemberRoleUpdateRequest`)

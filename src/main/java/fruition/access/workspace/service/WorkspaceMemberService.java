@@ -15,7 +15,6 @@ import fruition.access.workspace.repository.WorkspaceMemberRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -57,17 +56,16 @@ public class WorkspaceMemberService {
         Set<WorkspacePermission> requested = request.permissions() == null
                 ? null : new HashSet<>(request.permissions());
 
+        // 역할과 권한 항목은 독립이다. 역할을 바꿔도 부여된 권한은 그대로 둔다.
         boolean changed = false;
         if (target.getRole() != newRole) {
             if (target.getRole() == WorkspaceRole.OWNER && isLastOwner(workspaceId)) {
                 throw new LastOwnerException(workspaceId);
             }
             target.changeRole(newRole);
-            // 승격하면 저장된 권한을 비우고, 강등하면 요청값(없으면 전부)을 저장한다.
-            target.replacePermissions(newRole == WorkspaceRole.OWNER ? Set.of()
-                    : requested != null ? requested : EnumSet.allOf(WorkspacePermission.class));
             changed = true;
-        } else if (requested != null && !requested.equals(target.getPermissions())) {
+        }
+        if (requested != null && !requested.equals(target.getPermissions())) {
             target.replacePermissions(requested);
             changed = true;
         }

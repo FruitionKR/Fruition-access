@@ -73,7 +73,7 @@ class WorkspaceMemberPermissionsIntegrationTest {
     }
 
     @Test
-    void promoteClearsAndDemoteGrantsAllInDb() {
+    void roleChangeKeepsGrantedPermissionsInDb() {
         String owner = user();
         String other = user();
         Workspace workspace = workspaces.saveAndFlush(new Workspace(UUID.randomUUID().toString(), "승강"));
@@ -83,7 +83,7 @@ class WorkspaceMemberPermissionsIntegrationTest {
                 new WorkspaceMemberRoleUpdateRequest(null, List.of(WorkspacePermission.WIKI_INGEST)));
 
         memberService.changeRole(owner, workspace.getId(), other, new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.OWNER, null));
-        assertThat(stored(workspace.getId(), other)).isEmpty();
+        assertThat(stored(workspace.getId(), other)).containsExactly("wiki.ingest");
 
         memberService.changeRole(owner, workspace.getId(), other, new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER, null));
         assertThat(stored(workspace.getId(), other)).containsExactly("wiki.ingest");

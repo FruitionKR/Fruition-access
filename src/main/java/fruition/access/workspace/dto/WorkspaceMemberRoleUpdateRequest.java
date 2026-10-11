@@ -16,8 +16,7 @@ public record WorkspaceMemberRoleUpdateRequest(
         WorkspaceRole role,
 
         @Schema(description = "MEMBER의 권한 항목 전체(교체). 생략하면 바꾸지 않는다."
-                + " 결과 역할이 OWNER이면 보낼 수 없다(400 OWNER_PERMISSIONS_FIXED)."
-                + " OWNER를 MEMBER로 강등할 때 생략하면 모든 권한이 부여된다.",
+                + " 결과 역할이 OWNER이면 보낼 수 없다(400 OWNER_PERMISSIONS_FIXED).",
                 example = "[\"wiki.ingest\"]", nullable = true)
         List<@NotNull(message = "permissions에 null을 넣을 수 없습니다.") WorkspacePermission> permissions
 ) {

@@ -244,27 +244,29 @@ class WorkspaceMemberServiceTest {
     }
 
     @Test
-    void promote_clearsStoredPermissions() {
+    void promote_keepsStoredPermissions() {
         actorRole(OWNER_ID, WorkspaceRole.OWNER);
         WorkspaceMember target = memberTarget(WorkspacePermission.WIKI_INGEST);
 
         WorkspaceMemberResponse response = workspaceMemberService.changeRole(OWNER_ID, WORKSPACE_ID, MEMBER_ID,
                 new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.OWNER, null));
 
-        assertThat(target.getPermissions()).isEmpty();
+        assertThat(target.getPermissions()).containsExactly(WorkspacePermission.WIKI_INGEST);
         assertThat(response.permissions()).containsExactly("wiki.ingest");
     }
 
     @Test
-    void demote_withoutPermissions_grantsAll() {
+    void demote_keepsStoredPermissions_noneGrantedByDefault() {
         actorRole(OWNER_ID, WorkspaceRole.OWNER);
         WorkspaceMember target = ownerTarget(MEMBER_ID);
         owners(member(OWNER_ID, WorkspaceRole.OWNER), target);
 
-        workspaceMemberService.changeRole(OWNER_ID, WORKSPACE_ID, MEMBER_ID,
+        WorkspaceMemberResponse response = workspaceMemberService.changeRole(OWNER_ID, WORKSPACE_ID, MEMBER_ID,
                 new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER, null));
 
-        assertThat(target.getPermissions()).containsExactlyInAnyOrder(WorkspacePermission.values());
+        assertThat(target.getPermissions()).isEmpty();
+        assertThat(response.permissions()).isEmpty();
+        verify(authzProjectionStore).evict(WORKSPACE_ID, MEMBER_ID);
     }
 
     @Test
@@ -274,10 +276,10 @@ class WorkspaceMemberServiceTest {
         owners(member(OWNER_ID, WorkspaceRole.OWNER), target);
 
         WorkspaceMemberResponse response = workspaceMemberService.changeRole(OWNER_ID, WORKSPACE_ID, MEMBER_ID,
-                new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER, List.of()));
+                new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER, List.of(WorkspacePermission.WIKI_INGEST)));
 
-        assertThat(target.getPermissions()).isEmpty();
-        assertThat(response.permissions()).isEmpty();
+        assertThat(target.getPermissions()).containsExactly(WorkspacePermission.WIKI_INGEST);
+        assertThat(response.permissions()).containsExactly("wiki.ingest");
     }
 
     @Test
