@@ -18,7 +18,7 @@ public class AiModelCatalog {
     // 2026-10-10 OpenAI 폐기 일정·Gemini 종료 모델 10개를 뺐다(#24).
     // 표시 이름은 각 provider 공식 모델 문서의 표기를 따른다(2026-10-06 확인).
     // 화이트리스트라 폐기·JSON 모드 미지원·비텍스트 모델은 넣지 않는다.
-    // Fruition-document에도 같은 목록이 있다(Fruition-document#51). 바꿀 때 함께 맞춘다.
+    // 기준은 Fruition-document의 같은 목록이다. CI(scripts/check-ai-model-catalog.py)가 document dev와 다르면 실패하므로 document를 먼저 머지한다(#8).
     // 프론트는 저장된 선택이 없으면 첫 항목을 고른다. 그래서 provider마다 기존 기본 모델을 맨 앞에 둔다.
     private static final List<AiModel> SUPPORTED_MODELS = List.of(
             new AiModel("openai", "gpt-6-luna", "GPT-6 Luna"),
