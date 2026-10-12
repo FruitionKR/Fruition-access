@@ -33,7 +33,7 @@ Fruition-ai ADR 0033으로 wiki는 개인 자산이 아니라 워크스페이스
 
 | 값 | 의미 | 비고 |
 |---|---|---|
-| `wiki.ingest` | 편입, 채팅→위키 내보내기 | OWNER가 부여 |
+| `wiki.ingest` | 편입(채팅을 문서로 내보낸 뒤 그 문서를 편입하는 것 포함). 채팅→문서 내보내기 자체는 누구나 가능하다 | OWNER가 부여 |
 | `wiki.lint` | 위키 정리(lint) | OWNER가 부여 |
 | `skill.author` | 스킬 작성·게시 | OWNER가 부여 |
 | `wiki.restore` | 남이 실행한 AI 작업 되돌리기 | 실행자 본인과 OWNER는 항상 가능. 타인의 작업에만 필요. 강제는 document가 한다 |

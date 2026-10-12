@@ -1041,7 +1041,7 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members" \
 | path | `workspace_id` | `string` | 예 | 워크스페이스 ID |
 | path | `user_id` | `string` | 예 | 대상 멤버 사용자 ID |
 | body | `role` | `string` | 아니오 | 새 역할. `OWNER` 또는 `MEMBER`. 생략하면 바꾸지 않는다. |
-| body | `permissions` | `string[]` | 아니오 | MEMBER의 권한 항목 전체(교체). 값은 `wiki.ingest`(편입·채팅→위키 내보내기), `wiki.lint`(위키 정리), `skill.author`(스킬 작성·게시), `wiki.restore`(남이 실행한 AI 작업 되돌리기), `document.convert`(남이 올린 PDF 변환) 다섯 가지다. 생략하면 바꾸지 않는다. |
+| body | `permissions` | `string[]` | 아니오 | MEMBER의 권한 항목 전체(교체). 값은 `wiki.ingest`(편입. 채팅→문서 내보내기는 권한 없이 가능하고, 내보낸 문서의 편입에만 필요), `wiki.lint`(위키 정리), `skill.author`(스킬 작성·게시), `wiki.restore`(남이 실행한 AI 작업 되돌리기), `document.convert`(남이 올린 PDF 변환) 다섯 가지다. 생략하면 바꾸지 않는다. |
 
 - 둘 중 하나는 있어야 한다. 둘 다 없으면 `400 INVALID_REQUEST`다.
 - 결과 역할이 OWNER인데 `permissions`를 보내면 `400 OWNER_PERMISSIONS_FIXED`다. OWNER는 항상 모든 권한을 가지므로 자신을 포함한 어떤 OWNER의 권한도 바꿀 수 없다.

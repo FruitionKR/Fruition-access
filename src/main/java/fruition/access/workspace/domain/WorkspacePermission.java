@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
 
 /** MEMBER에게 개별로 부여하는 권한 항목. OWNER는 항상 전부 가진다. */
 public enum WorkspacePermission {
-    /** 편입(ingest)과 채팅 내용의 위키 내보내기. 공유 wiki를 바꾸고 LLM 비용이 든다. */
+    /** 편입(ingest). 공유 wiki를 바꾸고 LLM 비용이 든다. 채팅→문서 내보내기는 누구나 가능하고, 내보낸 문서를 편입할 때만 이 항목이 필요하다. */
     WIKI_INGEST("wiki.ingest"),
     /** 위키 정리(lint). 공유 wiki를 바꾸고 LLM 비용이 든다. */
     WIKI_LINT("wiki.lint"),
