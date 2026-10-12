@@ -7,8 +7,8 @@ SET ingest_lint_model = CASE ingest_lint_model
     WHEN 'gpt-5.4-nano' THEN 'gpt-6-luna'
     WHEN 'gpt-5-mini' THEN 'gpt-5.4-mini'
     WHEN 'o4-mini' THEN 'gpt-5.4-mini'
-    WHEN 'gpt-5' THEN 'gpt-6.1-sol'
-    WHEN 'o3' THEN 'gpt-6.1-sol'
+    WHEN 'gpt-5' THEN 'gpt-6-sol'
+    WHEN 'o3' THEN 'gpt-6-sol'
 END
 WHERE ingest_lint_provider = 'openai'
   AND ingest_lint_model IN ('gpt-5-nano', 'gpt-4.1-nano', 'gpt-5.4-nano', 'gpt-5-mini', 'o4-mini', 'gpt-5', 'o3');
