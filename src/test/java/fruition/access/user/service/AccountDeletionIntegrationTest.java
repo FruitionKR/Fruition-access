@@ -177,6 +177,30 @@ class AccountDeletionIntegrationTest {
     }
 
     @Test
+    void repeatedPurgeAfterFullSuccessCallsDocumentThenAiAgainAndCompletes() throws Exception {
+        String user = passwordUser();
+        String solo = workspace(user, WorkspaceRole.OWNER);
+
+        deleteAccount(user, null, "{\"password\":\"" + PASSWORD + "\"}").andExpect(status().isNoContent());
+        Instant first = Instant.now().plus(Duration.ofDays(1));
+        purgeJob.run(first);
+
+        // 같은 요청이 다시 들어와도(중복 적재 등) 순서대로 다시 부르고 오류 없이 끝난다. workspaces 행은 이미 없다.
+        jdbc.update("INSERT INTO data_purge_requests(kind, target_id) VALUES ('user', ?), ('workspace', ?)", user, solo);
+        purgeJob.run(first.plus(Duration.ofDays(1)));
+
+        InOrder order = inOrder(documentClient, aiClient);
+        order.verify(documentClient).purgeUser(user);
+        order.verify(aiClient).purgeUser(user);
+        order.verify(documentClient).purgeUser(user);
+        order.verify(aiClient).purgeUser(user);
+        verify(documentClient, times(2)).purgeWorkspace(solo);
+        verify(aiClient, times(2)).purgeWorkspace(solo);
+        assertThat(workspaces.existsById(solo)).isFalse();
+        assertThat(count("SELECT count(*) FROM data_purge_requests WHERE target_id IN (?, ?)", user, solo)).isZero();
+    }
+
+    @Test
     void documentFailureSkipsAiPurge() throws Exception {
         String user = passwordUser();
         doThrow(new RestClientException("document 다운")).when(documentClient).purgeUser(user);
