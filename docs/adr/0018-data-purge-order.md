@@ -28,5 +28,5 @@ access의 `DataPurgeRequestJob`(탈퇴)과 `ExpiredRecordCleanupJob`(휴지통 �
 
 - access는 ai 엔드포인트에 닿아야 하므로 네트워크 정책 허용과 `AI_INTERNAL_BASE_URL` 설정이 필요하다(Fruition-flatform B1).
 - 재시도는 순서 전체이며 멱등이다. ai가 계속 실패하면 요청이 남아 최대 6시간 간격으로 재시도하고 `last_error`에 기록된다.
-- 파기 뒤에도 S3 구버전·로그는 30일 안에, Kafka 메시지는 72시간 안에 만료된다(Fruition-flatform B1).
+- 파기 뒤에도 일부 데이터가 lifecycle 만료 전까지 남는다(Fruition-flatform#77, flatform ADR 0023). 파기로 지운 S3 객체의 이전 버전은 최대 30일, 파기 대상에서 빠지는 AI 실행 로그(`pipeline-runs/`)는 현재 버전 30일 만료 뒤 이전 버전 1일 제거로 최대 약 31일, Kafka 메시지는 최대 72시간이다. S3 lifecycle은 비동기로 실행돼 실제 삭제는 이보다 늦을 수 있다.
 - 배포는 마지막에 한다: Fruition-flatform B1 → Fruition-ai 파기 수정 → Fruition-document#88 → 이 변경.
