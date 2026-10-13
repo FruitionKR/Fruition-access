@@ -78,7 +78,7 @@ class WorkspaceOwnerConcurrencyIntegrationTest {
         String first = user();
         String second = user();
         String workspaceId = workspaceWithTwoOwners(first, second).getId();
-        var toMember = new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER);
+        var toMember = new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER, null);
 
         Future<?> result = runConcurrently(
                 () -> memberService.changeRole(first, workspaceId, first, toMember),

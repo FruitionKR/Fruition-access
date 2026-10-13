@@ -46,6 +46,9 @@ public class Workspace {
     @Column(name = "ingest_lint_model", nullable = false)
     private String ingestLintModel;
 
+    @Column(name = "auto_ingest_on_upload", nullable = false)
+    private boolean autoIngestOnUpload;
+
     protected Workspace() {}
 
     public Workspace(String id, String name) {
@@ -59,6 +62,11 @@ public class Workspace {
 
     public void rename(String name) {
         this.name = name;
+        this.updatedAt = Instant.now();
+    }
+
+    public void changeAutoIngestOnUpload(boolean autoIngestOnUpload) {
+        this.autoIngestOnUpload = autoIngestOnUpload;
         this.updatedAt = Instant.now();
     }
 
@@ -115,4 +123,5 @@ public class Workspace {
     public String getDeletedBy() { return deletedBy; }
     public String getIngestLintProvider() { return ingestLintProvider; }
     public String getIngestLintModel() { return ingestLintModel; }
+    public boolean isAutoIngestOnUpload() { return autoIngestOnUpload; }
 }

@@ -1,17 +1,22 @@
 package fruition.access.workspace.service;
 
 import fruition.access.workspace.domain.WorkspaceMember;
+import fruition.access.workspace.domain.WorkspacePermission;
 import fruition.access.workspace.domain.WorkspaceRole;
 import fruition.access.workspace.dto.WorkspaceMemberListResponse;
 import fruition.access.workspace.dto.WorkspaceMemberResponse;
 import fruition.access.workspace.dto.WorkspaceMemberRoleUpdateRequest;
 import fruition.access.workspace.exception.LastOwnerException;
+import fruition.access.workspace.exception.OwnerPermissionsFixedException;
 import fruition.access.workspace.exception.WorkspaceAccessDeniedException;
 import fruition.access.workspace.exception.WorkspaceMemberNotFoundException;
 import fruition.access.workspace.exception.WorkspaceNotFoundException;
 import fruition.access.workspace.repository.WorkspaceMemberRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.HashSet;
+import java.util.Set;
 
 @Service
 public class WorkspaceMemberService {
@@ -44,15 +49,29 @@ public class WorkspaceMemberService {
         requireOwner(workspaceId, actorId);
 
         WorkspaceMember target = findMember(workspaceId, targetUserId);
-        if (target.getRole() == request.role()) {
-            return WorkspaceMemberResponse.from(target);
+        WorkspaceRole newRole = request.role() != null ? request.role() : target.getRole();
+        if (newRole == WorkspaceRole.OWNER && request.permissions() != null) {
+            throw new OwnerPermissionsFixedException();
         }
-        if (target.getRole() == WorkspaceRole.OWNER && isLastOwner(workspaceId)) {
-            throw new LastOwnerException(workspaceId);
-        }
+        Set<WorkspacePermission> requested = request.permissions() == null
+                ? null : new HashSet<>(request.permissions());
 
-        target.changeRole(request.role());
-        authzProjectionStore.evict(workspaceId, targetUserId);
+        // 역할과 권한 항목은 독립이다. 역할을 바꿔도 부여된 권한은 그대로 둔다.
+        boolean changed = false;
+        if (target.getRole() != newRole) {
+            if (target.getRole() == WorkspaceRole.OWNER && isLastOwner(workspaceId)) {
+                throw new LastOwnerException(workspaceId);
+            }
+            target.changeRole(newRole);
+            changed = true;
+        }
+        if (requested != null && !requested.equals(target.getPermissions())) {
+            target.replacePermissions(requested);
+            changed = true;
+        }
+        if (changed) {
+            authzProjectionStore.evict(workspaceId, targetUserId);
+        }
         return WorkspaceMemberResponse.from(target);
     }
 

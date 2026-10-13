@@ -72,7 +72,7 @@ class WorkspaceControllerTest {
     @Test
     void create_authenticated_returns201() throws Exception {
         when(workspaceService.create(eq(USER_ID), any())).thenReturn(
-                new WorkspaceResponse("ws_aaa11111", "팀 워크스페이스", null, null, Instant.now(), Instant.now()));
+                new WorkspaceResponse("ws_aaa11111", "팀 워크스페이스", null, null, false, Instant.now(), Instant.now()));
 
         mockMvc.perform(post("/api/workspaces")
                         .header("Authorization", bearerToken())
@@ -95,7 +95,7 @@ class WorkspaceControllerTest {
     void list_authenticated_returnsWorkspaces() throws Exception {
         when(workspaceService.list(USER_ID)).thenReturn(
                 new WorkspaceListResponse(List.of(
-                        new WorkspaceResponse("ws_aaa11111", "워크스페이스 A", "🌱", null, Instant.now(), Instant.now()))));
+                        new WorkspaceResponse("ws_aaa11111", "워크스페이스 A", "🌱", null, false, Instant.now(), Instant.now()))));
 
         mockMvc.perform(get("/api/workspaces").header("Authorization", bearerToken()))
                 .andExpect(status().isOk())
@@ -106,12 +106,12 @@ class WorkspaceControllerTest {
     @Test
     void rename_ownedWorkspace_returns200() throws Exception {
         when(workspaceService.rename(eq(USER_ID), eq("ws_aaa11111"), any())).thenReturn(
-                new WorkspaceResponse("ws_aaa11111", "새 이름", null, null, Instant.now(), Instant.now()));
+                new WorkspaceResponse("ws_aaa11111", "새 이름", null, null, false, Instant.now(), Instant.now()));
 
         mockMvc.perform(patch("/api/workspaces/ws_aaa11111")
                         .header("Authorization", bearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new WorkspaceRenameRequest("새 이름"))))
+                        .content(objectMapper.writeValueAsString(new WorkspaceRenameRequest("새 이름", null))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("새 이름"));
     }
@@ -124,9 +124,42 @@ class WorkspaceControllerTest {
         mockMvc.perform(patch("/api/workspaces/ws_unknown")
                         .header("Authorization", bearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new WorkspaceRenameRequest("새 이름"))))
+                        .content(objectMapper.writeValueAsString(new WorkspaceRenameRequest("새 이름", null))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("WORKSPACE_NOT_FOUND"));
+    }
+
+    @Test
+    void update_onlyAutoIngest_returns200() throws Exception {
+        when(workspaceService.rename(eq(USER_ID), eq("ws_aaa11111"), any())).thenReturn(
+                new WorkspaceResponse("ws_aaa11111", "이름", null, null, true, Instant.now(), Instant.now()));
+
+        mockMvc.perform(patch("/api/workspaces/ws_aaa11111")
+                        .header("Authorization", bearerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"auto_ingest_on_upload\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.auto_ingest_on_upload").value(true));
+    }
+
+    @Test
+    void update_emptyBody_returns400() throws Exception {
+        mockMvc.perform(patch("/api/workspaces/ws_aaa11111")
+                        .header("Authorization", bearerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void update_blankName_returns400() throws Exception {
+        mockMvc.perform(patch("/api/workspaces/ws_aaa11111")
+                        .header("Authorization", bearerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"   \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
     }
 
     @Test
@@ -172,7 +205,7 @@ class WorkspaceControllerTest {
     @Test
     void updateIcon_ownedWorkspace_returns200() throws Exception {
         when(workspaceIconService.updateIcon(eq(USER_ID), eq("ws_aaa11111"), any())).thenReturn(
-                new WorkspaceResponse("ws_aaa11111", "워크스페이스", "📁", null, Instant.now(), Instant.now()));
+                new WorkspaceResponse("ws_aaa11111", "워크스페이스", "📁", null, false, Instant.now(), Instant.now()));
 
         mockMvc.perform(put("/api/workspaces/ws_aaa11111/icon")
                         .header("Authorization", bearerToken())
@@ -185,7 +218,7 @@ class WorkspaceControllerTest {
     @Test
     void updateIcon_nullClears_returns200() throws Exception {
         when(workspaceIconService.updateIcon(eq(USER_ID), eq("ws_aaa11111"), any())).thenReturn(
-                new WorkspaceResponse("ws_aaa11111", "워크스페이스", null, null, Instant.now(), Instant.now()));
+                new WorkspaceResponse("ws_aaa11111", "워크스페이스", null, null, false, Instant.now(), Instant.now()));
 
         mockMvc.perform(put("/api/workspaces/ws_aaa11111/icon")
                         .header("Authorization", bearerToken())
@@ -233,7 +266,7 @@ class WorkspaceControllerTest {
     void updateIconImage_returns200WithIconUrl() throws Exception {
         when(workspaceIconService.updateIconImage(eq(USER_ID), eq("ws_aaa11111"), any())).thenReturn(
                 new WorkspaceResponse("ws_aaa11111", "워크스페이스", null,
-                        "/api/workspaces/ws_aaa11111/icon/image", Instant.now(), Instant.now()));
+                        "/api/workspaces/ws_aaa11111/icon/image", false, Instant.now(), Instant.now()));
 
         mockMvc.perform(multipart(HttpMethod.PUT, "/api/workspaces/ws_aaa11111/icon/image")
                         .file(new MockMultipartFile("file", "icon.png", "image/png", PNG_BYTES))

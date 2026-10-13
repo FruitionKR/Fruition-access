@@ -7,7 +7,7 @@ Access는 인증·OAuth·세션·워크스페이스·멤버·초대를 담당하
 - `src/main/resources/db/migration/`: access_db Flyway migration
 - `api-specs/openapi.yaml`: 실행 코드와 비교하는 HTTP 계약
 
-Document는 내부 API와 Redis 권한 projection으로 Access의 권한 정보를 사용합니다. workspace 생성 시 초기 노트 생성을 Document에 요청합니다. Access는 Document·AI 테이블을 직접 수정하지 않습니다.
+Document는 내부 API와 Redis 권한 projection으로 Access의 권한 정보를 사용합니다. workspace 생성 시 초기 노트 생성을 Document에 요청합니다. Access는 Document·AI 테이블을 직접 수정하지 않습니다. 멤버는 역할(OWNER/MEMBER) 외에 `workspace_member_permissions`의 권한 항목(`wiki.ingest`·`wiki.lint`·`skill.author`·`wiki.restore`·`document.convert`)을 가지며, 내부 인가 조회(`GET /internal/authz/workspaces/{ws}/users/{uid}`)가 `role`과 함께 `permissions`를 돌려줍니다. 업로드 자동 ingest 여부는 `GET /internal/workspaces/{ws}/settings`로 조회합니다([ADR 0019](adr/0019-member-permissions-and-auto-ingest.md)).
 
 탈퇴·워크스페이스 영구 삭제 때 Access가 데이터 파기 순서를 맡습니다. Document 파기 API(`/internal/purge/*`)가 성공한 뒤에 AI 파기 API(`/internal/ai/purge/*`, 주소 `AI_INTERNAL_BASE_URL`)를 이어서 호출하고, 둘 다 성공해야 파기 요청을 완료로 봅니다. 실패하면 순서 전체를 backoff로 다시 시도합니다. 근거는 [ADR-0018](adr/0018-data-purge-order.md)입니다.
 
