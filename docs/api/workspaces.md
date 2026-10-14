@@ -755,8 +755,7 @@ curl -X PUT "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/icon" \
 | `404` | 워크스페이스를 찾을 수 없거나 소유자가 아님 | `WORKSPACE_NOT_FOUND` |
 | `413` | 1MB를 넘음 | `WORKSPACE_ICON_TOO_LARGE` |
 
-2MB를 넘는 요청은 Spring multipart 한도(`spring.servlet.multipart.max-file-size`)에서 먼저 잘려
-`400 INVALID_REQUEST`가 된다. 의미 있는 경계인 1MB에서는 `413`이 나간다.
+2MB를 넘는 요청은 Spring multipart 한도(`spring.servlet.multipart.max-file-size`)에서 먼저 잘리지만, 같은 `413 WORKSPACE_ICON_TOO_LARGE`로 돌려준다.
 
 #### 7. Pagination / filtering
 

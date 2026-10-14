@@ -32,6 +32,7 @@ import fruition.access.user.exception.UserNotFoundException;
 import fruition.access.user.exception.UnsupportedUserAvatarException;
 import fruition.access.user.exception.UserAvatarNotFoundException;
 import fruition.access.user.exception.UserAvatarTooLargeException;
+import fruition.access.user.service.UserAvatarValidator;
 import fruition.access.user.exception.VerificationCodeAttemptsExceededException;
 import fruition.access.user.exception.VerificationCodeExpiredException;
 import fruition.access.user.exception.VerificationRateLimitedException;
@@ -52,12 +53,15 @@ import fruition.access.workspace.exception.WorkspaceMemberNotFoundException;
 import fruition.access.workspace.exception.OwnerPermissionsFixedException;
 import fruition.access.workspace.exception.WorkspaceNotFoundException;
 import fruition.access.workspace.exception.WorkspaceTrashExpiredException;
+import fruition.access.workspace.service.WorkspaceIconValidator;
 import fruition.shared.util.BaseExceptionHandler;
 import fruition.shared.util.ErrorResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 /** access 앱 전용 예외 매핑. 공통 매핑은 {@link BaseExceptionHandler}에서 상속한다. */
 @RestControllerAdvice
@@ -333,6 +337,23 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse.of("USER_AVATAR_NOT_FOUND", e.getMessage()));
+    }
+
+    /**
+     * Spring multipart 한도(max-file-size 2MB)에 먼저 걸린 업로드. 검증기의 1MB 한도와 같은 413이어야
+     * 클라이언트가 "파일이 없다"는 400 INVALID_REQUEST와 구분한다. 어느 업로드인지는 경로로 가른다.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSize(MaxUploadSizeExceededException e, HttpServletRequest request) {
+        boolean avatar = request.getRequestURI().endsWith("/avatar");
+        String code = avatar ? "USER_AVATAR_TOO_LARGE" : "WORKSPACE_ICON_TOO_LARGE";
+        String message = avatar
+                ? new UserAvatarTooLargeException(UserAvatarValidator.MAX_BYTES).getMessage()
+                : new WorkspaceIconTooLargeException(WorkspaceIconValidator.MAX_BYTES).getMessage();
+        logHandled(e, HttpStatus.PAYLOAD_TOO_LARGE, code);
+        return ResponseEntity
+                .status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(ErrorResponse.of(code, message));
     }
 
     @ExceptionHandler(InvalidOAuthCodeException.class)

@@ -872,8 +872,7 @@ curl -X PATCH "$ACCESS/api/auth/me" \
 | `401` | access token이 없거나 유효하지 않음 | — |
 | `413` | 1MB를 넘음 | `USER_AVATAR_TOO_LARGE` |
 
-2MB를 넘는 요청은 Spring multipart 한도(`spring.servlet.multipart.max-file-size`)에서 먼저 잘려
-`400 INVALID_REQUEST`가 된다. 의미 있는 경계인 1MB에서는 `413`이 나간다.
+2MB를 넘는 요청은 Spring multipart 한도(`spring.servlet.multipart.max-file-size`)에서 먼저 잘리지만, 같은 `413 USER_AVATAR_TOO_LARGE`로 돌려준다.
 
 #### 7. Pagination / filtering
 

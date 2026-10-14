@@ -17,7 +17,7 @@ import java.io.IOException;
 @Component
 public class UserAvatarValidator {
 
-    static final long MAX_BYTES = 1024L * 1024;
+    public static final long MAX_BYTES = 1024L * 1024;
 
     public ValidatedAvatar validate(MultipartFile file) {
         if (file == null || file.isEmpty()) {
