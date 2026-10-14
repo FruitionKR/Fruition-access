@@ -57,6 +57,12 @@ import fruition.access.user.exception.SessionNotFoundException;
 import java.util.List;
 import java.time.Instant;
 
+import fruition.access.user.exception.UnsupportedUserAvatarException;
+import fruition.access.user.exception.UserAvatarTooLargeException;
+import fruition.access.user.service.UserAvatarService;
+import org.springframework.http.HttpMethod;
+import org.springframework.mock.web.MockMultipartFile;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -71,6 +77,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.hamcrest.Matchers.nullValue;
 
 @WebMvcTest(AuthController.class)
 @Import({AccessExceptionHandler.class, SecurityConfig.class, JwtAuthenticationFilter.class, JwtTokenProvider.class,
@@ -89,6 +97,7 @@ class AuthControllerTest {
     @MockBean PasswordChangeAttemptLimiter passwordChangeAttemptLimiter;
     @MockBean AccountDeletionService accountDeletionService;
     @MockBean UserConsentService userConsentService;
+    @MockBean UserAvatarService userAvatarService;
     @MockBean EmailVerificationService emailVerificationService;
     @MockBean CustomOAuth2UserService customOAuth2UserService;
     @MockBean fruition.access.user.service.OAuthUserService oAuthUserService;
@@ -320,7 +329,7 @@ class AuthControllerTest {
     void me_withValidAccessToken_returns200() throws Exception {
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
         when(authService.me("user_1f9a74af")).thenReturn(
-                new MeResponse("user_1f9a74af", "test@example.com", "tes", Instant.now(), java.util.List.of(), false));
+                new MeResponse("user_1f9a74af", "test@example.com", "tes", null, Instant.now(), java.util.List.of(), false));
 
         mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
@@ -409,7 +418,7 @@ class AuthControllerTest {
     void updateDisplayName_authenticated_returns200() throws Exception {
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
         when(authService.updateDisplayName(eq("user_1f9a74af"), any())).thenReturn(
-                new MeResponse("user_1f9a74af", "test@example.com", "새 이름", Instant.now(), java.util.List.of(), false));
+                new MeResponse("user_1f9a74af", "test@example.com", "새 이름", null, Instant.now(), java.util.List.of(), false));
 
         mockMvc.perform(patch("/api/auth/me")
                         .header("Authorization", "Bearer " + token)
@@ -495,7 +504,7 @@ class AuthControllerTest {
     void changeEmail_authenticated_returns200() throws Exception {
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
         when(authService.changeEmail(eq("user_1f9a74af"), any(), eq("current-refresh"))).thenReturn(
-                new MeResponse("user_1f9a74af", "new@example.com", "이름", Instant.now(), java.util.List.of(), false));
+                new MeResponse("user_1f9a74af", "new@example.com", "이름", null, Instant.now(), java.util.List.of(), false));
 
         mockMvc.perform(put("/api/auth/me/email")
                         .header("Authorization", "Bearer " + token)
@@ -711,5 +720,73 @@ class AuthControllerTest {
                 .andExpect(status().isUnauthorized());
 
         verify(passwordChangeAttemptLimiter).recordFailure(eq("user_1f9a74af"), any());
+    }
+
+    private static final byte[] PNG_BYTES = new byte[]{
+            (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3};
+
+    private String avatarBearer() {
+        return "Bearer " + jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
+    }
+
+    @Test
+    void updateAvatar_returns200WithAvatarUrl() throws Exception {
+        when(userAvatarService.updateAvatar(eq("user_1f9a74af"), any())).thenReturn(new MeResponse(
+                "user_1f9a74af", "test@example.com", "이름", "/api/users/user_1f9a74af/avatar?v=hash-1",
+                Instant.now(), java.util.List.of(), false));
+
+        mockMvc.perform(multipart(HttpMethod.PUT, "/api/auth/me/avatar")
+                        .file(new MockMultipartFile("file", "me.png", "image/png", PNG_BYTES))
+                        .header("Authorization", avatarBearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.avatar_url").value("/api/users/user_1f9a74af/avatar?v=hash-1"));
+    }
+
+    @Test
+    void updateAvatar_unsupportedFormat_returns400() throws Exception {
+        when(userAvatarService.updateAvatar(eq("user_1f9a74af"), any()))
+                .thenThrow(new UnsupportedUserAvatarException("PNG, JPEG, WebP, GIF 이미지만 프로필 사진으로 쓸 수 있습니다."));
+
+        mockMvc.perform(multipart(HttpMethod.PUT, "/api/auth/me/avatar")
+                        .file(new MockMultipartFile("file", "me.txt", "image/png", "nope".getBytes()))
+                        .header("Authorization", avatarBearer()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("UNSUPPORTED_USER_AVATAR"));
+    }
+
+    @Test
+    void updateAvatar_tooLarge_returns413() throws Exception {
+        when(userAvatarService.updateAvatar(eq("user_1f9a74af"), any()))
+                .thenThrow(new UserAvatarTooLargeException(1024L * 1024));
+
+        mockMvc.perform(multipart(HttpMethod.PUT, "/api/auth/me/avatar")
+                        .file(new MockMultipartFile("file", "me.png", "image/png", PNG_BYTES))
+                        .header("Authorization", avatarBearer()))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.error.code").value("USER_AVATAR_TOO_LARGE"));
+    }
+
+    @Test
+    void updateAvatar_unauthenticated_returns401() throws Exception {
+        mockMvc.perform(multipart(HttpMethod.PUT, "/api/auth/me/avatar")
+                        .file(new MockMultipartFile("file", "me.png", "image/png", PNG_BYTES)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void deleteAvatar_returns200WithNullAvatarUrl() throws Exception {
+        when(userAvatarService.deleteAvatar("user_1f9a74af")).thenReturn(new MeResponse(
+                "user_1f9a74af", "test@example.com", "이름", null, Instant.now(), java.util.List.of(), false));
+
+        mockMvc.perform(delete("/api/auth/me/avatar").header("Authorization", avatarBearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value("user_1f9a74af"))
+                .andExpect(jsonPath("$.avatar_url").value(nullValue()));
+    }
+
+    @Test
+    void deleteAvatar_unauthenticated_returns401() throws Exception {
+        mockMvc.perform(delete("/api/auth/me/avatar"))
+                .andExpect(status().isUnauthorized());
     }
 }

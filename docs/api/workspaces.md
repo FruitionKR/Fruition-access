@@ -920,6 +920,7 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/icon/image" \
       "user_id": "user_1f9a74af",
       "email": "owner@example.com",
       "display_name": "홍길동",
+      "avatar_url": "/api/users/user_1f9a74af/avatar?v=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
       "provider": "local",
       "role": "OWNER",
       "permissions": ["wiki.ingest"],
@@ -929,6 +930,7 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/icon/image" \
       "user_id": "user_8b21c530",
       "email": "member@example.com",
       "display_name": "김철수",
+      "avatar_url": null,
       "provider": "google",
       "role": "MEMBER",
       "permissions": ["wiki.ingest"],
@@ -984,6 +986,7 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members" \
       "user_id": "user_1f9a74af",
       "email": "owner@example.com",
       "display_name": "홍길동",
+      "avatar_url": "/api/users/user_1f9a74af/avatar?v=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
       "provider": "local",
       "role": "OWNER",
       "permissions": ["wiki.ingest"],
@@ -1066,6 +1069,7 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members" \
   "user_id": "user_8b21c530",
   "email": "member@example.com",
   "display_name": "김철수",
+  "avatar_url": null,
   "provider": "google",
   "role": "OWNER",
   "permissions": ["wiki.ingest"],
@@ -1073,7 +1077,7 @@ curl "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/members" \
 }
 ```
 
-바꿀 내용이 현재 상태와 같으면 아무것도 바꾸지 않고 현재 상태를 그대로 돌려준다. `permissions`는 정렬된 문자열 배열이며 OWNER는 항상 전부다. 멤버 목록의 각 항목에도 같은 필드가 있다.
+바꿀 내용이 현재 상태와 같으면 아무것도 바꾸지 않고 현재 상태를 그대로 돌려준다. `permissions`는 정렬된 문자열 배열이며 OWNER는 항상 전부다. 멤버 목록의 각 항목에도 같은 필드가 있다. `avatar_url`은 멤버의 프로필 사진 조회 경로(`GET /api/users/{user_id}/avatar`, [Users](users.md))이며 사진이 없으면 `null`이다. 같은 워크스페이스 멤버이므로 호출자는 항상 받을 수 있다.
 
 #### 6. Error response
 
@@ -1119,6 +1123,7 @@ curl -X PATCH "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/member
   "user_id": "user_8b21c530",
   "email": "member@example.com",
   "display_name": "김철수",
+  "avatar_url": null,
   "provider": "google",
   "role": "OWNER",
   "permissions": ["wiki.ingest"],

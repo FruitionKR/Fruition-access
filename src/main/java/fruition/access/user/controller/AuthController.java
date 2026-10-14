@@ -5,6 +5,7 @@ import fruition.access.user.dto.AccountDeletionRequest;
 import fruition.access.user.dto.ConsentRequest;
 import fruition.access.user.dto.OAuthSignupConsentRequest;
 import fruition.access.user.service.AccountDeletionService;
+import fruition.access.user.service.UserAvatarService;
 import fruition.access.user.service.UserConsentService;
 import fruition.shared.security.JwtTokenProvider;
 import fruition.access.user.dto.EmailAvailabilityRequest;
@@ -54,6 +55,7 @@ import jakarta.validation.Valid;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.beans.factory.annotation.Value;
@@ -67,8 +69,11 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.CookieValue;
+
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
 
@@ -89,6 +94,7 @@ public class AuthController {
     private final OAuthUserService oAuthUserService;
     private final AccountDeletionService accountDeletionService;
     private final UserConsentService userConsentService;
+    private final UserAvatarService userAvatarService;
     private final JwtTokenProvider jwtTokenProvider;
     private final boolean refreshCookieSecure;
     private final long refreshTokenExpirationSeconds;
@@ -102,6 +108,7 @@ public class AuthController {
                           OAuthUserService oAuthUserService,
                           AccountDeletionService accountDeletionService,
                           UserConsentService userConsentService,
+                          UserAvatarService userAvatarService,
                           JwtTokenProvider jwtTokenProvider,
                           @Value("${app.auth.refresh-cookie-secure}") boolean refreshCookieSecure,
                           @Value("${app.jwt.refresh-token-expiration-seconds}") long refreshTokenExpirationSeconds) {
@@ -115,6 +122,7 @@ public class AuthController {
         this.oAuthUserService = oAuthUserService;
         this.accountDeletionService = accountDeletionService;
         this.userConsentService = userConsentService;
+        this.userAvatarService = userAvatarService;
         this.jwtTokenProvider = jwtTokenProvider;
         this.refreshCookieSecure = refreshCookieSecure;
         this.refreshTokenExpirationSeconds = refreshTokenExpirationSeconds;
@@ -332,6 +340,38 @@ public class AuthController {
             @AuthenticationPrincipal String userId,
             @Valid @RequestBody DisplayNameUpdateRequest request) {
         return ResponseEntity.ok(authService.updateDisplayName(userId, request));
+    }
+
+    @Operation(summary = "프로필 사진 업로드",
+            description = "인증된 사용자의 프로필 사진을 올리거나 바꿉니다. PNG·JPEG·WebP·GIF, 1MB 이하.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "업로드 성공",
+            content = @Content(schema = @Schema(implementation = MeResponse.class))),
+        @ApiResponse(responseCode = "400", description = "지원하지 않는 이미지 형식",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "413", description = "이미지가 너무 큼",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PutMapping(value = "/me/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<MeResponse> updateAvatar(
+            @AuthenticationPrincipal String userId,
+            @RequestPart("file") MultipartFile file) {
+        return ResponseEntity.ok(userAvatarService.updateAvatar(userId, file));
+    }
+
+    @Operation(summary = "프로필 사진 삭제",
+            description = "인증된 사용자의 프로필 사진을 지웁니다. 사진이 없어도 200입니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "삭제 성공",
+            content = @Content(schema = @Schema(implementation = MeResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @DeleteMapping("/me/avatar")
+    public ResponseEntity<MeResponse> deleteAvatar(@AuthenticationPrincipal String userId) {
+        return ResponseEntity.ok(userAvatarService.deleteAvatar(userId));
     }
 
     @Operation(summary = "비밀번호 변경",

@@ -30,6 +30,20 @@ public interface WorkspaceMemberRepository extends JpaRepository<WorkspaceMember
 
     Optional<WorkspaceMember> findByWorkspace_IdAndUser_Id(String workspaceId, String userId);
 
+    /** 두 사용자가 삭제되지 않은 워크스페이스를 하나라도 같이 쓰는지. 프로필 사진 조회 권한에 쓴다. */
+    @Query("""
+            SELECT CASE WHEN COUNT(a) > 0 THEN true ELSE false END
+            FROM WorkspaceMember a, WorkspaceMember b
+            WHERE a.workspace.id = b.workspace.id
+              AND a.user.id = :userId
+              AND b.user.id = :otherUserId
+              AND a.workspace.deletedAt IS NULL
+            """)
+    boolean sharesActiveWorkspace(
+            @Param("userId") String userId,
+            @Param("otherUserId") String otherUserId
+    );
+
     @Query("""
             SELECT m.role
             FROM WorkspaceMember m

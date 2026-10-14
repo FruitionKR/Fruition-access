@@ -6,7 +6,8 @@
 
 | 도메인 | API 수 | 역할 | 호출 연결 |
 |---|---:|---|---|
-| [Auth](auth.md) | 26 | 가입·인증·로그인·토큰·프로필·소셜 계정 연동·가입 동의·회원 탈퇴 관리 | 20개는 frontend, 6개(소셜 계정 연동, 소셜 가입 동의, 약관 재동의, 회원 탈퇴)는 호출자 미확인(frontend 구현 예정). signup과 회원 탈퇴가 document-svc를 호출 |
+| [Auth](auth.md) | 28 | 가입·인증·로그인·토큰·프로필·프로필 사진·소셜 계정 연동·가입 동의·회원 탈퇴 관리 | 20개는 frontend, 8개(소셜 계정 연동, 소셜 가입 동의, 약관 재동의, 회원 탈퇴, 프로필 사진)는 호출자 미확인(frontend 구현 예정). signup과 회원 탈퇴가 document-svc를 호출 |
+| [Users](users.md) | 1 | 다른 사용자의 프로필 사진 조회 | 호출자 미확인(frontend 구현 예정) |
 | [Workspaces](workspaces.md) | 16 | 워크스페이스·멤버 관리와 내부 인가·AI 모델 설정 | 9개는 frontend, 4개(`/internal/**`)는 document-svc·ai-svc, 3개는 호출자 미확인 |
 | [Invitations](invitations.md) | 5 | 이메일 초대 발송·취소·수락 | 3개는 frontend, 2개는 호출자 미확인 |
 
@@ -54,6 +55,14 @@
 | `POST /api/auth/me/oauth-accounts/{provider}/link` | **호출자 미확인** (frontend 구현 예정, FruitionKR/Fruition-frontend#105) | 없음 |
 | `POST /api/auth/me/oauth-accounts/link/confirm` | **호출자 미확인** (frontend 구현 예정, FruitionKR/Fruition-frontend#105) | 없음 |
 | `DELETE /api/auth/me/oauth-accounts/{provider}` | **호출자 미확인** (frontend 구현 예정, FruitionKR/Fruition-frontend#105) | 없음 |
+| `PUT /api/auth/me/avatar` | **호출자 미확인** (frontend 프로필 설정 구현 예정, FruitionKR/Fruition-access#25) | 없음 |
+| `DELETE /api/auth/me/avatar` | **호출자 미확인** (frontend 프로필 설정 구현 예정, FruitionKR/Fruition-access#25) | 없음 |
+
+### Users
+
+| API | 호출자 | 하위 호출 |
+|---|---|---|
+| `GET /api/users/{user_id}/avatar` | **호출자 미확인** (frontend 레일·설정·멤버 목록 구현 예정, FruitionKR/Fruition-access#25) | 없음 |
 
 ### Workspaces
 

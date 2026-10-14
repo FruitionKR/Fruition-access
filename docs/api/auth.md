@@ -4,7 +4,7 @@
 
 가입·이메일 인증·로그인·토큰 API다.
 
-- API 수: 26
+- API 수: 28
 - 호출 연결: [access-svc 호출 연결 요약](README.md#호출-연결-요약) 참고
 
 ## API 목차
@@ -19,6 +19,8 @@
 | [`GET /api/auth/me`](#summary-get-api-auth-me) | access token으로 인증된 사용자의 프로필을 반환합니다. |
 | [`PATCH /api/auth/me`](#summary-patch-api-auth-me) | 인증된 사용자의 표시 이름을 변경합니다. |
 | [`DELETE /api/auth/me`](#summary-delete-api-auth-me) | 본인을 다시 확인한 뒤 계정을 지우고 데이터 파기를 요청합니다(회원 탈퇴). |
+| [`PUT /api/auth/me/avatar`](#summary-put-api-auth-me-avatar) | 인증된 사용자의 프로필 사진을 올리거나 바꿉니다. PNG·JPEG·WebP·GIF, 1MB 이하. |
+| [`DELETE /api/auth/me/avatar`](#summary-delete-api-auth-me-avatar) | 인증된 사용자의 프로필 사진을 지웁니다. |
 | [`POST /api/auth/me/consents`](#summary-post-api-auth-me-consents) | 이용약관이 바뀐 뒤 기존 회원의 동의를 다시 받습니다. |
 | [`PUT /api/auth/me/email`](#summary-put-api-auth-me-email) | 새 이메일로 받은 인증번호 토큰으로 계정 이메일을 바꿉니다. |
 | [`GET /api/auth/me/sessions`](#summary-get-api-auth-me-sessions) | 폐기되지 않은 로그인 세션을 반환합니다. |
@@ -593,10 +595,12 @@ access token으로 인증된 사용자의 프로필을 반환합니다.
 
 - HTTP `200`: 조회 성공
 - Content-Type: `*/*` (`MeResponse`)
-- `oauth_providers`: 로그인 수단으로 연결된 소셜 provider 목록(provider 이름순). OAuth로 가입한 provider도 포함하며, 연결이 없으면 빈 배열이다. `PATCH /api/auth/me`, `PUT /api/auth/me/email`의 응답도 같은 `MeResponse`다.
+- `oauth_providers`: 로그인 수단으로 연결된 소셜 provider 목록(provider 이름순). OAuth로 가입한 provider도 포함하며, 연결이 없으면 빈 배열이다. `PATCH /api/auth/me`, `PUT /api/auth/me/email`, `PUT /api/auth/me/avatar`, `DELETE /api/auth/me/avatar`의 응답도 같은 `MeResponse`다.
+- `avatar_url`: 프로필 사진 조회 경로(`GET /api/users/{user_id}/avatar`). 사진이 없으면 `null`이라 프론트는 이니셜 상자를 보여 준다. 사진의 SHA-256이 `?v=`로 붙어 사진을 바꾸면 URL도 바뀌므로, 예전 이미지가 브라우저 캐시에서 보이지 않는다.
 
 ```json
 {
+  "avatar_url": "/api/users/user_3f1c8a6b52d7411e9c04ab5d2e7f6081/avatar?v=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
   "created_at": "2026-08-13T04:25:24.371948Z",
   "display_name": "표시 이름",
   "email": "user@example.com",
@@ -633,6 +637,7 @@ curl -X GET "$ACCESS/api/auth/me" \
 
 ```json
 {
+  "avatar_url": "/api/users/user_3f1c8a6b52d7411e9c04ab5d2e7f6081/avatar?v=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
   "created_at": "2026-08-13T04:25:24.371948Z",
   "display_name": "표시 이름",
   "email": "user@example.com",
@@ -702,6 +707,7 @@ curl -X GET "$ACCESS/api/auth/me" \
   "id": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081",
   "email": "user@example.com",
   "display_name": "새 이름",
+  "avatar_url": null,
   "created_at": "2026-08-13T04:25:24.371948Z",
   "oauth_providers": [
     "google"
@@ -793,6 +799,179 @@ curl -X PATCH "$ACCESS/api/auth/me" \
 - 하위 호출: document-svc `POST /internal/purge/users`, `POST /internal/purge/workspaces`, 이어서 ai-svc `POST /internal/ai/purge/users`, `POST /internal/ai/purge/workspaces`(`AiInternalClient`)
 
 [↑ 요약으로 돌아가기](#summary-delete-api-auth-me)
+
+</details>
+
+<a id="summary-put-api-auth-me-avatar"></a>
+### `PUT /api/auth/me/avatar`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 인증된 사용자의 프로필 사진을 올리거나 바꿉니다. PNG·JPEG·WebP·GIF, 1MB 이하. |
+| 입력 | **Multipart** — `file` |
+| 출력 | `200` 업로드 성공 — `MeResponse` |
+| 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다. |
+| 주요 오류 | `400` 지원하지 않는 이미지 형식 — `ErrorResponse`<br>`401` 인증되지 않음 — `ErrorResponse`<br>`413` 이미지가 너무 큼 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-put-api-auth-me-avatar"></a>
+### `PUT /api/auth/me/avatar` 상세
+
+#### 1. Method + Path
+
+`PUT /api/auth/me/avatar`
+
+#### 2. 목적
+
+프로필 사진을 올린다. 이미 있으면 덮어쓴다. 워크스페이스 아이콘 이미지(`PUT /api/workspaces/{workspace_id}/icon/image`)와
+같은 규칙(형식·1MB·매직 바이트 판별·DB 저장)이다. 소셜 로그인 provider의 프로필 사진은 가져오지 않는다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| multipart | `file` | binary | 예 | PNG·JPEG·WebP·GIF, 1MB 이하 |
+
+- Content-Type: `multipart/form-data`
+
+형식은 **매직 바이트로 판별한다.** 선언된 Content-Type은 클라이언트가 정하는 값이라 믿지 않는다.
+픽셀 크기는 보지 않는다 — 서버가 이미지를 디코딩하지 않고 그대로 저장·스트리밍하므로 바이트 상한만으로 저장량이 묶인다.
+
+#### 5. Response body
+
+- HTTP `200`: 업로드 성공 — `MeResponse`
+
+```json
+{
+  "id": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081",
+  "email": "user@example.com",
+  "display_name": "표시 이름",
+  "avatar_url": "/api/users/user_3f1c8a6b52d7411e9c04ab5d2e7f6081/avatar?v=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  "created_at": "2026-08-13T04:25:24.371948Z",
+  "oauth_providers": [],
+  "consent_required": false
+}
+```
+
+`avatar_url`의 `?v=`는 이미지 SHA-256이다. 사진을 바꾸면 값이 바뀌어 `GET /api/auth/me`·멤버 목록을 다시 읽는 화면은
+새 URL로 새 이미지를 받고, 예전 URL로 캐시된 이미지는 쓰이지 않는다.
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 코드 |
+|---|---|---|
+| `400` | PNG·JPEG·WebP·GIF가 아니거나 파일이 비어 있음 | `UNSUPPORTED_USER_AVATAR` |
+| `400` | multipart 요청이 아니거나 `file` part가 없음 | `INVALID_REQUEST` |
+| `401` | access token이 없거나 유효하지 않음 | — |
+| `413` | 1MB를 넘음 | `USER_AVATAR_TOO_LARGE` |
+
+2MB를 넘는 요청은 Spring multipart 한도(`spring.servlet.multipart.max-file-size`)에서 먼저 잘려
+`400 INVALID_REQUEST`가 된다. 의미 있는 경계인 1MB에서는 `413`이 나간다.
+
+#### 7. Pagination / filtering
+
+- 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 토큰의 사용자 본인만 대상이다. 경로에 사용자 ID를 받지 않으므로 남의 사진은 바꿀 수 없다.
+- 재업로드는 `user_avatars`의 기존 row를 덮어쓴다. 고아 이미지가 남지 않는다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X PUT "$ACCESS/api/auth/me/avatar" \
+  -H 'Authorization: Bearer <access_token>' \
+  -F 'file=@me.png'
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: updateAvatar`)
+- 호출자: **호출자 미확인** (frontend 프로필 설정 화면 구현 예정, FruitionKR/Fruition-access#25)
+- 하위 호출: 없음
+
+[↑ 요약으로 돌아가기](#summary-put-api-auth-me-avatar)
+
+</details>
+
+<a id="summary-delete-api-auth-me-avatar"></a>
+### `DELETE /api/auth/me/avatar`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 인증된 사용자의 프로필 사진을 지웁니다. 사진이 없어도 200입니다. |
+| 입력 | 없음 |
+| 출력 | `200` 삭제 성공 — `MeResponse` |
+| 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다. |
+| 주요 오류 | `401` 인증되지 않음 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-delete-api-auth-me-avatar"></a>
+### `DELETE /api/auth/me/avatar` 상세
+
+#### 1. Method + Path
+
+`DELETE /api/auth/me/avatar`
+
+#### 2. 목적
+
+프로필 사진을 지운다. 응답의 `avatar_url`이 `null`이 되고, 프론트는 다시 이니셜 상자를 보여 준다.
+사진이 없는 상태에서 불러도 실패하지 않고 현재 `MeResponse`를 돌려준다(멱등).
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+- 없음
+
+#### 5. Response body
+
+- HTTP `200`: 삭제 성공 — `MeResponse` (`avatar_url: null`)
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 코드 |
+|---|---|---|
+| `401` | access token이 없거나 유효하지 않음 | — |
+
+#### 7. Pagination / filtering
+
+- 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 토큰의 사용자 본인만 대상이다.
+- `user_avatars` row와 `users.avatar_content_type`·`avatar_hash`를 함께 지운다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X DELETE "$ACCESS/api/auth/me/avatar" \
+  -H 'Authorization: Bearer <access_token>'
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: deleteAvatar`)
+- 호출자: **호출자 미확인** (frontend 프로필 설정 화면 구현 예정, FruitionKR/Fruition-access#25)
+- 하위 호출: 없음
+
+[↑ 요약으로 돌아가기](#summary-delete-api-auth-me-avatar)
 
 </details>
 

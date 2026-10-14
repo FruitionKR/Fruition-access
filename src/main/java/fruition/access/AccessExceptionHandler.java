@@ -29,6 +29,9 @@ import fruition.access.user.exception.OAuthUnlinkNotAllowedException;
 import fruition.access.user.exception.UnsupportedOAuthProviderException;
 import fruition.access.user.exception.OAuthAccountNotFoundException;
 import fruition.access.user.exception.UserNotFoundException;
+import fruition.access.user.exception.UnsupportedUserAvatarException;
+import fruition.access.user.exception.UserAvatarNotFoundException;
+import fruition.access.user.exception.UserAvatarTooLargeException;
 import fruition.access.user.exception.VerificationCodeAttemptsExceededException;
 import fruition.access.user.exception.VerificationCodeExpiredException;
 import fruition.access.user.exception.VerificationRateLimitedException;
@@ -306,6 +309,30 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse.of("WORKSPACE_ICON_NOT_FOUND", e.getMessage()));
+    }
+
+    @ExceptionHandler(UnsupportedUserAvatarException.class)
+    public ResponseEntity<ErrorResponse> handleUnsupportedUserAvatar(UnsupportedUserAvatarException e) {
+        logHandled(e, HttpStatus.BAD_REQUEST, "UNSUPPORTED_USER_AVATAR");
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("UNSUPPORTED_USER_AVATAR", e.getMessage()));
+    }
+
+    @ExceptionHandler(UserAvatarTooLargeException.class)
+    public ResponseEntity<ErrorResponse> handleUserAvatarTooLarge(UserAvatarTooLargeException e) {
+        logHandled(e, HttpStatus.PAYLOAD_TOO_LARGE, "USER_AVATAR_TOO_LARGE");
+        return ResponseEntity
+                .status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(ErrorResponse.of("USER_AVATAR_TOO_LARGE", e.getMessage()));
+    }
+
+    @ExceptionHandler(UserAvatarNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleUserAvatarNotFound(UserAvatarNotFoundException e) {
+        logHandled(e, HttpStatus.NOT_FOUND, "USER_AVATAR_NOT_FOUND");
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of("USER_AVATAR_NOT_FOUND", e.getMessage()));
     }
 
     @ExceptionHandler(InvalidOAuthCodeException.class)

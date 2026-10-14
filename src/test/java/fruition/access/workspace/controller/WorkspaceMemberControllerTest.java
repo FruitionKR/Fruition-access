@@ -65,7 +65,8 @@ class WorkspaceMemberControllerTest {
 
     private WorkspaceMemberResponse response(String userId, String role) {
         return new WorkspaceMemberResponse(
-                userId, userId + "@example.com", "표시이름", "local", role, List.of("wiki.ingest"), Instant.parse("2026-08-13T04:25:24Z"));
+                userId, userId + "@example.com", "표시이름", "/api/users/" + userId + "/avatar?v=hash-1", "local", role,
+                List.of("wiki.ingest"), Instant.parse("2026-08-13T04:25:24Z"));
     }
 
     @Test
@@ -80,6 +81,7 @@ class WorkspaceMemberControllerTest {
                 .andExpect(jsonPath("$.members[0].role").value("OWNER"))
                 .andExpect(jsonPath("$.members[0].display_name").value("표시이름"))
                 .andExpect(jsonPath("$.members[0].provider").value("local"))
+                .andExpect(jsonPath("$.members[0].avatar_url").value("/api/users/" + USER_ID + "/avatar?v=hash-1"))
                 .andExpect(jsonPath("$.members[1].user_id").value(TARGET_ID));
     }
 

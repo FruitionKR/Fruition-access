@@ -20,6 +20,11 @@ public record WorkspaceMemberResponse(
         @Schema(description = "멤버 표시 이름", example = "홍길동")
         String displayName,
 
+        @JsonProperty("avatar_url")
+        @Schema(description = "프로필 사진 조회 경로(GET /api/users/{user_id}/avatar). 사진이 없으면 null이다.",
+                example = "/api/users/user_1f9a74af/avatar?v=9f86d081884c7d65", nullable = true)
+        String avatarUrl,
+
         @Schema(description = "계정을 만든 수단. 일반 가입은 local, OAuth는 provider 등록 ID."
                 + " 같은 이메일이라도 provider가 다르면 다른 계정이다.", example = "local")
         String provider,
@@ -40,6 +45,7 @@ public record WorkspaceMemberResponse(
                 member.getUserId(),
                 member.getUser().getEmail(),
                 member.getUser().getDisplayName(),
+                member.getUser().avatarUrl(),
                 member.getUser().getProvider(),
                 member.getRole().name(),
                 member.effectivePermissions().stream().map(WorkspacePermission::value).sorted().toList(),
