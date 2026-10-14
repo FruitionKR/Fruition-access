@@ -4,6 +4,7 @@ import fruition.access.security.oauth.OAuthLinkFlow;
 import fruition.access.security.oauth.domain.OAuth2UserInfo;
 
 import fruition.access.user.domain.User;
+import fruition.access.user.exception.OAuthEmailRegisteredException;
 import fruition.access.user.service.OAuthUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +29,8 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     /** 연동 모드에서 확정 단계로 넘길 provider 사용자 ID. */
     public static final String PROVIDER_USER_ID_ATTRIBUTE = "link_provider_user_id";
     public static final String LINK_FAILED = "link_failed";
+    /** 같은 이메일의 계정이 이미 있어 소셜 신규 가입을 거절했다. error description에 그 계정들의 provider를 쉼표로 담는다. */
+    public static final String EMAIL_REGISTERED = "email_registered";
     /** 약관 동의 전인 신규 소셜 가입. 값은 가입 대기 토큰이고, 성공 handler가 로그인 code 대신 프론트에 넘긴다. */
     public static final String SIGNUP_TOKEN_ATTRIBUTE = "signup_token";
 
@@ -62,8 +65,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                 attributes.put(INTERNAL_USER_ID_ATTRIBUTE, user.get().getId());
             } else {
                 // 계정이 아직 없다. 인증 주체 이름은 비워 둘 수 없어 가입 대기 토큰을 그대로 쓴다.
-                String signupToken = oAuthUserService.startSignup(registrationId, userInfo,
-                        OAuthLinkFlow.currentDesktopCodeChallenge());
+                String signupToken = startSignup(registrationId, userInfo);
                 attributes.put(SIGNUP_TOKEN_ATTRIBUTE, signupToken);
                 attributes.put(INTERNAL_USER_ID_ATTRIBUTE, signupToken);
             }
@@ -74,6 +76,16 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                 attributes,
                 INTERNAL_USER_ID_ATTRIBUTE
         );
+    }
+
+    /** 같은 이메일의 계정이 있으면 실패 handler가 프론트로 돌려보내도록 인증 예외로 바꾼다. */
+    private String startSignup(String registrationId, OAuth2UserInfo userInfo) {
+        try {
+            return oAuthUserService.startSignup(registrationId, userInfo, OAuthLinkFlow.currentDesktopCodeChallenge());
+        } catch (OAuthEmailRegisteredException e) {
+            throw new OAuth2AuthenticationException(
+                    new OAuth2Error(EMAIL_REGISTERED, String.join(",", e.getProviders()), null), e);
+        }
     }
 
     /** provider 사용자 정보 조회. 테스트에서 네트워크 호출을 대신하려고 분리했다. */

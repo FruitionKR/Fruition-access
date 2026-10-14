@@ -35,7 +35,7 @@ class AuthzProjectionStoreTest {
 
         store.evict("ws_1", "user_1");
 
-        verify(redisTemplate).delete("authz:role:ws_1:user_1");
+        verify(redisTemplate).delete(List.of("authz:role:ws_1:user_1", "authz:role:v2:ws_1:user_1"));
     }
 
     @Test
@@ -44,15 +44,19 @@ class AuthzProjectionStoreTest {
         Cursor<String> cursor = mock(Cursor.class);
         when(cursor.hasNext()).thenReturn(true, true, false);
         when(cursor.next()).thenReturn("authz:role:ws_1:user_1", "authz:role:ws_1:user_2");
-        when(redisTemplate.scan(any(ScanOptions.class))).thenReturn(cursor);
+        Cursor<String> v2 = mock(Cursor.class);
+        when(v2.hasNext()).thenReturn(true, false);
+        when(v2.next()).thenReturn("authz:role:v2:ws_1:user_1");
+        when(redisTemplate.scan(any(ScanOptions.class))).thenReturn(cursor, v2);
         AuthzProjectionStore store = new AuthzProjectionStore(redisTemplate);
 
         store.evictWorkspace("ws_1");
 
         var optionsCaptor = forClass(ScanOptions.class);
-        verify(redisTemplate).scan(optionsCaptor.capture());
-        assertThat(optionsCaptor.getValue().getPattern()).isEqualTo("authz:role:ws_1:*");
-        verify(redisTemplate).delete(List.of("authz:role:ws_1:user_1", "authz:role:ws_1:user_2"));
+        verify(redisTemplate, times(2)).scan(optionsCaptor.capture());
+        assertThat(optionsCaptor.getAllValues()).extracting(ScanOptions::getPattern)
+                .containsExactly("authz:role:ws_1:*", "authz:role:v2:ws_1:*");
+        verify(redisTemplate).delete(List.of("authz:role:ws_1:user_1", "authz:role:ws_1:user_2", "authz:role:v2:ws_1:user_1"));
     }
 
     @Test
@@ -78,13 +82,13 @@ class AuthzProjectionStoreTest {
         TransactionSynchronizationManager.initSynchronization();
         try {
             store.evict("ws_1", "user_1");
-            verify(redisTemplate, never()).delete("authz:role:ws_1:user_1");
+            verify(redisTemplate, never()).delete(List.of("authz:role:ws_1:user_1", "authz:role:v2:ws_1:user_1"));
 
             for (TransactionSynchronization synchronization :
                     TransactionSynchronizationManager.getSynchronizations()) {
                 synchronization.afterCommit();
             }
-            verify(redisTemplate).delete("authz:role:ws_1:user_1");
+            verify(redisTemplate).delete(List.of("authz:role:ws_1:user_1", "authz:role:v2:ws_1:user_1"));
         } finally {
             TransactionSynchronizationManager.clearSynchronization();
         }
@@ -110,13 +114,13 @@ class AuthzProjectionStoreTest {
      */
     @Test
     void evict_redisFailure_isRetriedThenSwallowed() {
-        when(redisTemplate.delete("authz:role:ws_1:user_1"))
+        when(redisTemplate.delete(List.of("authz:role:ws_1:user_1", "authz:role:v2:ws_1:user_1")))
                 .thenThrow(new RedisConnectionFailureException("redis down"));
         AuthzProjectionStore store = new AuthzProjectionStore(redisTemplate);
 
         assertThatCode(() -> store.evict("ws_1", "user_1")).doesNotThrowAnyException();
 
-        verify(redisTemplate, times(2)).delete("authz:role:ws_1:user_1");
+        verify(redisTemplate, times(2)).delete(List.of("authz:role:ws_1:user_1", "authz:role:v2:ws_1:user_1"));
     }
 
     @Test

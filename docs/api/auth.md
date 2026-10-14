@@ -4,14 +4,14 @@
 
 가입·이메일 인증·로그인·토큰 API다.
 
-- API 수: 26
+- API 수: 28
 - 호출 연결: [access-svc 호출 연결 요약](README.md#호출-연결-요약) 참고
 
 ## API 목차
 
 | API | 목적 |
 |---|---|
-| [`POST /api/auth/email-availability`](#summary-post-api-auth-email-availability) | 회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 일반 회원가입 계정만 대상으로 확인하므로, OAuth로만 가입된 이메일은 일반 회원가입이 가능해 `available: true`를 반환합니다. 같은 이메일로 소셜 가입한 계정이 있으면 `oauth_providers`로 알려, 새로 가입하기보다 그 계정으로 로그인한 뒤 설정에서 연동하도록 안내할 수 있게 합니다. |
+| [`POST /api/auth/email-availability`](#summary-post-api-auth-email-availability) | 회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 같은 이메일의 계정이 하나라도 있으면(이메일 가입이든 소셜 가입이든) `available: false`입니다. 같은 이메일로 소셜 가입한 계정이 있으면 `oauth_providers`로 알려, 그 계정으로 로그인한 뒤 설정에서 연동하도록 안내할 수 있게 합니다. 이 경우 인증번호 요청과 회원가입은 `409 EMAIL_REGISTERED_WITH_OAUTH`로 거절됩니다. |
 | [`POST /api/auth/email-verifications`](#summary-post-api-auth-email-verifications) | 회원가입/비밀번호 재설정/이메일 변경을 위한 인증번호를 발급합니다. |
 | [`POST /api/auth/email-verifications/{verification_id}/confirm`](#summary-post-api-auth-email-verifications-verification-id-confirm) | 인증번호를 검증하고 1회용 verification_token을 발급합니다. |
 | [`POST /api/auth/login`](#summary-post-api-auth-login) | 이메일/비밀번호를 검증하고 access token과 HttpOnly refresh 쿠키를 발급합니다. MFA를 켠 사용자에게는 `mfa_required`를 돌려줍니다. |
@@ -19,6 +19,8 @@
 | [`GET /api/auth/me`](#summary-get-api-auth-me) | access token으로 인증된 사용자의 프로필을 반환합니다. |
 | [`PATCH /api/auth/me`](#summary-patch-api-auth-me) | 인증된 사용자의 표시 이름을 변경합니다. |
 | [`DELETE /api/auth/me`](#summary-delete-api-auth-me) | 본인을 다시 확인한 뒤 계정을 지우고 데이터 파기를 요청합니다(회원 탈퇴). |
+| [`PUT /api/auth/me/avatar`](#summary-put-api-auth-me-avatar) | 인증된 사용자의 프로필 사진을 올리거나 바꿉니다. PNG·JPEG·WebP·GIF, 1MB 이하. |
+| [`DELETE /api/auth/me/avatar`](#summary-delete-api-auth-me-avatar) | 인증된 사용자의 프로필 사진을 지웁니다. |
 | [`POST /api/auth/me/consents`](#summary-post-api-auth-me-consents) | 이용약관이 바뀐 뒤 기존 회원의 동의를 다시 받습니다. |
 | [`PUT /api/auth/me/email`](#summary-put-api-auth-me-email) | 새 이메일로 받은 인증번호 토큰으로 계정 이메일을 바꿉니다. |
 | [`GET /api/auth/me/sessions`](#summary-get-api-auth-me-sessions) | 폐기되지 않은 로그인 세션을 반환합니다. |
@@ -45,7 +47,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | 회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 일반 회원가입 계정만 대상으로 확인하므로, OAuth로만 가입된 이메일은 일반 회원가입이 가능해 `available: true`를 반환합니다. 같은 이메일로 소셜 가입한 계정이 있으면 `oauth_providers`로 알려, 새로 가입하기보다 그 계정으로 로그인한 뒤 설정에서 연동하도록 안내할 수 있게 합니다. |
+| 목적 | 회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 같은 이메일의 계정이 하나라도 있으면(이메일 가입이든 소셜 가입이든) `available: false`입니다. 같은 이메일로 소셜 가입한 계정이 있으면 `oauth_providers`로 알려, 그 계정으로 로그인한 뒤 설정에서 연동하도록 안내할 수 있게 합니다. 이 경우 인증번호 요청과 회원가입은 `409 EMAIL_REGISTERED_WITH_OAUTH`로 거절됩니다. |
 | 입력 | **Body** — `EmailAvailabilityRequest` |
 | 출력 | `200` 가입 가능 여부 — `EmailAvailabilityResponse` |
 | 조건 | 인증 불필요<br>인증 없이 호출할 수 있다.<br>공개 API이므로 별도의 사용자 권한 검증이 없다.<br>기존 인증번호 요청 API도 가입 이메일 중복을 `409`로 노출하므로 동일한 공개 범위를 유지한다.<br>그 밖의 조건은 상세 권한 규칙 참고 |
@@ -63,7 +65,7 @@
 
 #### 2. 목적
 
-회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 일반 회원가입 계정만 대상으로 확인하므로, OAuth로만 가입된 이메일은 일반 회원가입이 가능해 `available: true`를 반환합니다. 같은 이메일로 소셜 가입한 계정이 있으면 `oauth_providers`로 알려, 새로 가입하기보다 그 계정으로 로그인한 뒤 설정에서 연동하도록 안내할 수 있게 합니다.
+회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 같은 이메일의 계정이 하나라도 있으면(이메일 가입이든 소셜 가입이든) `available: false`입니다. 같은 이메일로 소셜 가입한 계정이 있으면 `oauth_providers`로 알려, 그 계정으로 로그인한 뒤 설정에서 연동하도록 안내할 수 있게 합니다. 이 경우 인증번호 요청과 회원가입은 `409 EMAIL_REGISTERED_WITH_OAUTH`로 거절됩니다.
 
 #### 3. Auth 필요 여부
 
@@ -85,12 +87,12 @@
 
 - HTTP `200`: 가입 가능 여부
 - Content-Type: `*/*` (`EmailAvailabilityResponse`)
-- `available`: 일반 회원가입(`local`) 계정이 없으면 `true`
-- `oauth_providers`: 같은 이메일로 소셜 가입한 계정의 provider 목록(이름순). 없으면 빈 배열. 가입을 막지 않는 안내용 신호다.
+- `available`: 같은 이메일의 계정이 하나도 없으면 `true`. 이메일 가입(`local`) 계정이나 소셜 가입 계정이 있으면 `false`
+- `oauth_providers`: 같은 이메일로 소셜 가입한 계정의 provider 목록(이름순). 없으면 빈 배열. 비어 있지 않으면 인증번호 요청과 회원가입이 `409 EMAIL_REGISTERED_WITH_OAUTH`로 거절되므로, 프론트는 인증 요청 전에 "그 소셜 계정으로 로그인한 뒤 설정 > 계정에서 연동"을 안내한다.
 
 ```json
 {
-  "available": true,
+  "available": false,
   "oauth_providers": [
     "google"
   ]
@@ -113,7 +115,7 @@
 
 - 공개 API이므로 별도의 사용자 권한 검증이 없다.
 - 기존 인증번호 요청 API도 가입 이메일 중복을 `409`로 노출하므로 동일한 공개 범위를 유지한다.
-- `oauth_providers`는 같은 이메일의 소셜 가입 여부와 provider까지 노출한다. 일반 회원가입 계정 존재를 이미 노출하는 것과 같은 범위로 보고, 같은 호출 제한을 적용한다.
+- `oauth_providers`는 같은 이메일의 소셜 가입 여부와 provider까지 노출한다. 일반 회원가입 계정 존재를 이미 노출하는 것과 같은 범위로 보고, 같은 호출 제한을 적용한다. 인증번호 요청·회원가입의 `409 EMAIL_REGISTERED_WITH_OAUTH`도 같은 범위다.
 - 계정 열거 비용을 제한하기 위해 Redis에서 IP당 30회/분, 이메일당 5회/분으로 호출을 제한한다.
 
 #### 9. 예시 요청/응답
@@ -126,7 +128,7 @@ curl -X POST "$ACCESS/api/auth/email-availability" \
 
 ```json
 {
-  "available": true,
+  "available": false,
   "oauth_providers": [
     "google"
   ]
@@ -149,11 +151,11 @@ curl -X POST "$ACCESS/api/auth/email-availability" \
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | 회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다. |
+| 목적 | 회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다. `purpose=signup`은 같은 이메일의 계정이 있으면 메일을 보내지 않고 `409`로 거절합니다. |
 | 입력 | **Body** — `EmailVerificationRequest` |
 | 출력 | `202` 인증번호 발급 — `EmailVerificationResponse` |
 | 조건 | 인증 불필요<br>인증 없이 호출할 수 있다.<br>공개 API이므로 별도의 사용자 권한 검증이 없다. |
-| 주요 오류 | `400` 잘못된 요청 — `ErrorResponse`<br>`409` 이미 가입된 이메일(purpose=signup) — `ErrorResponse`<br>`429` 재요청 제한 초과 — `ErrorResponse` |
+| 주요 오류 | `400` 잘못된 요청 — `ErrorResponse`<br>`409` 이미 가입된 이메일(purpose=signup): 이메일 가입 계정이면 `DUPLICATE_EMAIL` — `ErrorResponse`, 소셜 가입 계정만 있으면 `EMAIL_REGISTERED_WITH_OAUTH` — `EmailRegisteredWithOAuthResponse`(`oauth_providers` 포함)<br>`429` 재요청 제한 초과 — `ErrorResponse` |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -168,6 +170,8 @@ curl -X POST "$ACCESS/api/auth/email-availability" \
 #### 2. 목적
 
 회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다.
+
+`purpose=signup`은 같은 이메일의 계정이 있으면 인증번호를 만들지도 메일을 보내지도 않고 `409`로 거절한다. 이메일 가입 계정이면 `DUPLICATE_EMAIL`, 소셜 가입 계정만 있으면 `EMAIL_REGISTERED_WITH_OAUTH`와 `oauth_providers`를 돌려주며, 프론트는 "그 소셜 계정으로 로그인한 뒤 설정 > 계정에서 연동"을 안내한다. 같은 이메일로 두 번째 계정이 생기면 이후 연동으로 합칠 수 없기 때문이다(#31). `password_reset`은 존재 여부를 노출하지 않는다.
 
 #### 3. Auth 필요 여부
 
@@ -205,8 +209,21 @@ curl -X POST "$ACCESS/api/auth/email-availability" \
 | HTTP 상태 | 설명 | 응답 스키마 |
 |---|---|---|
 | `400` | 잘못된 요청 | `ErrorResponse` |
-| `409` | 이미 가입된 이메일(purpose=signup) | `ErrorResponse` |
+| `409` | 이미 가입된 이메일(purpose=signup). `DUPLICATE_EMAIL`(이메일 가입 계정) | `ErrorResponse` |
+| `409` | 같은 이메일의 소셜 가입 계정이 있음(purpose=signup). `EMAIL_REGISTERED_WITH_OAUTH` | `EmailRegisteredWithOAuthResponse` |
 | `429` | 재요청 제한 초과 | `ErrorResponse` |
+
+```json
+{
+  "error": {
+    "code": "EMAIL_REGISTERED_WITH_OAUTH",
+    "message": "이미 소셜 계정(google)으로 가입된 이메일입니다. 그 계정으로 로그인한 뒤 설정에서 연동하세요: email=user@example.com"
+  },
+  "oauth_providers": [
+    "google"
+  ]
+}
+```
 
 ```json
 {
@@ -593,10 +610,12 @@ access token으로 인증된 사용자의 프로필을 반환합니다.
 
 - HTTP `200`: 조회 성공
 - Content-Type: `*/*` (`MeResponse`)
-- `oauth_providers`: 로그인 수단으로 연결된 소셜 provider 목록(provider 이름순). OAuth로 가입한 provider도 포함하며, 연결이 없으면 빈 배열이다. `PATCH /api/auth/me`, `PUT /api/auth/me/email`의 응답도 같은 `MeResponse`다.
+- `oauth_providers`: 로그인 수단으로 연결된 소셜 provider 목록(provider 이름순). OAuth로 가입한 provider도 포함하며, 연결이 없으면 빈 배열이다. `PATCH /api/auth/me`, `PUT /api/auth/me/email`, `PUT /api/auth/me/avatar`, `DELETE /api/auth/me/avatar`의 응답도 같은 `MeResponse`다.
+- `avatar_url`: 프로필 사진 조회 경로(`GET /api/users/{user_id}/avatar`). 사진이 없으면 `null`이라 프론트는 이니셜 상자를 보여 준다. 사진의 SHA-256이 `?v=`로 붙어 사진을 바꾸면 URL도 바뀌므로, 예전 이미지가 브라우저 캐시에서 보이지 않는다.
 
 ```json
 {
+  "avatar_url": "/api/users/user_3f1c8a6b52d7411e9c04ab5d2e7f6081/avatar?v=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
   "created_at": "2026-08-13T04:25:24.371948Z",
   "display_name": "표시 이름",
   "email": "user@example.com",
@@ -633,6 +652,7 @@ curl -X GET "$ACCESS/api/auth/me" \
 
 ```json
 {
+  "avatar_url": "/api/users/user_3f1c8a6b52d7411e9c04ab5d2e7f6081/avatar?v=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
   "created_at": "2026-08-13T04:25:24.371948Z",
   "display_name": "표시 이름",
   "email": "user@example.com",
@@ -702,6 +722,7 @@ curl -X GET "$ACCESS/api/auth/me" \
   "id": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081",
   "email": "user@example.com",
   "display_name": "새 이름",
+  "avatar_url": null,
   "created_at": "2026-08-13T04:25:24.371948Z",
   "oauth_providers": [
     "google"
@@ -772,7 +793,8 @@ curl -X PATCH "$ACCESS/api/auth/me" \
 5. refresh token을 지우고 `users` 행을 지운다. OAuth 연결·MFA·멤버십·멱등 기록은 CASCADE로 지워지고 멤버십 기간 이력에는 `left_at`이 남는다.
 
 커밋 뒤 `DataPurgeRequestJob`(1분 주기)이 document `POST /internal/purge/users`, `POST /internal/purge/workspaces`를 호출하고,
-워크스페이스 파기가 끝나면 `workspaces` 행을 지운다. 실패하면 1분부터 두 배씩 늘려 최대 6시간 간격으로 다시 시도하며, 탈퇴 자체는 되돌리지 않는다.
+성공하면 이어서 ai-svc `POST /internal/ai/purge/users`(`{"user_id"}`), `POST /internal/ai/purge/workspaces`(`{"workspace_ids"}`)를 호출한다.
+둘 다 성공해야 요청을 지우고 워크스페이스 행을 지운다. 어느 한쪽이라도 1분부터 두 배씩 늘려 최대 6시간 간격으로 document부터 다시 시도하며(두 API 모두 멱등), 탈퇴 자체는 되돌리지 않는다.
 
 탈퇴 직후 같은 이메일로 다시 가입할 수 있다. 지운 계정의 refresh token은 더 이상 쓸 수 없다.
 
@@ -789,9 +811,181 @@ curl -X PATCH "$ACCESS/api/auth/me" \
 
 - 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
 - 처리: `src/main/java/fruition/access/user/service/AccountDeletionService.java`, 파기 호출 `src/main/java/fruition/access/cleanup/DataPurgeRequestJob.java`
-- 하위 호출: document-svc `POST /internal/purge/users`, `POST /internal/purge/workspaces`
+- 하위 호출: document-svc `POST /internal/purge/users`, `POST /internal/purge/workspaces`, 이어서 ai-svc `POST /internal/ai/purge/users`, `POST /internal/ai/purge/workspaces`(`AiInternalClient`)
 
 [↑ 요약으로 돌아가기](#summary-delete-api-auth-me)
+
+</details>
+
+<a id="summary-put-api-auth-me-avatar"></a>
+### `PUT /api/auth/me/avatar`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 인증된 사용자의 프로필 사진을 올리거나 바꿉니다. PNG·JPEG·WebP·GIF, 1MB 이하. |
+| 입력 | **Multipart** — `file` |
+| 출력 | `200` 업로드 성공 — `MeResponse` |
+| 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다. |
+| 주요 오류 | `400` 지원하지 않는 이미지 형식 — `ErrorResponse`<br>`401` 인증되지 않음 — `ErrorResponse`<br>`413` 이미지가 너무 큼 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-put-api-auth-me-avatar"></a>
+### `PUT /api/auth/me/avatar` 상세
+
+#### 1. Method + Path
+
+`PUT /api/auth/me/avatar`
+
+#### 2. 목적
+
+프로필 사진을 올린다. 이미 있으면 덮어쓴다. 워크스페이스 아이콘 이미지(`PUT /api/workspaces/{workspace_id}/icon/image`)와
+같은 규칙(형식·1MB·매직 바이트 판별·DB 저장)이다. 소셜 로그인 provider의 프로필 사진은 가져오지 않는다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| multipart | `file` | binary | 예 | PNG·JPEG·WebP·GIF, 1MB 이하 |
+
+- Content-Type: `multipart/form-data`
+
+형식은 **매직 바이트로 판별한다.** 선언된 Content-Type은 클라이언트가 정하는 값이라 믿지 않는다.
+픽셀 크기는 보지 않는다 — 서버가 이미지를 디코딩하지 않고 그대로 저장·스트리밍하므로 바이트 상한만으로 저장량이 묶인다.
+
+#### 5. Response body
+
+- HTTP `200`: 업로드 성공 — `MeResponse`
+
+```json
+{
+  "id": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081",
+  "email": "user@example.com",
+  "display_name": "표시 이름",
+  "avatar_url": "/api/users/user_3f1c8a6b52d7411e9c04ab5d2e7f6081/avatar?v=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  "created_at": "2026-08-13T04:25:24.371948Z",
+  "oauth_providers": [],
+  "consent_required": false
+}
+```
+
+`avatar_url`의 `?v=`는 이미지 SHA-256이다. 사진을 바꾸면 값이 바뀌어 `GET /api/auth/me`·멤버 목록을 다시 읽는 화면은
+새 URL로 새 이미지를 받고, 예전 URL로 캐시된 이미지는 쓰이지 않는다.
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 코드 |
+|---|---|---|
+| `400` | PNG·JPEG·WebP·GIF가 아니거나 파일이 비어 있음 | `UNSUPPORTED_USER_AVATAR` |
+| `400` | multipart 요청이 아니거나 `file` part가 없음 | `INVALID_REQUEST` |
+| `401` | access token이 없거나 유효하지 않음 | — |
+| `413` | 1MB를 넘음 | `USER_AVATAR_TOO_LARGE` |
+
+2MB를 넘는 요청은 Spring multipart 한도(`spring.servlet.multipart.max-file-size`)에서 먼저 잘리지만, 같은 `413 USER_AVATAR_TOO_LARGE`로 돌려준다.
+
+#### 7. Pagination / filtering
+
+- 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 토큰의 사용자 본인만 대상이다. 경로에 사용자 ID를 받지 않으므로 남의 사진은 바꿀 수 없다.
+- 재업로드는 `user_avatars`의 기존 row를 덮어쓴다. 고아 이미지가 남지 않는다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X PUT "$ACCESS/api/auth/me/avatar" \
+  -H 'Authorization: Bearer <access_token>' \
+  -F 'file=@me.png'
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: updateAvatar`)
+- 호출자: **호출자 미확인** (frontend 프로필 설정 화면 구현 예정, FruitionKR/Fruition-access#25)
+- 하위 호출: 없음
+
+[↑ 요약으로 돌아가기](#summary-put-api-auth-me-avatar)
+
+</details>
+
+<a id="summary-delete-api-auth-me-avatar"></a>
+### `DELETE /api/auth/me/avatar`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 인증된 사용자의 프로필 사진을 지웁니다. 사진이 없어도 200입니다. |
+| 입력 | 없음 |
+| 출력 | `200` 삭제 성공 — `MeResponse` |
+| 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다. |
+| 주요 오류 | `401` 인증되지 않음 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+<a id="detail-delete-api-auth-me-avatar"></a>
+### `DELETE /api/auth/me/avatar` 상세
+
+#### 1. Method + Path
+
+`DELETE /api/auth/me/avatar`
+
+#### 2. 목적
+
+프로필 사진을 지운다. 응답의 `avatar_url`이 `null`이 되고, 프론트는 다시 이니셜 상자를 보여 준다.
+사진이 없는 상태에서 불러도 실패하지 않고 현재 `MeResponse`를 돌려준다(멱등).
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+- 없음
+
+#### 5. Response body
+
+- HTTP `200`: 삭제 성공 — `MeResponse` (`avatar_url: null`)
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 코드 |
+|---|---|---|
+| `401` | access token이 없거나 유효하지 않음 | — |
+
+#### 7. Pagination / filtering
+
+- 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 토큰의 사용자 본인만 대상이다.
+- `user_avatars` row와 `users.avatar_content_type`·`avatar_hash`를 함께 지운다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X DELETE "$ACCESS/api/auth/me/avatar" \
+  -H 'Authorization: Bearer <access_token>'
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: deleteAvatar`)
+- 호출자: **호출자 미확인** (frontend 프로필 설정 화면 구현 예정, FruitionKR/Fruition-access#25)
+- 하위 호출: 없음
+
+[↑ 요약으로 돌아가기](#summary-delete-api-auth-me-avatar)
 
 </details>
 
@@ -1828,8 +2022,8 @@ curl -X POST "$ACCESS/api/auth/me/oauth-accounts/link/confirm" \
 
 #### 2. 목적
 
-현재 계정에 연결된 소셜 로그인 수단을 끊는다. 해제 후 그 소셜 계정으로 로그인하면 현재 계정이 아니라
-기존 OAuth 로그인 규칙대로 provider별 계정을 찾거나 새로 만든다.
+현재 계정에 연결된 소셜 로그인 수단을 끊는다. 해제 후 그 소셜 계정으로 로그인하면 현재 계정으로 들어오지 않는다.
+같은 이메일의 계정(현재 계정)이 있으므로 신규 가입도 되지 않고 `?error=email_registered`로 돌아오며, 다시 쓰려면 설정에서 연동한다.
 
 #### 3. Auth 필요 여부
 
@@ -1896,7 +2090,7 @@ curl -X DELETE "$ACCESS/api/auth/me/oauth-accounts/kakao" \
 | 입력 | **Body** — `OAuthSignupConsentRequest` `{ "signup_token", "age_confirmed", "terms_version", "marketing_opt_in", "code_verifier" }`(`code_verifier`는 데스크톱 로그인만) |
 | 출력 | `200` 가입과 로그인 완료 — `LoginResponse`(access token, HttpOnly refresh 쿠키). 다른 탭이 먼저 가입한 계정이 MFA를 켰으면 `mfa_required`·`mfa_token`만 온다 |
 | 조건 | 인증 불필요. `signup_token`은 10분 동안 한 번만 쓸 수 있다. |
-| 주요 오류 | `400` `CONSENT_REQUIRED` 만 18세 이상 확인·현재 이용약관 동의 없음(토큰은 소비하지 않아 다시 보낼 수 있다)<br>`401` `INVALID_SIGNUP_TOKEN` 토큰이 없거나 만료·사용됨, 또는 데스크톱 가입인데 `code_verifier`가 없거나 틀림(토큰은 소비된다). 소셜 로그인부터 다시 한다 |
+| 주요 오류 | `400` `CONSENT_REQUIRED` 만 18세 이상 확인·현재 이용약관 동의 없음(토큰은 소비하지 않아 다시 보낼 수 있다)<br>`401` `INVALID_SIGNUP_TOKEN` 토큰이 없거나 만료·사용됨, 또는 데스크톱 가입인데 `code_verifier`가 없거나 틀림(토큰은 소비된다). 소셜 로그인부터 다시 한다<br>`409` `EMAIL_REGISTERED` 토큰을 받은 뒤 동의 화면에 머무는 사이 같은 이메일로 다른 가입이 끝남 — `EmailRegisteredResponse`(`providers` 포함, 토큰은 소비된다). 기존 계정으로 로그인한 뒤 설정에서 연동한다 |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -1908,12 +2102,15 @@ curl -X DELETE "$ACCESS/api/auth/me/oauth-accounts/kakao" \
 
 1. 소셜 로그인 콜백에서 그 소셜 계정에 연결된 사용자가 없으면 계정을 만들지 않는다. 소셜 계정 정보(provider, provider 사용자 ID, 이메일, 이름)를
    Redis `oauth:signup:{token}`에 10분 보관하고, OAuth 콜백 주소에 `?code=` 대신 `?signup_token=`을 붙여 돌려보낸다.
+   단, 같은 이메일의 계정이 이미 있으면(이메일 가입 `local`이든 다른 provider의 소셜 가입이든) 두 번째 계정이 생기지 않게 토큰을 발급하지 않고
+   `?error=email_registered&providers=<쉼표 구분, 예: local,google>`을 붙여 돌려보낸다. 프론트는 "그 방법으로 로그인한 뒤 설정 > 계정에서 연동하세요"를 안내한다.
+   이미 연결된 소셜 계정의 로그인(`?code=`)과 설정에서의 연동([연동 시작](#summary-post-api-auth-me-oauth-accounts-provider-link))은 영향을 받지 않는다.
 2. 프론트는 동의 화면을 보여 주고 이 API를 부른다.
 3. 서버는 동의를 확인한 뒤 토큰을 소비하고 계정·소셜 연결·기본 워크스페이스·동의 기록을 만들고 로그인 토큰을 준다.
    그사이 다른 탭에서 같은 소셜 계정으로 가입을 끝냈으면 그 계정으로 로그인시킨다. 그 계정이 MFA를 켰으면 토큰과 refresh 쿠키 대신
    일반 로그인처럼 `mfa_required: true`와 `mfa_token`을 돌려주고, `POST /api/auth/login/mfa`로 로그인을 마친다.
 
-기존 회원의 소셜 로그인은 지금처럼 `?code=`로 돌아온다.
+기존 회원의 소셜 로그인은 지금처럼 `?code=`로 돌아온다. 콜백 쿼리 정리: 기존 회원 `?code=`, 신규 가입 `?signup_token=`, 같은 이메일의 계정이 있어 가입 거절 `?error=email_registered&providers=`, 그 밖의 실패 `?error=oauth_failed`.
 
 데스크톱 로그인([데스크톱 앱 로그인](#데스크톱-앱-로그인딥링크--pkce))이면 `signup_token`이 앱 딥링크로 오고, 토큰에 로그인 시작 때의
 `code_challenge`가 묶인다. 이 API에 같은 로그인의 `code_verifier`를 함께 보내야 한다.
@@ -1999,7 +2196,7 @@ code를 쓸 수 없다.
    - `code_challenge_method`는 `S256`만 받는다. `code_challenge`는 base64url 43~128자여야 한다.
    - challenge가 없거나 형식이 틀리거나 `plain`이면, 또는 `mode=link`와 함께 쓰면 인가를 시작하지 않고 `400`을 돌려준다.
 3. 로그인이 끝나면 웹 주소 대신 `app.oauth.desktop-redirect-uri`(기본 `fruition://oauth/callback`)로 redirect한다.
-   쿼리 이름은 웹과 같다: 기존 회원 `?code=`, 신규 가입 `?signup_token=`, 실패 `?error=oauth_failed`.
+   쿼리 이름은 웹과 같다: 기존 회원 `?code=`, 신규 가입 `?signup_token=`, 같은 이메일의 계정이 있어 가입 거절 `?error=email_registered&providers=`, 그 밖의 실패 `?error=oauth_failed`.
 4. 앱이 `code`와 `code_verifier`로 이 API를 부른다. 신규 가입이면 `POST /api/auth/oauth/signup/consent`에 `code_verifier`를 함께 보낸다.
 
 한계: 콜백에서 인가 요청을 꺼내기 전에 실패하면(브라우저 세션 만료로 `authorization_request_not_found`, `state` 누락 등)
@@ -2287,11 +2484,11 @@ curl -X POST "$ACCESS/api/auth/refresh" \
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | 이메일/비밀번호로 신규 사용자를 생성합니다. 만 18세 이상 확인과 현재 이용약관 동의가 있어야 합니다. |
+| 목적 | 이메일/비밀번호로 신규 사용자를 생성합니다. 만 18세 이상 확인과 현재 이용약관 동의가 있어야 합니다. 같은 이메일의 소셜 가입 계정이 있으면 `409`로 거절합니다. |
 | 입력 | **Body** — `SignupRequest` |
 | 출력 | `201` 회원가입 성공 — `SignupResponse` |
 | 조건 | 인증 불필요<br>인증 없이 호출할 수 있다.<br>공개 API이므로 별도의 사용자 권한 검증이 없다. |
-| 주요 오류 | `400` 잘못된 요청, 또는 `CONSENT_REQUIRED` 만 18세 이상 확인·현재 이용약관 동의 없음(인증 토큰은 소비하지 않는다) — `ErrorResponse`<br>`409` 이미 가입된 이메일 — `ErrorResponse` |
+| 주요 오류 | `400` 잘못된 요청, 또는 `CONSENT_REQUIRED` 만 18세 이상 확인·현재 이용약관 동의 없음(인증 토큰은 소비하지 않는다) — `ErrorResponse`<br>`409` 이미 가입된 이메일: 이메일 가입 계정이면 `DUPLICATE_EMAIL` — `ErrorResponse`, 소셜 가입 계정만 있으면 `EMAIL_REGISTERED_WITH_OAUTH` — `EmailRegisteredWithOAuthResponse`(`oauth_providers` 포함, 인증 토큰은 소비하지 않는다) |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -2354,7 +2551,8 @@ curl -X POST "$ACCESS/api/auth/refresh" \
 | HTTP 상태 | 설명 | 응답 스키마 |
 |---|---|---|
 | `400` | 잘못된 요청 | `ErrorResponse` |
-| `409` | 이미 가입된 이메일 | `ErrorResponse` |
+| `409` | 이미 가입된 이메일. `DUPLICATE_EMAIL`(이메일 가입 계정) | `ErrorResponse` |
+| `409` | 같은 이메일의 소셜 가입 계정이 있음. `EMAIL_REGISTERED_WITH_OAUTH`, `oauth_providers` 포함. 인증번호 발급에서 먼저 걸리지만 API를 직접 불러도 같은 결과다 | `EmailRegisteredWithOAuthResponse` |
 
 ```json
 {

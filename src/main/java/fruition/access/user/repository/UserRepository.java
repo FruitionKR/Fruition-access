@@ -17,6 +17,15 @@ public interface UserRepository extends JpaRepository<User, String> {
 
     boolean existsByEmailAndProvider(String email, String provider);
 
+    /** 같은 이메일로 가입한 계정의 provider(이름순). 이메일 가입 계정은 {@code local}. */
+    default List<String> findProvidersByEmail(String email) {
+        return findAllByEmail(email).stream()
+                .map(User::getProvider)
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
     /** 로그인 수단 연동·해제를 사용자 단위로 직렬화한다. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from User u where u.id = :id")

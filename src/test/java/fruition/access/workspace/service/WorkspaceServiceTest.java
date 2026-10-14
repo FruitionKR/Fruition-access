@@ -146,14 +146,27 @@ class WorkspaceServiceTest {
         when(workspaceMemberRepository.findOwnedWorkspaceIncludingDeleted(
                 "ws_aaa11111", "user_1f9a74af", WorkspaceRole.OWNER)).thenReturn(Optional.of(workspace));
 
-        WorkspaceResponse response = workspaceService.rename("user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest("새 이름"));
+        WorkspaceResponse response = workspaceService.rename("user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest("새 이름", null));
 
         assertThat(response.name()).isEqualTo("새 이름");
     }
 
     @Test
+    void update_onlyAutoIngest_keepsNameAndSetsFlag() {
+        Workspace workspace = new Workspace("ws_aaa11111", "이전 이름");
+        when(workspaceMemberRepository.findOwnedWorkspaceIncludingDeleted(
+                "ws_aaa11111", "user_1f9a74af", WorkspaceRole.OWNER)).thenReturn(Optional.of(workspace));
+
+        WorkspaceResponse response = workspaceService.rename(
+                "user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest(null, true));
+
+        assertThat(response.name()).isEqualTo("이전 이름");
+        assertThat(response.autoIngestOnUpload()).isTrue();
+    }
+
+    @Test
     void rename_notOwnedWorkspace_throwsNotFound() {
-        assertThatThrownBy(() -> workspaceService.rename("user_other", "ws_aaa11111", new WorkspaceRenameRequest("새 이름")))
+        assertThatThrownBy(() -> workspaceService.rename("user_other", "ws_aaa11111", new WorkspaceRenameRequest("새 이름", null)))
                 .isInstanceOf(WorkspaceNotFoundException.class);
     }
 

@@ -3,11 +3,13 @@ package fruition.access.workspace.service;
 import fruition.access.user.domain.User;
 import fruition.access.workspace.domain.Workspace;
 import fruition.access.workspace.domain.WorkspaceMember;
+import fruition.access.workspace.domain.WorkspacePermission;
 import fruition.access.workspace.domain.WorkspaceRole;
 import fruition.access.workspace.dto.WorkspaceMemberListResponse;
 import fruition.access.workspace.dto.WorkspaceMemberResponse;
 import fruition.access.workspace.dto.WorkspaceMemberRoleUpdateRequest;
 import fruition.access.workspace.exception.LastOwnerException;
+import fruition.access.workspace.exception.OwnerPermissionsFixedException;
 import fruition.access.workspace.exception.WorkspaceAccessDeniedException;
 import fruition.access.workspace.exception.WorkspaceMemberNotFoundException;
 import fruition.access.workspace.exception.WorkspaceNotFoundException;
@@ -20,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -86,7 +89,7 @@ class WorkspaceMemberServiceTest {
                 .thenReturn(Optional.of(target));
 
         WorkspaceMemberResponse response = workspaceMemberService.changeRole(
-                OWNER_ID, WORKSPACE_ID, MEMBER_ID, new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.OWNER));
+                OWNER_ID, WORKSPACE_ID, MEMBER_ID, new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.OWNER, null));
 
         assertThat(response.role()).isEqualTo("OWNER");
         assertThat(target.getRole()).isEqualTo(WorkspaceRole.OWNER);
@@ -98,7 +101,7 @@ class WorkspaceMemberServiceTest {
         actorRole(MEMBER_ID, WorkspaceRole.MEMBER);
 
         assertThatThrownBy(() -> workspaceMemberService.changeRole(
-                MEMBER_ID, WORKSPACE_ID, OWNER_ID, new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER)))
+                MEMBER_ID, WORKSPACE_ID, OWNER_ID, new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER, null)))
                 .isInstanceOf(WorkspaceAccessDeniedException.class);
         verifyNoInteractions(authzProjectionStore);
     }
@@ -110,7 +113,7 @@ class WorkspaceMemberServiceTest {
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> workspaceMemberService.changeRole(
-                OWNER_ID, WORKSPACE_ID, "user_stranger", new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER)))
+                OWNER_ID, WORKSPACE_ID, "user_stranger", new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER, null)))
                 .isInstanceOf(WorkspaceMemberNotFoundException.class);
     }
 
@@ -122,7 +125,7 @@ class WorkspaceMemberServiceTest {
         owners(member(OWNER_ID, WorkspaceRole.OWNER));
 
         assertThatThrownBy(() -> workspaceMemberService.changeRole(
-                OWNER_ID, WORKSPACE_ID, OWNER_ID, new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER)))
+                OWNER_ID, WORKSPACE_ID, OWNER_ID, new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER, null)))
                 .isInstanceOf(LastOwnerException.class);
         verifyNoInteractions(authzProjectionStore);
     }
@@ -136,7 +139,7 @@ class WorkspaceMemberServiceTest {
         owners(member(OWNER_ID, WorkspaceRole.OWNER), target);
 
         workspaceMemberService.changeRole(
-                OWNER_ID, WORKSPACE_ID, MEMBER_ID, new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER));
+                OWNER_ID, WORKSPACE_ID, MEMBER_ID, new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER, null));
 
         assertThat(target.getRole()).isEqualTo(WorkspaceRole.MEMBER);
         verify(authzProjectionStore).evict(WORKSPACE_ID, MEMBER_ID);
@@ -149,10 +152,156 @@ class WorkspaceMemberServiceTest {
                 .thenReturn(Optional.of(member(OWNER_ID, WorkspaceRole.OWNER)));
 
         WorkspaceMemberResponse response = workspaceMemberService.changeRole(
-                OWNER_ID, WORKSPACE_ID, OWNER_ID, new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.OWNER));
+                OWNER_ID, WORKSPACE_ID, OWNER_ID, new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.OWNER, null));
 
         assertThat(response.role()).isEqualTo("OWNER");
         verifyNoInteractions(authzProjectionStore);
+    }
+
+    private WorkspaceMember ownerTarget(String userId) {
+        WorkspaceMember target = member(userId, WorkspaceRole.OWNER);
+        when(workspaceMemberRepository.findByWorkspace_IdAndUser_Id(WORKSPACE_ID, userId))
+                .thenReturn(Optional.of(target));
+        return target;
+    }
+
+    private WorkspaceMember memberTarget(WorkspacePermission... granted) {
+        WorkspaceMember target = member(MEMBER_ID, WorkspaceRole.MEMBER);
+        target.replacePermissions(Set.of(granted));
+        when(workspaceMemberRepository.findByWorkspace_IdAndUser_Id(WORKSPACE_ID, MEMBER_ID))
+                .thenReturn(Optional.of(target));
+        return target;
+    }
+
+    @Test
+    void changePermissions_ownerGrantsMember_storesAndEvicts() {
+        actorRole(OWNER_ID, WorkspaceRole.OWNER);
+        WorkspaceMember target = memberTarget();
+
+        WorkspaceMemberResponse response = workspaceMemberService.changeRole(OWNER_ID, WORKSPACE_ID, MEMBER_ID,
+                new WorkspaceMemberRoleUpdateRequest(null, List.of(WorkspacePermission.WIKI_INGEST)));
+
+        assertThat(response.permissions()).containsExactly("wiki.ingest");
+        assertThat(target.getPermissions()).containsExactly(WorkspacePermission.WIKI_INGEST);
+        verify(authzProjectionStore).evict(WORKSPACE_ID, MEMBER_ID);
+    }
+
+    @Test
+    void changePermissions_multipleItems_responseSorted() {
+        actorRole(OWNER_ID, WorkspaceRole.OWNER);
+        WorkspaceMember target = memberTarget();
+
+        WorkspaceMemberResponse response = workspaceMemberService.changeRole(OWNER_ID, WORKSPACE_ID, MEMBER_ID,
+                new WorkspaceMemberRoleUpdateRequest(null,
+                        List.of(WorkspacePermission.WIKI_LINT, WorkspacePermission.SKILL_AUTHOR)));
+
+        assertThat(response.permissions()).containsExactly("skill.author", "wiki.lint");
+        assertThat(target.getPermissions())
+                .containsExactlyInAnyOrder(WorkspacePermission.WIKI_LINT, WorkspacePermission.SKILL_AUTHOR);
+    }
+
+    @Test
+    void ownerEffectivePermissions_areAllFiveSorted() {
+        WorkspaceMember owner = member(OWNER_ID, WorkspaceRole.OWNER);
+
+        assertThat(WorkspaceMemberResponse.from(owner).permissions()).containsExactly(
+                "document.convert", "skill.author", "wiki.ingest", "wiki.lint", "wiki.restore");
+    }
+
+    @Test
+    void changePermissions_replacesWholeSet() {
+        actorRole(OWNER_ID, WorkspaceRole.OWNER);
+        WorkspaceMember target = memberTarget(WorkspacePermission.WIKI_INGEST);
+
+        WorkspaceMemberResponse response = workspaceMemberService.changeRole(OWNER_ID, WORKSPACE_ID, MEMBER_ID,
+                new WorkspaceMemberRoleUpdateRequest(null, List.of()));
+
+        assertThat(response.permissions()).isEmpty();
+        assertThat(target.getPermissions()).isEmpty();
+        verify(authzProjectionStore).evict(WORKSPACE_ID, MEMBER_ID);
+    }
+
+    @Test
+    void changePermissions_sameSetIsNoOp() {
+        actorRole(OWNER_ID, WorkspaceRole.OWNER);
+        memberTarget(WorkspacePermission.WIKI_INGEST);
+
+        WorkspaceMemberResponse response = workspaceMemberService.changeRole(OWNER_ID, WORKSPACE_ID, MEMBER_ID,
+                new WorkspaceMemberRoleUpdateRequest(null, List.of(WorkspacePermission.WIKI_INGEST)));
+
+        assertThat(response.permissions()).containsExactly("wiki.ingest");
+        verifyNoInteractions(authzProjectionStore);
+    }
+
+    @Test
+    void changePermissions_nonOwnerGets403() {
+        actorRole(MEMBER_ID, WorkspaceRole.MEMBER);
+
+        assertThatThrownBy(() -> workspaceMemberService.changeRole(MEMBER_ID, WORKSPACE_ID, MEMBER_ID,
+                new WorkspaceMemberRoleUpdateRequest(null, List.of(WorkspacePermission.WIKI_INGEST))))
+                .isInstanceOf(WorkspaceAccessDeniedException.class);
+        verifyNoInteractions(authzProjectionStore);
+    }
+
+    @Test
+    void changePermissions_onOwnerIsRejected_evenSelf() {
+        actorRole(OWNER_ID, WorkspaceRole.OWNER);
+        ownerTarget(OWNER_ID);
+
+        assertThatThrownBy(() -> workspaceMemberService.changeRole(OWNER_ID, WORKSPACE_ID, OWNER_ID,
+                new WorkspaceMemberRoleUpdateRequest(null, List.of(WorkspacePermission.WIKI_INGEST))))
+                .isInstanceOf(OwnerPermissionsFixedException.class);
+        verifyNoInteractions(authzProjectionStore);
+    }
+
+    @Test
+    void changePermissions_promotionWithPermissionsIsRejected() {
+        actorRole(OWNER_ID, WorkspaceRole.OWNER);
+        WorkspaceMember target = memberTarget();
+
+        assertThatThrownBy(() -> workspaceMemberService.changeRole(OWNER_ID, WORKSPACE_ID, MEMBER_ID,
+                new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.OWNER, List.of(WorkspacePermission.WIKI_INGEST))))
+                .isInstanceOf(OwnerPermissionsFixedException.class);
+        assertThat(target.getRole()).isEqualTo(WorkspaceRole.MEMBER);
+    }
+
+    @Test
+    void promote_keepsStoredPermissions() {
+        actorRole(OWNER_ID, WorkspaceRole.OWNER);
+        WorkspaceMember target = memberTarget(WorkspacePermission.WIKI_INGEST);
+
+        WorkspaceMemberResponse response = workspaceMemberService.changeRole(OWNER_ID, WORKSPACE_ID, MEMBER_ID,
+                new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.OWNER, null));
+
+        assertThat(target.getPermissions()).containsExactly(WorkspacePermission.WIKI_INGEST);
+        assertThat(response.permissions()).hasSize(WorkspacePermission.values().length);
+    }
+
+    @Test
+    void demote_keepsStoredPermissions_noneGrantedByDefault() {
+        actorRole(OWNER_ID, WorkspaceRole.OWNER);
+        WorkspaceMember target = ownerTarget(MEMBER_ID);
+        owners(member(OWNER_ID, WorkspaceRole.OWNER), target);
+
+        WorkspaceMemberResponse response = workspaceMemberService.changeRole(OWNER_ID, WORKSPACE_ID, MEMBER_ID,
+                new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER, null));
+
+        assertThat(target.getPermissions()).isEmpty();
+        assertThat(response.permissions()).isEmpty();
+        verify(authzProjectionStore).evict(WORKSPACE_ID, MEMBER_ID);
+    }
+
+    @Test
+    void demote_withPermissions_storesGivenSet() {
+        actorRole(OWNER_ID, WorkspaceRole.OWNER);
+        WorkspaceMember target = ownerTarget(MEMBER_ID);
+        owners(member(OWNER_ID, WorkspaceRole.OWNER), target);
+
+        WorkspaceMemberResponse response = workspaceMemberService.changeRole(OWNER_ID, WORKSPACE_ID, MEMBER_ID,
+                new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.MEMBER, List.of(WorkspacePermission.WIKI_INGEST)));
+
+        assertThat(target.getPermissions()).containsExactly(WorkspacePermission.WIKI_INGEST);
+        assertThat(response.permissions()).containsExactly("wiki.ingest");
     }
 
     @Test

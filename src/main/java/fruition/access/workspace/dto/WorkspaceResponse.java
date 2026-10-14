@@ -23,6 +23,10 @@ public record WorkspaceResponse(
                 example = "/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/icon/image", nullable = true)
         String iconUrl,
 
+        @JsonProperty("auto_ingest_on_upload")
+        @Schema(description = "업로드 시 자동으로 ingest할지 여부", example = "false")
+        boolean autoIngestOnUpload,
+
         @JsonProperty("created_at")
         @Schema(description = "생성 시각(ISO-8601 UTC)", example = "2026-08-13T04:25:24.371948Z")
         Instant createdAt,
@@ -37,6 +41,7 @@ public record WorkspaceResponse(
                 workspace.getName(),
                 workspace.getIconEmoji(),
                 workspace.hasIconImage() ? "/api/workspaces/" + workspace.getId() + "/icon/image" : null,
+                workspace.isAutoIngestOnUpload(),
                 workspace.getCreatedAt(),
                 workspace.getUpdatedAt());
     }

@@ -10,6 +10,8 @@ security:
 tags:
 - description: 회원가입 및 인증 API
   name: Auth
+- description: 사용자 프로필 사진 조회 API
+  name: Users
 - description: 워크스페이스 초대 API
   name: Workspace Invitations
 - description: 워크스페이스 멤버 관리 API
@@ -19,7 +21,7 @@ tags:
 paths:
   /api/auth/email-availability:
     post:
-      description: 이메일로 신규 가입할 수 있는지 확인합니다.
+      description: "이메일로 신규 가입할 수 있는지 확인합니다. 같은 이메일의 계정이 하나라도 있으면(이메일 가입이든 소셜 가입이든) available이 false이고, 소셜 가입 계정의 provider는 oauth_providers로 알립니다."
       operationId: checkEmailAvailability
       requestBody:
         content:
@@ -51,7 +53,7 @@ paths:
       - Auth
   /api/auth/email-verifications:
     post:
-      description: 회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다.
+      description: 회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다. purpose=signup은 같은 이메일의 계정이 있으면 메일을 보내지 않고 409로 거절합니다.
       operationId: requestEmailVerification
       requestBody:
         content:
@@ -76,8 +78,10 @@ paths:
           content:
             '*/*':
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-          description: 이미 가입된 이메일(purpose=signup)
+                oneOf:
+                - $ref: "#/components/schemas/ErrorResponse"
+                - $ref: "#/components/schemas/EmailRegisteredWithOAuthResponse"
+          description: "이미 가입된 이메일(purpose=signup). 이메일 가입 계정이면 DUPLICATE_EMAIL(ErrorResponse), 소셜 가입 계정만 있으면 EMAIL_REGISTERED_WITH_OAUTH(EmailRegisteredWithOAuthResponse)"
         "429":
           content:
             '*/*':
@@ -298,6 +302,68 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
           description: 인증되지 않음
       summary: 표시 이름 변경
+      tags:
+      - Auth
+  /api/auth/me/avatar:
+    delete:
+      description: 인증된 사용자의 프로필 사진을 지웁니다. 사진이 없어도 200입니다.
+      operationId: deleteAvatar
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+          description: 삭제 성공
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 인증되지 않음
+      summary: 프로필 사진 삭제
+      tags:
+      - Auth
+    put:
+      description: "인증된 사용자의 프로필 사진을 올리거나 바꿉니다. PNG·JPEG·WebP·GIF, 1MB 이하."
+      operationId: updateAvatar
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+              - file
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+          description: 업로드 성공
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 지원하지 않는 이미지 형식
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 인증되지 않음
+        "413":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 이미지가 너무 큼
+      summary: 프로필 사진 업로드
       tags:
       - Auth
   /api/auth/me/consents:
@@ -741,6 +807,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
           description: 가입 대기 토큰이 없거나 만료됨(INVALID_SIGNUP_TOKEN)
+        "409":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/EmailRegisteredResponse"
+          description: 토큰 발급 뒤 같은 이메일로 다른 가입이 끝나 거절됨(EMAIL_REGISTERED). 기존 계정으로 로그인한 뒤 연동한다
       summary: 소셜 신규 가입 확정
       tags:
       - Auth
@@ -795,7 +867,7 @@ paths:
       - Auth
   /api/auth/signup:
     post:
-      description: 이메일/비밀번호로 신규 사용자를 생성합니다.
+      description: 이메일/비밀번호로 신규 사용자를 생성합니다. 같은 이메일의 소셜 가입 계정이 있으면 409로 거절합니다.
       operationId: signup
       requestBody:
         content:
@@ -820,8 +892,10 @@ paths:
           content:
             '*/*':
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-          description: 이미 가입된 이메일
+                oneOf:
+                - $ref: "#/components/schemas/ErrorResponse"
+                - $ref: "#/components/schemas/EmailRegisteredWithOAuthResponse"
+          description: "이미 가입된 이메일. 이메일 가입 계정이면 DUPLICATE_EMAIL(ErrorResponse), 소셜 가입 계정만 있으면 EMAIL_REGISTERED_WITH_OAUTH(EmailRegisteredWithOAuthResponse)"
       summary: 회원가입
       tags:
       - Auth
@@ -909,6 +983,48 @@ paths:
       summary: 초대 수락
       tags:
       - Workspace Invitations
+  /api/users/{user_id}/avatar:
+    get:
+      description: 본인이거나 워크스페이스를 하나라도 같이 쓰는 멤버에게 프로필 사진 bytes를 반환합니다.
+      operationId: getAvatar
+      parameters:
+      - description: 사용자 ID
+        example: user_3f1c8a6b52d7411e9c04ab5d2e7f6081
+        in: path
+        name: user_id
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: byte
+          description: 이미지 반환
+        "304":
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: byte
+          description: 캐시된 이미지 사용
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 인증되지 않음
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 사용자를 볼 수 없거나 프로필 사진이 없음
+      summary: 프로필 사진 조회
+      tags:
+      - Users
   /api/workspaces:
     get:
       description: 로그인한 사용자가 소유한 워크스페이스 목록을 반환합니다.
@@ -1010,7 +1126,7 @@ paths:
       tags:
       - Workspaces
     patch:
-      description: 로그인한 사용자가 소유한 워크스페이스의 이름을 변경합니다.
+      description: 로그인한 사용자가 소유한 워크스페이스의 이름(name)과 업로드 시 자동 ingest 여부(auto_ingest_on_upload)를 변경합니다. 둘 다 선택이지만 하나는 필요합니다.
       operationId: rename
       parameters:
       - description: 워크스페이스 ID
@@ -1034,13 +1150,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorkspaceResponse"
           description: 변경 성공
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: name·auto_ingest_on_upload가 모두 없거나 name이 공백이거나 255자 초과
         "404":
           content:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
           description: 워크스페이스를 찾을 수 없음
-      summary: 워크스페이스 이름 변경
+      summary: 워크스페이스 설정 변경
       tags:
       - Workspaces
   /api/workspaces/{workspace_id}/icon:
@@ -1371,7 +1493,7 @@ paths:
       tags:
       - Workspace Members
     patch:
-      description: 멤버의 역할을 OWNER 또는 MEMBER로 변경합니다. OWNER만 호출할 수 있습니다.
+      description: "멤버의 역할(role)과 권한 항목(permissions)을 변경합니다. 둘 다 선택이지만 하나는 필요하며, permissions는 전체 집합을 교체합니다. OWNER만 호출할 수 있습니다. 결과 역할이 OWNER인데 permissions를 보내면 400 OWNER_PERMISSIONS_FIXED입니다. 역할과 권한 항목은 독립이라 역할을 바꿔도 부여된 권한은 그대로입니다."
       operationId: changeRole
       parameters:
       - description: 워크스페이스 ID
@@ -1402,6 +1524,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorkspaceMemberResponse"
           description: 변경 성공
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: "role·permissions가 모두 없음, 알 수 없거나 중복된 권한 항목, 또는 OWNER_PERMISSIONS_FIXED"
         "403":
           content:
             '*/*':
@@ -1420,7 +1548,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
           description: 마지막 OWNER는 강등할 수 없음
-      summary: 멤버 역할 변경
+      summary: 멤버 역할·권한 변경
       tags:
       - Workspace Members
   /api/workspaces/{workspace_id}/restore:
@@ -1614,6 +1742,31 @@ paths:
           description: OK
       tags:
       - internal-authz-controller
+  /internal/workspaces/{workspace_id}/settings:
+    get:
+      operationId: settings
+      parameters:
+      - example: ws_9d47a0e9a6324341b47562553b75f92a
+        in: path
+        name: workspace_id
+        required: true
+        schema:
+          type: string
+          default: ws_9d47a0e9a6324341b47562553b75f92a
+      - in: header
+        name: X-Internal-Token
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: object
+          description: OK
+      tags:
+      - internal-authz-controller
 components:
   schemas:
     AccountDeletionBlockedResponse:
@@ -1647,7 +1800,7 @@ components:
         model:
           type: string
           description: provider와 짝이 맞는 모델명
-          example: gpt-5-nano
+          example: gpt-6-luna
           minLength: 1
         provider:
           type: string
@@ -1707,11 +1860,11 @@ components:
       properties:
         available:
           type: boolean
-          description: 이메일로 신규 가입할 수 있으면 true
+          description: 이메일로 신규 가입할 수 있으면 true. 같은 이메일의 계정이 하나라도 있으면(이메일 가입이든 소셜 가입이든) false
           example: true
         oauth_providers:
           type: array
-          description: 같은 이메일로 소셜 가입한 계정의 provider(이름순). 비어 있지 않으면 새로 가입하기보다 그 소셜 계정으로 로그인한 뒤 설정에서 연동하도록 안내한다. 가입 자체는 막지 않는다.
+          description: "같은 이메일로 소셜 가입한 계정의 provider(이름순). 비어 있지 않으면 이메일 가입은 409 EMAIL_REGISTERED_WITH_OAUTH로 거절되므로, 그 소셜 계정으로 로그인한 뒤 설정에서 연동하도록 안내한다."
           example:
           - google
           items:
@@ -1734,6 +1887,30 @@ components:
       required:
       - new_email
       - verification_token
+    EmailRegisteredResponse:
+      type: object
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+        providers:
+          type: array
+          description: 같은 이메일로 가입한 계정의 provider(이름순). 이메일 가입 계정은 local
+          example:
+          - local
+          items:
+            type: string
+    EmailRegisteredWithOAuthResponse:
+      type: object
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+        oauth_providers:
+          type: array
+          description: 같은 이메일로 소셜 가입한 계정의 provider(이름순)
+          example:
+          - google
+          items:
+            type: string
     EmailVerificationRequest:
       type: object
       properties:
@@ -1903,6 +2080,10 @@ components:
     MeResponse:
       type: object
       properties:
+        avatar_url:
+          type: string
+          description: 프로필 사진 조회 경로. 사진이 없으면 null이다. 사진을 바꾸면 ?v= 값이 바뀌어 예전 이미지가 캐시에서 보이지 않는다.
+          example: /api/users/user_3f1c8a6b52d7411e9c04ab5d2e7f6081/avatar?v=9f86d081884c7d65
         consent_required:
           type: boolean
           description: true면 이용약관이 바뀌어 다시 동의받아야 한다. POST /api/auth/me/consents로 받는다.
@@ -2332,6 +2513,10 @@ components:
     WorkspaceMemberResponse:
       type: object
       properties:
+        avatar_url:
+          type: string
+          description: "프로필 사진 조회 경로(GET /api/users/{user_id}/avatar). 사진이 없으면 null이다."
+          example: /api/users/user_1f9a74af/avatar?v=9f86d081884c7d65
         display_name:
           type: string
           description: 멤버 표시 이름
@@ -2345,6 +2530,14 @@ components:
           format: date-time
           description: 합류 시각(ISO-8601 UTC)
           example: 2026-08-13T04:25:24.371948Z
+        permissions:
+          type: array
+          description: 권한 항목(정렬됨). OWNER는 항상 전부.
+          example:
+          - skill.author
+          - wiki.ingest
+          items:
+            type: string
         provider:
           type: string
           description: "계정을 만든 수단. 일반 가입은 local, OAuth는 provider 등록 ID. 같은 이메일이라도 provider가 다르면 다른 계정이다."
@@ -2363,29 +2556,47 @@ components:
     WorkspaceMemberRoleUpdateRequest:
       type: object
       properties:
+        permissions:
+          type: array
+          description: "MEMBER의 권한 항목 전체(교체). 값: wiki.ingest, wiki.lint, skill.author, wiki.restore, document.convert. 생략하면 바꾸지 않는다. 결과 역할이 OWNER이면 보낼 수 없다(400 OWNER_PERMISSIONS_FIXED)."
+          example:
+          - skill.author
+          - wiki.ingest
+          items:
+            type: string
+            enum:
+            - wiki.ingest
+            - wiki.lint
+            - skill.author
+            - wiki.restore
+            - document.convert
         role:
           type: string
-          description: 새 역할
+          description: 새 역할. 생략하면 바꾸지 않는다.
           enum:
           - OWNER
           - MEMBER
-          example: OWNER
-      required:
-      - role
+          example: MEMBER
     WorkspaceRenameRequest:
       type: object
       properties:
+        auto_ingest_on_upload:
+          type: boolean
+          description: 업로드 시 자동으로 ingest할지 여부. 생략하면 바꾸지 않는다.
+          example: false
         name:
           type: string
-          description: 새 워크스페이스 이름(255자 이하)
+          description: "새 워크스페이스 이름(255자 이하, 공백만으로는 불가). 생략하면 바꾸지 않는다."
           example: 이름 바꾼 워크스페이스
           maxLength: 255
           minLength: 0
-      required:
-      - name
     WorkspaceResponse:
       type: object
       properties:
+        auto_ingest_on_upload:
+          type: boolean
+          description: 업로드 시 자동으로 ingest할지 여부
+          example: false
         created_at:
           type: string
           format: date-time

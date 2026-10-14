@@ -173,12 +173,13 @@ public class AuthService {
         return toMe(user);
     }
 
-    private MeResponse toMe(User user) {
+    /** {@link MeResponse}를 조립한다. 프로필 사진처럼 다른 서비스가 바꾼 사용자도 같은 응답을 돌려주도록 공개한다. */
+    public MeResponse toMe(User user) {
         List<String> providers = oauthAccountRepository.findAllByUserIdOrderByProvider(user.getId()).stream()
                 .map(UserOAuthAccount::getProvider)
                 .toList();
-        return new MeResponse(user.getId(), user.getEmail(), user.getDisplayName(), user.getCreatedAt(), providers,
-                userConsentService.consentRequired(user.getId()));
+        return new MeResponse(user.getId(), user.getEmail(), user.getDisplayName(), user.avatarUrl(), user.getCreatedAt(),
+                providers, userConsentService.consentRequired(user.getId()));
     }
 
     @Transactional

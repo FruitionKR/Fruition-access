@@ -5,6 +5,7 @@ import fruition.access.user.dto.EmailAvailabilityRequest;
 import fruition.access.user.dto.SignupRequest;
 import fruition.access.user.dto.SignupResponse;
 import fruition.access.user.exception.DuplicateEmailException;
+import fruition.access.user.exception.EmailRegisteredWithOAuthException;
 import fruition.access.user.repository.UserRepository;
 import fruition.access.workspace.service.WorkspaceService;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,16 +50,39 @@ class UserServiceTest {
     }
 
     @Test
-    void checkEmailAvailability_onlySocialAccounts_allowsSignupAndListsProvidersForGuidance() {
-        // 소셜 계정만 있는 이메일은 가입을 막지 않는다. 대신 로그인 후 연동하도록 안내할 provider를 알린다.
+    void checkEmailAvailability_onlySocialAccounts_isUnavailableAndListsProvidersForGuidance() {
+        // 소셜 계정만 있는 이메일도 신규 가입할 수 없다. 로그인 후 연동하도록 안내할 provider를 알린다.
         when(userRepository.findAllByEmail("oauth@example.com")).thenReturn(java.util.List.of(
                 new User("user_n", "oauth@example.com", "naver", "n", null),
                 new User("user_g", "oauth@example.com", "google", "g", null)));
 
         var response = userService.checkEmailAvailability(new EmailAvailabilityRequest("oauth@example.com"));
 
-        assertThat(response.available()).isTrue();
+        assertThat(response.available()).isFalse();
         assertThat(response.oauthProviders()).containsExactly("google", "naver");
+    }
+
+    @Test
+    void checkEmailAvailability_noAccount_returnsTrue() {
+        when(userRepository.findAllByEmail("new@example.com")).thenReturn(java.util.List.of());
+
+        var response = userService.checkEmailAvailability(new EmailAvailabilityRequest("new@example.com"));
+
+        assertThat(response.available()).isTrue();
+        assertThat(response.oauthProviders()).isEmpty();
+    }
+
+    @Test
+    void signup_emailRegisteredWithOAuth_rejectsWithoutConsumingTokenOrCreatingUser() {
+        when(userRepository.existsByEmailAndProvider("oauth@example.com", User.PROVIDER_LOCAL)).thenReturn(false);
+        when(userRepository.findProvidersByEmail("oauth@example.com")).thenReturn(java.util.List.of("google"));
+
+        assertThatThrownBy(() -> userService.signup(new SignupRequest("oauth@example.com", "password123")))
+                .isInstanceOfSatisfying(EmailRegisteredWithOAuthException.class, e ->
+                        assertThat(e.getOauthProviders()).containsExactly("google"));
+        verify(emailVerificationService, org.mockito.Mockito.never()).consumeForSignup(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        verify(userRepository, org.mockito.Mockito.never()).saveAndFlush(org.mockito.ArgumentMatchers.any());
+        verify(workspaceService, org.mockito.Mockito.never()).createDefault(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test

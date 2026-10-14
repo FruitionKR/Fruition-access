@@ -24,7 +24,7 @@ public record WorkspaceAiModelRequest(
             String provider,
 
             @NotBlank
-            @Schema(description = "provider와 짝이 맞는 모델명", example = "gpt-5-nano")
+            @Schema(description = "provider와 짝이 맞는 모델명", example = "gpt-6-luna")
             String model
     ) {}
 }

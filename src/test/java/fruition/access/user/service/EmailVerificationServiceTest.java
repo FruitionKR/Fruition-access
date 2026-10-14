@@ -7,6 +7,7 @@ import fruition.access.user.dto.EmailVerificationResponse;
 import fruition.access.user.dto.VerificationConfirmRequest;
 import fruition.access.user.dto.VerificationConfirmResponse;
 import fruition.access.user.exception.DuplicateEmailException;
+import fruition.access.user.exception.EmailRegisteredWithOAuthException;
 import fruition.access.user.exception.EmailVerificationNotFoundException;
 import fruition.access.user.exception.InvalidVerificationCodeException;
 import fruition.access.user.exception.InvalidVerificationTokenException;
@@ -85,6 +86,28 @@ class EmailVerificationServiceTest {
 
         assertThatThrownBy(() -> service.request(new EmailVerificationRequest("test@example.com", "signup")))
                 .isInstanceOf(DuplicateEmailException.class);
+    }
+
+    @Test
+    void request_signupEmailRegisteredWithOAuth_rejectsBeforeSendingMail() {
+        // 같은 이메일의 소셜 계정이 있으면 두 번째 계정이 생기지 않게 인증번호를 만들지도, 메일을 보내지도 않는다.
+        when(userRepository.existsByEmailAndProvider("oauth@example.com", User.PROVIDER_LOCAL)).thenReturn(false);
+        when(userRepository.findProvidersByEmail("oauth@example.com")).thenReturn(List.of("google", "kakao"));
+
+        assertThatThrownBy(() -> service.request(new EmailVerificationRequest("oauth@example.com", "signup")))
+                .isInstanceOfSatisfying(EmailRegisteredWithOAuthException.class, e ->
+                        assertThat(e.getOauthProviders()).containsExactly("google", "kakao"));
+        verify(sender, org.mockito.Mockito.never()).send(any(), any(), any());
+        verify(verificationRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void request_passwordResetForOAuthEmail_doesNotRevealOrBlock() {
+        // 비밀번호 재설정은 존재 여부를 노출하지 않으므로 소셜 계정 검사를 하지 않는다.
+        service.request(new EmailVerificationRequest("oauth@example.com", "password_reset"));
+
+        verify(userRepository, org.mockito.Mockito.never()).findProvidersByEmail(any());
+        verify(sender).send(eq("oauth@example.com"), eq("password_reset"), anyString());
     }
 
     @Test

@@ -17,6 +17,12 @@ public record MeResponse(
         @Schema(description = "화면에 보여줄 이름", example = "표시 이름")
         String displayName,
 
+        @JsonProperty("avatar_url")
+        @Schema(description = "프로필 사진 조회 경로. 사진이 없으면 null이다."
+                + " 사진을 바꾸면 ?v= 값이 바뀌어 예전 이미지가 캐시에서 보이지 않는다.",
+                example = "/api/users/user_3f1c8a6b52d7411e9c04ab5d2e7f6081/avatar?v=9f86d081884c7d65", nullable = true)
+        String avatarUrl,
+
         @JsonProperty("created_at")
         @Schema(description = "가입 시각(ISO-8601 UTC)", example = "2026-08-13T04:25:24.371948Z")
         Instant createdAt,

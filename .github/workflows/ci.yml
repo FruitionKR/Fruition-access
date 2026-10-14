@@ -22,3 +22,11 @@ jobs:
         with:
           name: test-report
           path: build/reports/tests/test
+  # 모델 목록 기준은 Fruition-document dev다(Fruition-document#45). 다르면 실패한다.
+  model-catalog-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/check-ai-model-catalog.py --self-test
+      - run: python3 scripts/check-ai-model-catalog.py

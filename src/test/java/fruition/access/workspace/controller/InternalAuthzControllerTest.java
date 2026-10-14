@@ -9,7 +9,11 @@ import fruition.access.security.oauth.handler.OAuth2AuthenticationSuccessHandler
 import fruition.access.security.oauth.service.CustomOAuth2UserService;
 import fruition.access.user.domain.User;
 import fruition.access.user.repository.UserRepository;
+import fruition.access.workspace.domain.Workspace;
+import fruition.access.workspace.domain.WorkspaceMember;
+import fruition.access.workspace.domain.WorkspacePermission;
 import fruition.access.workspace.domain.WorkspaceRole;
+import fruition.access.workspace.repository.WorkspaceRepository;
 import fruition.access.workspace.repository.WorkspaceMemberRepository;
 import fruition.access.AccessExceptionHandler;
 import org.junit.jupiter.api.DisplayName;
@@ -46,6 +50,7 @@ class InternalAuthzControllerTest {
     @Autowired MockMvc mockMvc;
     @MockBean WorkspaceMemberRepository workspaceMemberRepository;
     @MockBean UserRepository userRepository;
+    @MockBean WorkspaceRepository workspaceRepository;
     @MockBean CustomOAuth2UserService customOAuth2UserService;
     // OAuthExchangeCodeStore가 Redis에 의존하므로 web slice에는 mock template을 채운다.
     @MockBean org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
@@ -60,29 +65,90 @@ class InternalAuthzControllerTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("INVALID_INTERNAL_TOKEN"));
 
-        verify(workspaceMemberRepository, never()).findActiveRole(any(), any());
+        verify(workspaceMemberRepository, never()).findActiveMember(any(), any());
     }
 
     @Test
     @DisplayName("멤버면 역할을 그대로 돌려준다")
     void role_member_returnsRole() throws Exception {
-        when(workspaceMemberRepository.findActiveRole("ws_1", "user_1"))
-                .thenReturn(Optional.of(WorkspaceRole.OWNER));
+        when(workspaceMemberRepository.findActiveMember("ws_1", "user_1"))
+                .thenReturn(Optional.of(member(WorkspaceRole.OWNER)));
 
         mockMvc.perform(get(ROLE_URL).header("X-Internal-Token", internalToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.role").value("OWNER"));
+                .andExpect(jsonPath("$.role").value("OWNER"))
+                .andExpect(jsonPath("$.permissions").value(org.hamcrest.Matchers.contains(
+                        "document.convert", "skill.author", "wiki.ingest", "wiki.lint", "wiki.restore")));
+    }
+
+    @Test
+    @DisplayName("MEMBER는 부여된 권한만, 없으면 빈 배열을 돌려준다")
+    void role_member_returnsGrantedPermissions() throws Exception {
+        WorkspaceMember granted = member(WorkspaceRole.MEMBER);
+        granted.replacePermissions(java.util.Set.of(WorkspacePermission.WIKI_LINT, WorkspacePermission.SKILL_AUTHOR));
+        when(workspaceMemberRepository.findActiveMember("ws_1", "user_1")).thenReturn(Optional.of(granted));
+        when(workspaceMemberRepository.findActiveMember("ws_1", "user_2"))
+                .thenReturn(Optional.of(member(WorkspaceRole.MEMBER)));
+
+        mockMvc.perform(get(ROLE_URL).header("X-Internal-Token", internalToken))
+                .andExpect(jsonPath("$.role").value("MEMBER"))
+                .andExpect(jsonPath("$.permissions").value(org.hamcrest.Matchers.contains("skill.author", "wiki.lint")));
+        mockMvc.perform(get("/internal/authz/workspaces/ws_1/users/user_2").header("X-Internal-Token", internalToken))
+                .andExpect(jsonPath("$.role").value("MEMBER"))
+                .andExpect(jsonPath("$.permissions").isEmpty());
+    }
+
+    private WorkspaceMember member(WorkspaceRole role) {
+        return new WorkspaceMember(new Workspace("ws_1", "ws"),
+                new User("user_1", "test@example.com", User.PROVIDER_LOCAL, "테스터", null), role);
     }
 
     @Test
     @DisplayName("멤버가 아니면 404가 아니라 200 NONE이다 — 판정은 호출측이 한다")
     void role_nonMember_returnsNone() throws Exception {
-        when(workspaceMemberRepository.findActiveRole("ws_1", "user_1"))
+        when(workspaceMemberRepository.findActiveMember("ws_1", "user_1"))
                 .thenReturn(Optional.empty());
 
         mockMvc.perform(get(ROLE_URL).header("X-Internal-Token", internalToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.role").value("NONE"));
+                .andExpect(jsonPath("$.role").value("NONE"))
+                .andExpect(jsonPath("$.permissions").isEmpty());
+    }
+
+    private static final String SETTINGS_URL = "/internal/workspaces/ws_1/settings";
+
+    @Test
+    @DisplayName("워크스페이스 설정은 auto_ingest_on_upload를 돌려준다")
+    void settings_returnsAutoIngest() throws Exception {
+        Workspace workspace = new Workspace("ws_1", "ws");
+        workspace.changeAutoIngestOnUpload(true);
+        when(workspaceRepository.findById("ws_1")).thenReturn(Optional.of(workspace));
+
+        mockMvc.perform(get(SETTINGS_URL).header("X-Internal-Token", internalToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.auto_ingest_on_upload").value(true));
+    }
+
+    @Test
+    @DisplayName("없거나 삭제된 워크스페이스 설정은 404다")
+    void settings_missingOrDeleted_returns404() throws Exception {
+        Workspace deleted = new Workspace("ws_1", "ws");
+        deleted.softDelete("user_1", java.time.Instant.now());
+        when(workspaceRepository.findById("ws_1")).thenReturn(Optional.of(deleted), Optional.empty());
+
+        for (int i = 0; i < 2; i++) {
+            mockMvc.perform(get(SETTINGS_URL).header("X-Internal-Token", internalToken))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.error.code").value("WORKSPACE_NOT_FOUND"));
+        }
+    }
+
+    @Test
+    @DisplayName("워크스페이스 설정도 토큰 없이는 401이고 저장소에 닿지 않는다")
+    void settings_withoutToken_rejects() throws Exception {
+        mockMvc.perform(get(SETTINGS_URL)).andExpect(status().isUnauthorized());
+
+        verify(workspaceRepository, never()).findById(any());
     }
 
     @Test

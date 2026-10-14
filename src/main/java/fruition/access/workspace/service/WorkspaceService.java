@@ -114,7 +114,12 @@ public class WorkspaceService {
     @Transactional
     public WorkspaceResponse rename(String userId, String workspaceId, WorkspaceRenameRequest request) {
         Workspace workspace = findOwned(userId, workspaceId);
-        workspace.rename(request.name().trim());
+        if (request.name() != null) {
+            workspace.rename(request.name().trim());
+        }
+        if (request.autoIngestOnUpload() != null) {
+            workspace.changeAutoIngestOnUpload(request.autoIngestOnUpload());
+        }
         return toResponse(workspace);
     }
 

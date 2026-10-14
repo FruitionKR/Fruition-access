@@ -2,9 +2,11 @@ package fruition.access.workspace.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import fruition.access.workspace.domain.WorkspaceMember;
+import fruition.access.workspace.domain.WorkspacePermission;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
+import java.util.List;
 
 public record WorkspaceMemberResponse(
         @JsonProperty("user_id")
@@ -18,6 +20,11 @@ public record WorkspaceMemberResponse(
         @Schema(description = "멤버 표시 이름", example = "홍길동")
         String displayName,
 
+        @JsonProperty("avatar_url")
+        @Schema(description = "프로필 사진 조회 경로(GET /api/users/{user_id}/avatar). 사진이 없으면 null이다.",
+                example = "/api/users/user_1f9a74af/avatar?v=9f86d081884c7d65", nullable = true)
+        String avatarUrl,
+
         @Schema(description = "계정을 만든 수단. 일반 가입은 local, OAuth는 provider 등록 ID."
                 + " 같은 이메일이라도 provider가 다르면 다른 계정이다.", example = "local")
         String provider,
@@ -25,6 +32,9 @@ public record WorkspaceMemberResponse(
         @Schema(description = "워크스페이스 역할", example = "MEMBER",
                 allowableValues = {"OWNER", "MEMBER"})
         String role,
+
+        @Schema(description = "권한 항목(정렬됨). OWNER는 항상 전부.", example = "[\"skill.author\", \"wiki.ingest\"]")
+        List<String> permissions,
 
         @JsonProperty("joined_at")
         @Schema(description = "합류 시각(ISO-8601 UTC)", example = "2026-08-13T04:25:24.371948Z")
@@ -35,8 +45,10 @@ public record WorkspaceMemberResponse(
                 member.getUserId(),
                 member.getUser().getEmail(),
                 member.getUser().getDisplayName(),
+                member.getUser().avatarUrl(),
                 member.getUser().getProvider(),
                 member.getRole().name(),
+                member.effectivePermissions().stream().map(WorkspacePermission::value).sorted().toList(),
                 member.getJoinedAt()
         );
     }

@@ -8,6 +8,7 @@ import fruition.access.workspace.domain.WorkspaceMember;
 import fruition.access.workspace.domain.WorkspaceRole;
 import fruition.access.workspace.repository.WorkspaceMemberRepository;
 import fruition.access.workspace.repository.WorkspaceRepository;
+import fruition.access.workspace.service.AiInternalClient;
 import fruition.access.workspace.service.DocumentInternalClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +44,7 @@ class ExpiredRecordCleanupJobIntegrationTest {
     @Autowired WorkspaceMemberRepository members;
     @Autowired JdbcTemplate jdbc;
     @MockitoBean DocumentInternalClient documentClient;
+    @MockitoBean AiInternalClient aiClient;
 
     /** 앱의 스케줄 실행은 실제 현재 시각을 쓴다. 미래 시각을 기준으로 삼아 테스트 행을 그 실행과 겹치지 않게 한다. */
     final Instant now = Instant.now().plus(Duration.ofDays(365));
@@ -92,6 +94,8 @@ class ExpiredRecordCleanupJobIntegrationTest {
         job.run(now);
 
         verify(documentClient).purgeWorkspace(expired);
+        verify(aiClient).purgeWorkspace(expired);
+        verify(aiClient, never()).purgeWorkspace(failing);
         verify(documentClient, never()).purgeWorkspace(recent);
         assertThat(exists("workspaces", expired)).isFalse();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM workspace_members WHERE workspace_id = ?",
@@ -100,6 +104,17 @@ class ExpiredRecordCleanupJobIntegrationTest {
                 + "WHERE workspace_id = ? AND left_at IS NOT NULL", Integer.class, expired)).isOne();
         assertThat(exists("workspaces", failing)).isTrue();
         assertThat(exists("workspaces", recent)).isTrue();
+    }
+
+    @Test
+    void keepsTrashedWorkspaceWhenAiPurgeFails() {
+        String owner = user();
+        String workspace = trashedWorkspace(owner, ago(31));
+        doThrow(new RestClientException("ai 다운")).when(aiClient).purgeWorkspace(workspace);
+
+        job.run(now);
+
+        assertThat(exists("workspaces", workspace)).isTrue();
     }
 
     @Test

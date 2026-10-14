@@ -1,6 +1,10 @@
 package fruition.access;
 
 import fruition.access.user.exception.DuplicateEmailException;
+import fruition.access.user.dto.EmailRegisteredResponse;
+import fruition.access.user.dto.EmailRegisteredWithOAuthResponse;
+import fruition.access.user.exception.EmailRegisteredWithOAuthException;
+import fruition.access.user.exception.OAuthEmailRegisteredException;
 import fruition.access.user.exception.EmailVerificationNotFoundException;
 import fruition.access.user.exception.EmailVerificationSendException;
 import fruition.access.user.exception.InvalidCredentialsException;
@@ -29,6 +33,10 @@ import fruition.access.user.exception.OAuthUnlinkNotAllowedException;
 import fruition.access.user.exception.UnsupportedOAuthProviderException;
 import fruition.access.user.exception.OAuthAccountNotFoundException;
 import fruition.access.user.exception.UserNotFoundException;
+import fruition.access.user.exception.UnsupportedUserAvatarException;
+import fruition.access.user.exception.UserAvatarNotFoundException;
+import fruition.access.user.exception.UserAvatarTooLargeException;
+import fruition.access.user.service.UserAvatarValidator;
 import fruition.access.user.exception.VerificationCodeAttemptsExceededException;
 import fruition.access.user.exception.VerificationCodeExpiredException;
 import fruition.access.user.exception.VerificationRateLimitedException;
@@ -46,14 +54,18 @@ import fruition.access.workspace.exception.WorkspaceIconNotFoundException;
 import fruition.access.workspace.exception.WorkspaceIconTooLargeException;
 import fruition.access.workspace.exception.WorkspaceAccessDeniedException;
 import fruition.access.workspace.exception.WorkspaceMemberNotFoundException;
+import fruition.access.workspace.exception.OwnerPermissionsFixedException;
 import fruition.access.workspace.exception.WorkspaceNotFoundException;
 import fruition.access.workspace.exception.WorkspaceTrashExpiredException;
+import fruition.access.workspace.service.WorkspaceIconValidator;
 import fruition.shared.util.BaseExceptionHandler;
 import fruition.shared.util.ErrorResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 /** access 앱 전용 예외 매핑. 공통 매핑은 {@link BaseExceptionHandler}에서 상속한다. */
 @RestControllerAdvice
@@ -65,6 +77,26 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
                 .body(ErrorResponse.of("DUPLICATE_EMAIL", e.getMessage()));
+    }
+
+    @ExceptionHandler(EmailRegisteredWithOAuthException.class)
+    public ResponseEntity<EmailRegisteredWithOAuthResponse> handleEmailRegisteredWithOAuth(EmailRegisteredWithOAuthException e) {
+        logHandled(e, HttpStatus.CONFLICT, "EMAIL_REGISTERED_WITH_OAUTH");
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(new EmailRegisteredWithOAuthResponse(
+                        ErrorResponse.of("EMAIL_REGISTERED_WITH_OAUTH", e.getMessage()).error(),
+                        e.getOauthProviders()));
+    }
+
+    @ExceptionHandler(OAuthEmailRegisteredException.class)
+    public ResponseEntity<EmailRegisteredResponse> handleOAuthEmailRegistered(OAuthEmailRegisteredException e) {
+        logHandled(e, HttpStatus.CONFLICT, "EMAIL_REGISTERED");
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(new EmailRegisteredResponse(
+                        ErrorResponse.of("EMAIL_REGISTERED", e.getMessage()).error(),
+                        e.getProviders()));
     }
 
     @ExceptionHandler(InvalidCredentialsException.class)
@@ -219,6 +251,14 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
                 .body(ErrorResponse.of("LAST_OWNER", e.getMessage()));
     }
 
+    @ExceptionHandler(OwnerPermissionsFixedException.class)
+    public ResponseEntity<ErrorResponse> handleOwnerPermissionsFixed(OwnerPermissionsFixedException e) {
+        logHandled(e, HttpStatus.BAD_REQUEST, "OWNER_PERMISSIONS_FIXED");
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("OWNER_PERMISSIONS_FIXED", e.getMessage()));
+    }
+
     @ExceptionHandler(InvitationNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleInvitationNotFound(InvitationNotFoundException e) {
         logHandled(e, HttpStatus.NOT_FOUND, "INVITATION_NOT_FOUND");
@@ -297,6 +337,47 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse.of("WORKSPACE_ICON_NOT_FOUND", e.getMessage()));
+    }
+
+    @ExceptionHandler(UnsupportedUserAvatarException.class)
+    public ResponseEntity<ErrorResponse> handleUnsupportedUserAvatar(UnsupportedUserAvatarException e) {
+        logHandled(e, HttpStatus.BAD_REQUEST, "UNSUPPORTED_USER_AVATAR");
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("UNSUPPORTED_USER_AVATAR", e.getMessage()));
+    }
+
+    @ExceptionHandler(UserAvatarTooLargeException.class)
+    public ResponseEntity<ErrorResponse> handleUserAvatarTooLarge(UserAvatarTooLargeException e) {
+        logHandled(e, HttpStatus.PAYLOAD_TOO_LARGE, "USER_AVATAR_TOO_LARGE");
+        return ResponseEntity
+                .status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(ErrorResponse.of("USER_AVATAR_TOO_LARGE", e.getMessage()));
+    }
+
+    @ExceptionHandler(UserAvatarNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleUserAvatarNotFound(UserAvatarNotFoundException e) {
+        logHandled(e, HttpStatus.NOT_FOUND, "USER_AVATAR_NOT_FOUND");
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of("USER_AVATAR_NOT_FOUND", e.getMessage()));
+    }
+
+    /**
+     * Spring multipart 한도(max-file-size 2MB)에 먼저 걸린 업로드. 검증기의 1MB 한도와 같은 413이어야
+     * 클라이언트가 "파일이 없다"는 400 INVALID_REQUEST와 구분한다. 어느 업로드인지는 경로로 가른다.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSize(MaxUploadSizeExceededException e, HttpServletRequest request) {
+        boolean avatar = request.getRequestURI().endsWith("/avatar");
+        String code = avatar ? "USER_AVATAR_TOO_LARGE" : "WORKSPACE_ICON_TOO_LARGE";
+        String message = avatar
+                ? new UserAvatarTooLargeException(UserAvatarValidator.MAX_BYTES).getMessage()
+                : new WorkspaceIconTooLargeException(WorkspaceIconValidator.MAX_BYTES).getMessage();
+        logHandled(e, HttpStatus.PAYLOAD_TOO_LARGE, code);
+        return ResponseEntity
+                .status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(ErrorResponse.of(code, message));
     }
 
     @ExceptionHandler(InvalidOAuthCodeException.class)

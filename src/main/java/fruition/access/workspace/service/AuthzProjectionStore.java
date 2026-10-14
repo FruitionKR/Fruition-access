@@ -35,6 +35,8 @@ public class AuthzProjectionStore {
     private static final Logger log = LoggerFactory.getLogger(AuthzProjectionStore.class);
 
     private static final String KEY_PREFIX = "authz:role:";
+    /** 역할과 권한 항목을 함께 담는 document의 새 projection(JSON). 옛 키와 이름이 달라 섞여 배포돼도 옛 pod가 읽지 않는다. */
+    private static final String ACCESS_KEY_PREFIX = "authz:role:v2:";
     private static final int SCAN_COUNT = 100;
 
     private final StringRedisTemplate redisTemplate;
@@ -45,7 +47,7 @@ public class AuthzProjectionStore {
 
     public void evict(String workspaceId, String userId) {
         runAfterCommit(() -> {
-            redisTemplate.delete(key(workspaceId, userId));
+            redisTemplate.delete(List.of(key(workspaceId, userId), ACCESS_KEY_PREFIX + workspaceId + ":" + userId));
             log.debug("[인가 projection 삭제] workspaceId={} userId={}", workspaceId, userId);
         }, "authz:role:" + workspaceId + ":" + userId);
     }
@@ -57,10 +59,12 @@ public class AuthzProjectionStore {
 
     private void deleteWorkspaceKeys(String workspaceId) {
         List<String> keys = new ArrayList<>();
-        try (Cursor<String> cursor = redisTemplate.scan(
-                ScanOptions.scanOptions().match(KEY_PREFIX + workspaceId + ":*").count(SCAN_COUNT).build())) {
-            while (cursor.hasNext()) {
-                keys.add(cursor.next());
+        for (String prefix : List.of(KEY_PREFIX, ACCESS_KEY_PREFIX)) {
+            try (Cursor<String> cursor = redisTemplate.scan(
+                    ScanOptions.scanOptions().match(prefix + workspaceId + ":*").count(SCAN_COUNT).build())) {
+                while (cursor.hasNext()) {
+                    keys.add(cursor.next());
+                }
             }
         }
         if (!keys.isEmpty()) {

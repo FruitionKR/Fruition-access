@@ -2,13 +2,11 @@ package fruition.access.workspace.service;
 
 import fruition.access.workspace.exception.UnsupportedWorkspaceIconException;
 import fruition.access.workspace.exception.WorkspaceIconTooLargeException;
+import fruition.shared.util.ImageSignature;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.HexFormat;
 
 /**
  * 아이콘 이미지 검증.
@@ -20,7 +18,7 @@ import java.util.HexFormat;
 @Component
 public class WorkspaceIconValidator {
 
-    static final long MAX_BYTES = 1024L * 1024;
+    public static final long MAX_BYTES = 1024L * 1024;
 
     public ValidatedIcon validate(MultipartFile file) {
         if (file == null || file.isEmpty()) {
@@ -39,39 +37,12 @@ public class WorkspaceIconValidator {
         if (bytes.length > MAX_BYTES) {
             throw new WorkspaceIconTooLargeException(MAX_BYTES);
         }
-        return new ValidatedIcon(bytes, detectContentType(bytes), sha256(bytes));
+        return new ValidatedIcon(bytes, detectContentType(bytes), ImageSignature.sha256(bytes));
     }
 
     private String detectContentType(byte[] bytes) {
-        if (startsWith(bytes, new int[]{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a})) return "image/png";
-        if (startsWith(bytes, new int[]{0xff, 0xd8, 0xff})) return "image/jpeg";
-        if (asciiAt(bytes, 0, "GIF87a") || asciiAt(bytes, 0, "GIF89a")) return "image/gif";
-        if (asciiAt(bytes, 0, "RIFF") && asciiAt(bytes, 8, "WEBP")) return "image/webp";
-        throw new UnsupportedWorkspaceIconException("PNG, JPEG, WebP, GIF 이미지만 아이콘으로 쓸 수 있습니다.");
-    }
-
-    private boolean startsWith(byte[] bytes, int[] signature) {
-        if (bytes.length < signature.length) return false;
-        for (int index = 0; index < signature.length; index++) {
-            if ((bytes[index] & 0xff) != signature[index]) return false;
-        }
-        return true;
-    }
-
-    private boolean asciiAt(byte[] bytes, int offset, String expected) {
-        if (bytes.length < offset + expected.length()) return false;
-        for (int index = 0; index < expected.length(); index++) {
-            if ((bytes[offset + index] & 0xff) != expected.charAt(index)) return false;
-        }
-        return true;
-    }
-
-    private String sha256(byte[] bytes) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-        } catch (Exception exception) {
-            throw new IllegalStateException("해시 계산 실패", exception);
-        }
+        return ImageSignature.detectContentType(bytes)
+                .orElseThrow(() -> new UnsupportedWorkspaceIconException("PNG, JPEG, WebP, GIF 이미지만 아이콘으로 쓸 수 있습니다."));
     }
 
     public record ValidatedIcon(byte[] bytes, String contentType, String hash) {}
