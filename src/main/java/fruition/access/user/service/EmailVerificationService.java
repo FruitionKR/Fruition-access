@@ -8,6 +8,7 @@ import fruition.access.user.dto.EmailVerificationResponse;
 import fruition.access.user.dto.VerificationConfirmRequest;
 import fruition.access.user.dto.VerificationConfirmResponse;
 import fruition.access.user.exception.DuplicateEmailException;
+import fruition.access.user.exception.EmailRegisteredWithOAuthException;
 import fruition.access.user.exception.EmailVerificationNotFoundException;
 import fruition.access.user.exception.InvalidVerificationCodeException;
 import fruition.access.user.exception.InvalidVerificationTokenException;
@@ -27,6 +28,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -82,9 +84,17 @@ public class EmailVerificationService {
         enforceRateLimit(email, purpose);
 
         // 회원가입은 의도적으로 존재 여부를 노출한다. 비밀번호 재설정은 노출하지 않는다.
-        if (PURPOSE_SIGNUP.equals(purpose) && userRepository.existsByEmailAndProvider(email, User.PROVIDER_LOCAL)) {
-            log.warn("[인증 요청 거부] reason=duplicate_email email={}", email);
-            throw new DuplicateEmailException(email);
+        if (PURPOSE_SIGNUP.equals(purpose)) {
+            if (userRepository.existsByEmailAndProvider(email, User.PROVIDER_LOCAL)) {
+                log.warn("[인증 요청 거부] reason=duplicate_email email={}", email);
+                throw new DuplicateEmailException(email);
+            }
+            // 같은 이메일의 소셜 계정이 있으면 두 번째 계정이 생기지 않게 메일을 보내기 전에 거절한다.
+            List<String> oauthProviders = userRepository.findProvidersByEmail(email);
+            if (!oauthProviders.isEmpty()) {
+                log.warn("[인증 요청 거부] reason=email_registered_with_oauth email={} providers={}", email, oauthProviders);
+                throw new EmailRegisteredWithOAuthException(email, oauthProviders);
+            }
         }
 
         String code = devFixedCode.isBlank() ? generateCode() : devFixedCode;

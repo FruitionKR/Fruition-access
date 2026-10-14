@@ -27,6 +27,9 @@ import fruition.access.user.dto.SignupResponse;
 import fruition.access.user.dto.VerificationConfirmRequest;
 import fruition.access.user.dto.VerificationConfirmResponse;
 import fruition.access.user.exception.DuplicateEmailException;
+import fruition.access.user.exception.EmailRegisteredWithOAuthException;
+import fruition.access.user.exception.OAuthEmailRegisteredException;
+import fruition.access.user.dto.OAuthSignupConsentRequest;
 import fruition.access.user.exception.EmailAvailabilityRateLimitedException;
 import fruition.access.user.exception.LoginRateLimitedException;
 import fruition.access.user.exception.PasswordChangeRateLimitedException;
@@ -164,6 +167,48 @@ class AuthControllerTest {
                                 new SignupRequest("test@example.com", "password123", null, "verification-token", true, "2026-10-01", false))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("DUPLICATE_EMAIL"));
+    }
+
+    @Test
+    void signup_emailRegisteredWithOAuth_returns409WithProviders() throws Exception {
+        when(userService.signup(any())).thenThrow(new EmailRegisteredWithOAuthException("test@example.com", List.of("google")));
+
+        mockMvc.perform(post("/api/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new SignupRequest("test@example.com", "password123", null, "verification-token", true, "2026-10-01", false))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("EMAIL_REGISTERED_WITH_OAUTH"))
+                .andExpect(jsonPath("$.oauth_providers[0]").value("google"))
+                .andExpect(jsonPath("$.oauth_providers.length()").value(1));
+    }
+
+    @Test
+    void requestEmailVerification_emailRegisteredWithOAuth_returns409WithProviders() throws Exception {
+        when(emailVerificationService.request(any()))
+                .thenThrow(new EmailRegisteredWithOAuthException("test@example.com", List.of("google", "kakao")));
+
+        mockMvc.perform(post("/api/auth/email-verifications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new EmailVerificationRequest("test@example.com", "signup"))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("EMAIL_REGISTERED_WITH_OAUTH"))
+                .andExpect(jsonPath("$.oauth_providers[0]").value("google"))
+                .andExpect(jsonPath("$.oauth_providers[1]").value("kakao"));
+    }
+
+    @Test
+    void completeOAuthSignup_emailRegistered_returns409WithProviders() throws Exception {
+        when(oAuthUserService.completeSignup(any())).thenThrow(new OAuthEmailRegisteredException("google", List.of("local")));
+
+        mockMvc.perform(post("/api/auth/oauth/signup/consent")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new OAuthSignupConsentRequest("signup-token", true, "2026-10-01", false, null))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("EMAIL_REGISTERED"))
+                .andExpect(jsonPath("$.providers[0]").value("local"));
     }
 
     @Test

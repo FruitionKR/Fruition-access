@@ -1,6 +1,10 @@
 package fruition.access;
 
 import fruition.access.user.exception.DuplicateEmailException;
+import fruition.access.user.dto.EmailRegisteredResponse;
+import fruition.access.user.dto.EmailRegisteredWithOAuthResponse;
+import fruition.access.user.exception.EmailRegisteredWithOAuthException;
+import fruition.access.user.exception.OAuthEmailRegisteredException;
 import fruition.access.user.exception.EmailVerificationNotFoundException;
 import fruition.access.user.exception.EmailVerificationSendException;
 import fruition.access.user.exception.InvalidCredentialsException;
@@ -66,6 +70,26 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
                 .body(ErrorResponse.of("DUPLICATE_EMAIL", e.getMessage()));
+    }
+
+    @ExceptionHandler(EmailRegisteredWithOAuthException.class)
+    public ResponseEntity<EmailRegisteredWithOAuthResponse> handleEmailRegisteredWithOAuth(EmailRegisteredWithOAuthException e) {
+        logHandled(e, HttpStatus.CONFLICT, "EMAIL_REGISTERED_WITH_OAUTH");
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(new EmailRegisteredWithOAuthResponse(
+                        ErrorResponse.of("EMAIL_REGISTERED_WITH_OAUTH", e.getMessage()).error(),
+                        e.getOauthProviders()));
+    }
+
+    @ExceptionHandler(OAuthEmailRegisteredException.class)
+    public ResponseEntity<EmailRegisteredResponse> handleOAuthEmailRegistered(OAuthEmailRegisteredException e) {
+        logHandled(e, HttpStatus.CONFLICT, "EMAIL_REGISTERED");
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(new EmailRegisteredResponse(
+                        ErrorResponse.of("EMAIL_REGISTERED", e.getMessage()).error(),
+                        e.getProviders()));
     }
 
     @ExceptionHandler(InvalidCredentialsException.class)

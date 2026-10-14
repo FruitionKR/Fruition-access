@@ -11,7 +11,7 @@
 
 | API | 목적 |
 |---|---|
-| [`POST /api/auth/email-availability`](#summary-post-api-auth-email-availability) | 회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 일반 회원가입 계정만 대상으로 확인하므로, OAuth로만 가입된 이메일은 일반 회원가입이 가능해 `available: true`를 반환합니다. 같은 이메일로 소셜 가입한 계정이 있으면 `oauth_providers`로 알려, 새로 가입하기보다 그 계정으로 로그인한 뒤 설정에서 연동하도록 안내할 수 있게 합니다. |
+| [`POST /api/auth/email-availability`](#summary-post-api-auth-email-availability) | 회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 같은 이메일의 계정이 하나라도 있으면(이메일 가입이든 소셜 가입이든) `available: false`입니다. 같은 이메일로 소셜 가입한 계정이 있으면 `oauth_providers`로 알려, 그 계정으로 로그인한 뒤 설정에서 연동하도록 안내할 수 있게 합니다. 이 경우 인증번호 요청과 회원가입은 `409 EMAIL_REGISTERED_WITH_OAUTH`로 거절됩니다. |
 | [`POST /api/auth/email-verifications`](#summary-post-api-auth-email-verifications) | 회원가입/비밀번호 재설정/이메일 변경을 위한 인증번호를 발급합니다. |
 | [`POST /api/auth/email-verifications/{verification_id}/confirm`](#summary-post-api-auth-email-verifications-verification-id-confirm) | 인증번호를 검증하고 1회용 verification_token을 발급합니다. |
 | [`POST /api/auth/login`](#summary-post-api-auth-login) | 이메일/비밀번호를 검증하고 access token과 HttpOnly refresh 쿠키를 발급합니다. MFA를 켠 사용자에게는 `mfa_required`를 돌려줍니다. |
@@ -45,7 +45,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | 회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 일반 회원가입 계정만 대상으로 확인하므로, OAuth로만 가입된 이메일은 일반 회원가입이 가능해 `available: true`를 반환합니다. 같은 이메일로 소셜 가입한 계정이 있으면 `oauth_providers`로 알려, 새로 가입하기보다 그 계정으로 로그인한 뒤 설정에서 연동하도록 안내할 수 있게 합니다. |
+| 목적 | 회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 같은 이메일의 계정이 하나라도 있으면(이메일 가입이든 소셜 가입이든) `available: false`입니다. 같은 이메일로 소셜 가입한 계정이 있으면 `oauth_providers`로 알려, 그 계정으로 로그인한 뒤 설정에서 연동하도록 안내할 수 있게 합니다. 이 경우 인증번호 요청과 회원가입은 `409 EMAIL_REGISTERED_WITH_OAUTH`로 거절됩니다. |
 | 입력 | **Body** — `EmailAvailabilityRequest` |
 | 출력 | `200` 가입 가능 여부 — `EmailAvailabilityResponse` |
 | 조건 | 인증 불필요<br>인증 없이 호출할 수 있다.<br>공개 API이므로 별도의 사용자 권한 검증이 없다.<br>기존 인증번호 요청 API도 가입 이메일 중복을 `409`로 노출하므로 동일한 공개 범위를 유지한다.<br>그 밖의 조건은 상세 권한 규칙 참고 |
@@ -63,7 +63,7 @@
 
 #### 2. 목적
 
-회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 일반 회원가입 계정만 대상으로 확인하므로, OAuth로만 가입된 이메일은 일반 회원가입이 가능해 `available: true`를 반환합니다. 같은 이메일로 소셜 가입한 계정이 있으면 `oauth_providers`로 알려, 새로 가입하기보다 그 계정으로 로그인한 뒤 설정에서 연동하도록 안내할 수 있게 합니다.
+회원가입 전에 이메일로 신규 가입할 수 있는지 빠르게 확인합니다. 같은 이메일의 계정이 하나라도 있으면(이메일 가입이든 소셜 가입이든) `available: false`입니다. 같은 이메일로 소셜 가입한 계정이 있으면 `oauth_providers`로 알려, 그 계정으로 로그인한 뒤 설정에서 연동하도록 안내할 수 있게 합니다. 이 경우 인증번호 요청과 회원가입은 `409 EMAIL_REGISTERED_WITH_OAUTH`로 거절됩니다.
 
 #### 3. Auth 필요 여부
 
@@ -85,12 +85,12 @@
 
 - HTTP `200`: 가입 가능 여부
 - Content-Type: `*/*` (`EmailAvailabilityResponse`)
-- `available`: 일반 회원가입(`local`) 계정이 없으면 `true`
-- `oauth_providers`: 같은 이메일로 소셜 가입한 계정의 provider 목록(이름순). 없으면 빈 배열. 가입을 막지 않는 안내용 신호다.
+- `available`: 같은 이메일의 계정이 하나도 없으면 `true`. 이메일 가입(`local`) 계정이나 소셜 가입 계정이 있으면 `false`
+- `oauth_providers`: 같은 이메일로 소셜 가입한 계정의 provider 목록(이름순). 없으면 빈 배열. 비어 있지 않으면 인증번호 요청과 회원가입이 `409 EMAIL_REGISTERED_WITH_OAUTH`로 거절되므로, 프론트는 인증 요청 전에 "그 소셜 계정으로 로그인한 뒤 설정 > 계정에서 연동"을 안내한다.
 
 ```json
 {
-  "available": true,
+  "available": false,
   "oauth_providers": [
     "google"
   ]
@@ -113,7 +113,7 @@
 
 - 공개 API이므로 별도의 사용자 권한 검증이 없다.
 - 기존 인증번호 요청 API도 가입 이메일 중복을 `409`로 노출하므로 동일한 공개 범위를 유지한다.
-- `oauth_providers`는 같은 이메일의 소셜 가입 여부와 provider까지 노출한다. 일반 회원가입 계정 존재를 이미 노출하는 것과 같은 범위로 보고, 같은 호출 제한을 적용한다.
+- `oauth_providers`는 같은 이메일의 소셜 가입 여부와 provider까지 노출한다. 일반 회원가입 계정 존재를 이미 노출하는 것과 같은 범위로 보고, 같은 호출 제한을 적용한다. 인증번호 요청·회원가입의 `409 EMAIL_REGISTERED_WITH_OAUTH`도 같은 범위다.
 - 계정 열거 비용을 제한하기 위해 Redis에서 IP당 30회/분, 이메일당 5회/분으로 호출을 제한한다.
 
 #### 9. 예시 요청/응답
@@ -126,7 +126,7 @@ curl -X POST "$ACCESS/api/auth/email-availability" \
 
 ```json
 {
-  "available": true,
+  "available": false,
   "oauth_providers": [
     "google"
   ]
@@ -149,11 +149,11 @@ curl -X POST "$ACCESS/api/auth/email-availability" \
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | 회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다. |
+| 목적 | 회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다. `purpose=signup`은 같은 이메일의 계정이 있으면 메일을 보내지 않고 `409`로 거절합니다. |
 | 입력 | **Body** — `EmailVerificationRequest` |
 | 출력 | `202` 인증번호 발급 — `EmailVerificationResponse` |
 | 조건 | 인증 불필요<br>인증 없이 호출할 수 있다.<br>공개 API이므로 별도의 사용자 권한 검증이 없다. |
-| 주요 오류 | `400` 잘못된 요청 — `ErrorResponse`<br>`409` 이미 가입된 이메일(purpose=signup) — `ErrorResponse`<br>`429` 재요청 제한 초과 — `ErrorResponse` |
+| 주요 오류 | `400` 잘못된 요청 — `ErrorResponse`<br>`409` 이미 가입된 이메일(purpose=signup): 이메일 가입 계정이면 `DUPLICATE_EMAIL` — `ErrorResponse`, 소셜 가입 계정만 있으면 `EMAIL_REGISTERED_WITH_OAUTH` — `EmailRegisteredWithOAuthResponse`(`oauth_providers` 포함)<br>`429` 재요청 제한 초과 — `ErrorResponse` |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -168,6 +168,8 @@ curl -X POST "$ACCESS/api/auth/email-availability" \
 #### 2. 목적
 
 회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다.
+
+`purpose=signup`은 같은 이메일의 계정이 있으면 인증번호를 만들지도 메일을 보내지도 않고 `409`로 거절한다. 이메일 가입 계정이면 `DUPLICATE_EMAIL`, 소셜 가입 계정만 있으면 `EMAIL_REGISTERED_WITH_OAUTH`와 `oauth_providers`를 돌려주며, 프론트는 "그 소셜 계정으로 로그인한 뒤 설정 > 계정에서 연동"을 안내한다. 같은 이메일로 두 번째 계정이 생기면 이후 연동으로 합칠 수 없기 때문이다(#31). `password_reset`은 존재 여부를 노출하지 않는다.
 
 #### 3. Auth 필요 여부
 
@@ -205,8 +207,21 @@ curl -X POST "$ACCESS/api/auth/email-availability" \
 | HTTP 상태 | 설명 | 응답 스키마 |
 |---|---|---|
 | `400` | 잘못된 요청 | `ErrorResponse` |
-| `409` | 이미 가입된 이메일(purpose=signup) | `ErrorResponse` |
+| `409` | 이미 가입된 이메일(purpose=signup). `DUPLICATE_EMAIL`(이메일 가입 계정) | `ErrorResponse` |
+| `409` | 같은 이메일의 소셜 가입 계정이 있음(purpose=signup). `EMAIL_REGISTERED_WITH_OAUTH` | `EmailRegisteredWithOAuthResponse` |
 | `429` | 재요청 제한 초과 | `ErrorResponse` |
+
+```json
+{
+  "error": {
+    "code": "EMAIL_REGISTERED_WITH_OAUTH",
+    "message": "이미 소셜 계정(google)으로 가입된 이메일입니다. 그 계정으로 로그인한 뒤 설정에서 연동하세요: email=user@example.com"
+  },
+  "oauth_providers": [
+    "google"
+  ]
+}
+```
 
 ```json
 {
@@ -1829,8 +1844,8 @@ curl -X POST "$ACCESS/api/auth/me/oauth-accounts/link/confirm" \
 
 #### 2. 목적
 
-현재 계정에 연결된 소셜 로그인 수단을 끊는다. 해제 후 그 소셜 계정으로 로그인하면 현재 계정이 아니라
-기존 OAuth 로그인 규칙대로 provider별 계정을 찾거나 새로 만든다.
+현재 계정에 연결된 소셜 로그인 수단을 끊는다. 해제 후 그 소셜 계정으로 로그인하면 현재 계정으로 들어오지 않는다.
+같은 이메일의 계정(현재 계정)이 있으므로 신규 가입도 되지 않고 `?error=email_registered`로 돌아오며, 다시 쓰려면 설정에서 연동한다.
 
 #### 3. Auth 필요 여부
 
@@ -1897,7 +1912,7 @@ curl -X DELETE "$ACCESS/api/auth/me/oauth-accounts/kakao" \
 | 입력 | **Body** — `OAuthSignupConsentRequest` `{ "signup_token", "age_confirmed", "terms_version", "marketing_opt_in", "code_verifier" }`(`code_verifier`는 데스크톱 로그인만) |
 | 출력 | `200` 가입과 로그인 완료 — `LoginResponse`(access token, HttpOnly refresh 쿠키). 다른 탭이 먼저 가입한 계정이 MFA를 켰으면 `mfa_required`·`mfa_token`만 온다 |
 | 조건 | 인증 불필요. `signup_token`은 10분 동안 한 번만 쓸 수 있다. |
-| 주요 오류 | `400` `CONSENT_REQUIRED` 만 18세 이상 확인·현재 이용약관 동의 없음(토큰은 소비하지 않아 다시 보낼 수 있다)<br>`401` `INVALID_SIGNUP_TOKEN` 토큰이 없거나 만료·사용됨, 또는 데스크톱 가입인데 `code_verifier`가 없거나 틀림(토큰은 소비된다). 소셜 로그인부터 다시 한다 |
+| 주요 오류 | `400` `CONSENT_REQUIRED` 만 18세 이상 확인·현재 이용약관 동의 없음(토큰은 소비하지 않아 다시 보낼 수 있다)<br>`401` `INVALID_SIGNUP_TOKEN` 토큰이 없거나 만료·사용됨, 또는 데스크톱 가입인데 `code_verifier`가 없거나 틀림(토큰은 소비된다). 소셜 로그인부터 다시 한다<br>`409` `EMAIL_REGISTERED` 토큰을 받은 뒤 동의 화면에 머무는 사이 같은 이메일로 다른 가입이 끝남 — `EmailRegisteredResponse`(`providers` 포함, 토큰은 소비된다). 기존 계정으로 로그인한 뒤 설정에서 연동한다 |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -1909,12 +1924,15 @@ curl -X DELETE "$ACCESS/api/auth/me/oauth-accounts/kakao" \
 
 1. 소셜 로그인 콜백에서 그 소셜 계정에 연결된 사용자가 없으면 계정을 만들지 않는다. 소셜 계정 정보(provider, provider 사용자 ID, 이메일, 이름)를
    Redis `oauth:signup:{token}`에 10분 보관하고, OAuth 콜백 주소에 `?code=` 대신 `?signup_token=`을 붙여 돌려보낸다.
+   단, 같은 이메일의 계정이 이미 있으면(이메일 가입 `local`이든 다른 provider의 소셜 가입이든) 두 번째 계정이 생기지 않게 토큰을 발급하지 않고
+   `?error=email_registered&providers=<쉼표 구분, 예: local,google>`을 붙여 돌려보낸다. 프론트는 "그 방법으로 로그인한 뒤 설정 > 계정에서 연동하세요"를 안내한다.
+   이미 연결된 소셜 계정의 로그인(`?code=`)과 설정에서의 연동([연동 시작](#summary-post-api-auth-me-oauth-accounts-provider-link))은 영향을 받지 않는다.
 2. 프론트는 동의 화면을 보여 주고 이 API를 부른다.
 3. 서버는 동의를 확인한 뒤 토큰을 소비하고 계정·소셜 연결·기본 워크스페이스·동의 기록을 만들고 로그인 토큰을 준다.
    그사이 다른 탭에서 같은 소셜 계정으로 가입을 끝냈으면 그 계정으로 로그인시킨다. 그 계정이 MFA를 켰으면 토큰과 refresh 쿠키 대신
    일반 로그인처럼 `mfa_required: true`와 `mfa_token`을 돌려주고, `POST /api/auth/login/mfa`로 로그인을 마친다.
 
-기존 회원의 소셜 로그인은 지금처럼 `?code=`로 돌아온다.
+기존 회원의 소셜 로그인은 지금처럼 `?code=`로 돌아온다. 콜백 쿼리 정리: 기존 회원 `?code=`, 신규 가입 `?signup_token=`, 같은 이메일의 계정이 있어 가입 거절 `?error=email_registered&providers=`, 그 밖의 실패 `?error=oauth_failed`.
 
 데스크톱 로그인([데스크톱 앱 로그인](#데스크톱-앱-로그인딥링크--pkce))이면 `signup_token`이 앱 딥링크로 오고, 토큰에 로그인 시작 때의
 `code_challenge`가 묶인다. 이 API에 같은 로그인의 `code_verifier`를 함께 보내야 한다.
@@ -2000,7 +2018,7 @@ code를 쓸 수 없다.
    - `code_challenge_method`는 `S256`만 받는다. `code_challenge`는 base64url 43~128자여야 한다.
    - challenge가 없거나 형식이 틀리거나 `plain`이면, 또는 `mode=link`와 함께 쓰면 인가를 시작하지 않고 `400`을 돌려준다.
 3. 로그인이 끝나면 웹 주소 대신 `app.oauth.desktop-redirect-uri`(기본 `fruition://oauth/callback`)로 redirect한다.
-   쿼리 이름은 웹과 같다: 기존 회원 `?code=`, 신규 가입 `?signup_token=`, 실패 `?error=oauth_failed`.
+   쿼리 이름은 웹과 같다: 기존 회원 `?code=`, 신규 가입 `?signup_token=`, 같은 이메일의 계정이 있어 가입 거절 `?error=email_registered&providers=`, 그 밖의 실패 `?error=oauth_failed`.
 4. 앱이 `code`와 `code_verifier`로 이 API를 부른다. 신규 가입이면 `POST /api/auth/oauth/signup/consent`에 `code_verifier`를 함께 보낸다.
 
 한계: 콜백에서 인가 요청을 꺼내기 전에 실패하면(브라우저 세션 만료로 `authorization_request_not_found`, `state` 누락 등)
@@ -2288,11 +2306,11 @@ curl -X POST "$ACCESS/api/auth/refresh" \
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | 이메일/비밀번호로 신규 사용자를 생성합니다. 만 18세 이상 확인과 현재 이용약관 동의가 있어야 합니다. |
+| 목적 | 이메일/비밀번호로 신규 사용자를 생성합니다. 만 18세 이상 확인과 현재 이용약관 동의가 있어야 합니다. 같은 이메일의 소셜 가입 계정이 있으면 `409`로 거절합니다. |
 | 입력 | **Body** — `SignupRequest` |
 | 출력 | `201` 회원가입 성공 — `SignupResponse` |
 | 조건 | 인증 불필요<br>인증 없이 호출할 수 있다.<br>공개 API이므로 별도의 사용자 권한 검증이 없다. |
-| 주요 오류 | `400` 잘못된 요청, 또는 `CONSENT_REQUIRED` 만 18세 이상 확인·현재 이용약관 동의 없음(인증 토큰은 소비하지 않는다) — `ErrorResponse`<br>`409` 이미 가입된 이메일 — `ErrorResponse` |
+| 주요 오류 | `400` 잘못된 요청, 또는 `CONSENT_REQUIRED` 만 18세 이상 확인·현재 이용약관 동의 없음(인증 토큰은 소비하지 않는다) — `ErrorResponse`<br>`409` 이미 가입된 이메일: 이메일 가입 계정이면 `DUPLICATE_EMAIL` — `ErrorResponse`, 소셜 가입 계정만 있으면 `EMAIL_REGISTERED_WITH_OAUTH` — `EmailRegisteredWithOAuthResponse`(`oauth_providers` 포함, 인증 토큰은 소비하지 않는다) |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -2355,7 +2373,8 @@ curl -X POST "$ACCESS/api/auth/refresh" \
 | HTTP 상태 | 설명 | 응답 스키마 |
 |---|---|---|
 | `400` | 잘못된 요청 | `ErrorResponse` |
-| `409` | 이미 가입된 이메일 | `ErrorResponse` |
+| `409` | 이미 가입된 이메일. `DUPLICATE_EMAIL`(이메일 가입 계정) | `ErrorResponse` |
+| `409` | 같은 이메일의 소셜 가입 계정이 있음. `EMAIL_REGISTERED_WITH_OAUTH`, `oauth_providers` 포함. 인증번호 발급에서 먼저 걸리지만 API를 직접 불러도 같은 결과다 | `EmailRegisteredWithOAuthResponse` |
 
 ```json
 {
