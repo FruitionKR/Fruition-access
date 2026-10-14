@@ -10,6 +10,7 @@ import fruition.access.user.exception.InvalidSignupTokenException;
 import fruition.access.user.exception.OAuthAccountAlreadyLinkedException;
 import fruition.access.user.exception.OAuthAccountNotFoundException;
 import fruition.access.user.exception.OAuthEmailNotProvidedException;
+import fruition.access.user.exception.OAuthEmailRegisteredException;
 import fruition.access.user.exception.OAuthUnlinkNotAllowedException;
 import fruition.access.user.exception.UnsupportedOAuthProviderException;
 import fruition.access.user.exception.UserNotFoundException;
@@ -24,6 +25,7 @@ import org.springframework.security.oauth2.client.registration.ClientRegistratio
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -73,6 +75,7 @@ public class OAuthUserService {
     /**
      * 신규 소셜 가입. 약관 동의 전에는 계정과 워크스페이스를 만들지 않고, 소셜 계정 정보를 담은 가입 대기 토큰만 준다.
      * 프론트가 동의를 받아 {@link #completeSignup}을 부른다. 데스크톱 로그인이면 PKCE challenge를 토큰에 묶는다.
+     * 같은 이메일의 계정(local 또는 다른 provider)이 이미 있으면 두 번째 계정이 생기지 않게 토큰을 발급하지 않는다.
      */
     public String startSignup(String provider, OAuth2UserInfo userInfo, String codeChallenge) {
         String email = userInfo.getEmail();
@@ -80,9 +83,20 @@ public class OAuthUserService {
             log.warn("[OAuth 로그인 실패] provider={} reason=email_not_provided", provider);
             throw new OAuthEmailNotProvidedException(provider);
         }
+        String normalizedEmail = email.trim().toLowerCase();
+        rejectIfEmailRegistered(provider, normalizedEmail);
         log.info("[OAuth 신규 가입 대기] provider={}", provider);
         return codeStore.issueSignupToken(new OAuthExchangeCodeStore.PendingSignup(
-                provider, userInfo.getProviderUserId(), email.trim().toLowerCase(), userInfo.getName(), codeChallenge));
+                provider, userInfo.getProviderUserId(), normalizedEmail, userInfo.getName(), codeChallenge));
+    }
+
+    /** 기존 계정으로 로그인한 뒤 설정에서 연동해야 하므로, 같은 이메일의 계정이 있으면 소셜 신규 가입을 거절한다. */
+    private void rejectIfEmailRegistered(String provider, String email) {
+        List<String> providers = userRepository.findProvidersByEmail(email);
+        if (!providers.isEmpty()) {
+            log.warn("[OAuth 신규 가입 거부] provider={} reason=email_registered providers={}", provider, providers);
+            throw new OAuthEmailRegisteredException(provider, providers);
+        }
     }
 
     /**
@@ -100,6 +114,8 @@ public class OAuthUserService {
             return userRepository.findById(existingLink.get().getUserId())
                     .orElseThrow(InvalidSignupTokenException::new);
         }
+        // 토큰 발급 뒤 동의 화면에 머무는 동안 같은 이메일로 가입이 끝났을 수 있어 한 번 더 확인한다.
+        rejectIfEmailRegistered(pending.provider(), pending.email());
         User user = createUser(pending.provider(), pending.email(), pending.name());
         oauthAccountRepository.save(new UserOAuthAccount(user.getId(), pending.provider(), pending.providerUserId()));
         userConsentService.record(user.getId(), Boolean.TRUE.equals(request.marketingOptIn()));

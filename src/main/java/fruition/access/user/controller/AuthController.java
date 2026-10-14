@@ -24,6 +24,8 @@ import fruition.access.user.dto.MeResponse;
 import fruition.access.user.dto.OAuthExchangeRequest;
 import fruition.access.user.dto.DisplayNameUpdateRequest;
 import fruition.access.user.dto.EmailChangeRequest;
+import fruition.access.user.dto.EmailRegisteredResponse;
+import fruition.access.user.dto.EmailRegisteredWithOAuthResponse;
 import fruition.access.user.dto.PasswordChangeRequest;
 import fruition.access.user.dto.PasswordResetRequest;
 import fruition.access.user.dto.RefreshRequest;
@@ -128,7 +130,9 @@ public class AuthController {
         this.refreshTokenExpirationSeconds = refreshTokenExpirationSeconds;
     }
 
-    @Operation(summary = "회원가입 이메일 중복 확인", description = "이메일로 신규 가입할 수 있는지 확인합니다.")
+    @Operation(summary = "회원가입 이메일 중복 확인",
+            description = "이메일로 신규 가입할 수 있는지 확인합니다. 같은 이메일의 계정이 하나라도 있으면(이메일 가입이든 소셜 가입이든)"
+                    + " available이 false이고, 소셜 가입 계정의 provider는 oauth_providers로 알립니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "가입 가능 여부",
             content = @Content(schema = @Schema(implementation = EmailAvailabilityResponse.class))),
@@ -145,14 +149,18 @@ public class AuthController {
         return ResponseEntity.ok(userService.checkEmailAvailability(request));
     }
 
-    @Operation(summary = "이메일 인증번호 발급", description = "회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다.")
+    @Operation(summary = "이메일 인증번호 발급",
+            description = "회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다. purpose=signup은 같은 이메일의 계정이 있으면"
+                    + " 메일을 보내지 않고 409로 거절합니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "202", description = "인증번호 발급",
             content = @Content(schema = @Schema(implementation = EmailVerificationResponse.class))),
         @ApiResponse(responseCode = "400", description = "잘못된 요청",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @ApiResponse(responseCode = "409", description = "이미 가입된 이메일(purpose=signup)",
-            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "409",
+            description = "이미 가입된 이메일(purpose=signup). 이메일 가입 계정이면 DUPLICATE_EMAIL(ErrorResponse),"
+                    + " 소셜 가입 계정만 있으면 EMAIL_REGISTERED_WITH_OAUTH(EmailRegisteredWithOAuthResponse)",
+            content = @Content(schema = @Schema(oneOf = {ErrorResponse.class, EmailRegisteredWithOAuthResponse.class}))),
         @ApiResponse(responseCode = "429", description = "재요청 제한 초과",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
@@ -191,14 +199,17 @@ public class AuthController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "회원가입", description = "이메일/비밀번호로 신규 사용자를 생성합니다.")
+    @Operation(summary = "회원가입",
+            description = "이메일/비밀번호로 신규 사용자를 생성합니다. 같은 이메일의 소셜 가입 계정이 있으면 409로 거절합니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "201", description = "회원가입 성공",
             content = @Content(schema = @Schema(implementation = SignupResponse.class))),
         @ApiResponse(responseCode = "400", description = "잘못된 요청",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @ApiResponse(responseCode = "409", description = "이미 가입된 이메일",
-            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+        @ApiResponse(responseCode = "409",
+            description = "이미 가입된 이메일. 이메일 가입 계정이면 DUPLICATE_EMAIL(ErrorResponse),"
+                    + " 소셜 가입 계정만 있으면 EMAIL_REGISTERED_WITH_OAUTH(EmailRegisteredWithOAuthResponse)",
+            content = @Content(schema = @Schema(oneOf = {ErrorResponse.class, EmailRegisteredWithOAuthResponse.class})))
     })
     @PostMapping("/signup")
     public ResponseEntity<SignupResponse> signup(@Valid @RequestBody SignupRequest request) {
@@ -289,7 +300,10 @@ public class AuthController {
         @ApiResponse(responseCode = "400", description = "만 18세 이상 확인이나 현재 이용약관 동의가 없음(CONSENT_REQUIRED)",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(responseCode = "401", description = "가입 대기 토큰이 없거나 만료됨(INVALID_SIGNUP_TOKEN)",
-            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "409",
+            description = "토큰 발급 뒤 같은 이메일로 다른 가입이 끝나 거절됨(EMAIL_REGISTERED). 기존 계정으로 로그인한 뒤 연동한다",
+            content = @Content(schema = @Schema(implementation = EmailRegisteredResponse.class)))
     })
     @PostMapping("/oauth/signup/consent")
     public ResponseEntity<LoginResponse> completeOAuthSignup(@Valid @RequestBody OAuthSignupConsentRequest request) {

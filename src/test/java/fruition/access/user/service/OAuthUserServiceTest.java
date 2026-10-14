@@ -10,6 +10,7 @@ import fruition.access.user.exception.InvalidOAuthLinkCodeException;
 import fruition.access.user.exception.OAuthUnlinkNotAllowedException;
 import fruition.access.user.exception.OAuthAccountAlreadyLinkedException;
 import fruition.access.user.exception.OAuthEmailNotProvidedException;
+import fruition.access.user.exception.OAuthEmailRegisteredException;
 import fruition.access.user.repository.UserOAuthAccountRepository;
 import fruition.access.user.repository.UserRepository;
 import fruition.access.workspace.service.WorkspaceService;
@@ -87,6 +88,46 @@ class OAuthUserServiceTest {
     void startSignup_noEmailProvided_throwsException() {
         assertThatThrownBy(() -> oAuthUserService.startSignup("google", googleUserInfo("google-sub-1", null, "No Email"), null))
                 .isInstanceOf(OAuthEmailNotProvidedException.class);
+    }
+
+    @Test
+    void startSignup_emailRegisteredToLocalAccount_rejectsWithoutIssuingToken() {
+        // local 계정이 있는 이메일로는 소셜 신규 가입을 시작하지 않는다. 기존 계정으로 로그인한 뒤 연동해야 한다.
+        when(userRepository.findProvidersByEmail("a@pusan.ac.kr")).thenReturn(List.of("local"));
+
+        assertThatThrownBy(() -> oAuthUserService.startSignup("google", googleUserInfo("google-sub-1", "A@pusan.ac.kr", "A"), null))
+                .isInstanceOfSatisfying(OAuthEmailRegisteredException.class, e ->
+                        assertThat(e.getProviders()).containsExactly("local"));
+        verify(codeStore, never()).issueSignupToken(any());
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void startSignup_emailRegisteredToOtherProvider_rejectsWithoutIssuingToken() {
+        // 소셜끼리도 같다: Google 가입 계정이 있으면 Kakao로 새 계정을 만들 수 없다.
+        when(userRepository.findProvidersByEmail("a@pusan.ac.kr")).thenReturn(List.of("google", "local"));
+
+        assertThatThrownBy(() -> oAuthUserService.startSignup("kakao", googleUserInfo("kakao-1", "a@pusan.ac.kr", "A"), null))
+                .isInstanceOfSatisfying(OAuthEmailRegisteredException.class, e ->
+                        assertThat(e.getProviders()).containsExactly("google", "local"));
+        verify(codeStore, never()).issueSignupToken(any());
+    }
+
+    @Test
+    void completeSignup_emailRegisteredAfterTokenIssued_rejectsWithoutCreatingUser() {
+        // 동의 화면에 머무는 동안 같은 이메일로 가입이 끝났으면 토큰이 유효해도 계정을 만들지 않는다.
+        when(codeStore.consumeSignupToken("signup-token", null)).thenReturn(Optional.of(
+                new OAuthExchangeCodeStore.PendingSignup("google", "google-sub-1", "new@example.com", "New User", null)));
+        when(oauthAccountRepository.findByProviderAndProviderUserId("google", "google-sub-1"))
+                .thenReturn(Optional.empty());
+        when(userRepository.findProvidersByEmail("new@example.com")).thenReturn(List.of("local"));
+
+        assertThatThrownBy(() -> oAuthUserService.completeSignup(
+                new OAuthSignupConsentRequest("signup-token", true, "2026-10-01", true, null)))
+                .isInstanceOf(OAuthEmailRegisteredException.class);
+        verify(userRepository, never()).save(any());
+        verify(oauthAccountRepository, never()).save(any());
+        verify(workspaceService, never()).createDefault(any(), any());
     }
 
     @Test

@@ -6,6 +6,7 @@ import fruition.access.user.dto.EmailAvailabilityResponse;
 import fruition.access.user.dto.SignupRequest;
 import fruition.access.user.dto.SignupResponse;
 import fruition.access.user.exception.DuplicateEmailException;
+import fruition.access.user.exception.EmailRegisteredWithOAuthException;
 import fruition.access.user.repository.UserRepository;
 import fruition.shared.util.DisplayNames;
 import fruition.access.workspace.service.WorkspaceService;
@@ -43,15 +44,15 @@ public class UserService {
     public EmailAvailabilityResponse checkEmailAvailability(EmailAvailabilityRequest request) {
         String email = request.email().trim().toLowerCase();
         List<User> accounts = userRepository.findAllByEmail(email);
-        // 같은 이메일의 소셜 계정은 가입을 막지 않고, "기존 계정으로 로그인 후 연동" 안내용으로만 알린다.
+        // 같은 이메일의 계정이 하나라도 있으면(local이든 소셜이든) 신규 가입할 수 없다.
+        // 소셜 계정의 provider는 "그 계정으로 로그인 후 설정에서 연동" 안내용으로 알린다.
         List<String> oauthProviders = accounts.stream()
                 .map(User::getProvider)
                 .filter(provider -> !User.PROVIDER_LOCAL.equals(provider))
                 .distinct()
                 .sorted()
                 .toList();
-        boolean localExists = accounts.stream().anyMatch(user -> User.PROVIDER_LOCAL.equals(user.getProvider()));
-        return new EmailAvailabilityResponse(!localExists, oauthProviders);
+        return new EmailAvailabilityResponse(accounts.isEmpty(), oauthProviders);
     }
 
     @Transactional
@@ -63,6 +64,12 @@ public class UserService {
         if (userRepository.existsByEmailAndProvider(email, User.PROVIDER_LOCAL)) {
             log.warn("[회원가입 실패] reason=duplicate_email email={}", email);
             throw new DuplicateEmailException(email);
+        }
+        // 같은 이메일의 소셜 계정이 있으면 두 번째 계정을 만들지 않는다. 인증번호 발급에서 걸러지지만 API 직접 호출도 막는다.
+        List<String> oauthProviders = userRepository.findProvidersByEmail(email);
+        if (!oauthProviders.isEmpty()) {
+            log.warn("[회원가입 실패] reason=email_registered_with_oauth email={} providers={}", email, oauthProviders);
+            throw new EmailRegisteredWithOAuthException(email, oauthProviders);
         }
 
         // 동의가 빠진 요청이 인증 토큰을 소비하지 않도록 먼저 확인한다.

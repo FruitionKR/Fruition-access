@@ -1,6 +1,8 @@
 package fruition.access.security.oauth.service;
 
 import fruition.access.security.oauth.OAuthLinkFlow;
+import fruition.access.user.domain.User;
+import fruition.access.user.exception.OAuthEmailRegisteredException;
 import fruition.access.user.service.OAuthUserService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -97,5 +99,34 @@ class CustomOAuth2UserServiceTest {
 
         assertThat((String) user.getAttribute(CustomOAuth2UserService.SIGNUP_TOKEN_ATTRIBUTE)).isEqualTo("signup-token");
         assertThat(user.getName()).isEqualTo("signup-token");
+    }
+
+    @Test
+    void newSocialAccountWithRegisteredEmail_failsWithEmailRegisteredAndProviders() {
+        // 실패 handler가 ?error=email_registered&providers=로 돌려보낼 수 있게 인증 예외로 바꾼다.
+        callbackWithLinkTarget(null);
+        org.mockito.Mockito.when(oAuthUserService.findUser(org.mockito.ArgumentMatchers.eq("google"), any()))
+                .thenReturn(java.util.Optional.empty());
+        org.mockito.Mockito.when(oAuthUserService.startSignup(org.mockito.ArgumentMatchers.eq("google"), any(), any()))
+                .thenThrow(new OAuthEmailRegisteredException("google", List.of("kakao", "local")));
+
+        assertThatThrownBy(() -> service.loadUser(userRequest))
+                .isInstanceOfSatisfying(OAuth2AuthenticationException.class, e -> {
+                    assertThat(e.getError().getErrorCode()).isEqualTo(CustomOAuth2UserService.EMAIL_REGISTERED);
+                    assertThat(e.getError().getDescription()).isEqualTo("kakao,local");
+                });
+    }
+
+    @Test
+    void existingSocialAccount_logsInWithoutStartingSignup() {
+        // 이미 연결된 소셜 계정의 로그인은 같은 이메일의 다른 계정이 있어도 그대로 된다.
+        callbackWithLinkTarget(null);
+        org.mockito.Mockito.when(oAuthUserService.findUser(org.mockito.ArgumentMatchers.eq("google"), any()))
+                .thenReturn(java.util.Optional.of(new User("user_g", "a@pusan.ac.kr", "google", "a", null)));
+
+        var user = service.loadUser(userRequest);
+
+        assertThat(user.getName()).isEqualTo("user_g");
+        verify(oAuthUserService, never()).startSignup(any(), any(), any());
     }
 }
