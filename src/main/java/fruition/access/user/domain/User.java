@@ -32,6 +32,13 @@ public class User {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    /** 프로필 사진 metadata. 바이너리는 {@link UserAvatar}에 있다. 둘 다 null이면 사진이 없다. */
+    @Column(name = "avatar_content_type")
+    private String avatarContentType;
+
+    @Column(name = "avatar_hash")
+    private String avatarHash;
+
     protected User() {}
 
     public User(String id, String email, String provider, String displayName, String passwordHash) {
@@ -59,6 +66,32 @@ public class User {
         this.updatedAt = Instant.now();
     }
 
+    /** 프로필 사진 metadata를 바꾼다. 바이너리 저장은 호출자가 한다. */
+    public void changeAvatar(String contentType, String hash) {
+        this.avatarContentType = contentType;
+        this.avatarHash = hash;
+        this.updatedAt = Instant.now();
+    }
+
+    /** 프로필 사진 metadata를 지운다. 바이너리 삭제는 호출자가 한다. */
+    public void clearAvatar() {
+        this.avatarContentType = null;
+        this.avatarHash = null;
+        this.updatedAt = Instant.now();
+    }
+
+    public boolean hasAvatar() {
+        return avatarHash != null;
+    }
+
+    /**
+     * 프로필 사진 조회 경로. 사진이 없으면 null이다.
+     * 해시를 {@code ?v=}로 붙여 사진을 바꾸면 URL도 바뀌게 한다 — 예전 이미지가 브라우저 캐시에 남지 않는다.
+     */
+    public String avatarUrl() {
+        return hasAvatar() ? "/api/users/" + id + "/avatar?v=" + avatarHash : null;
+    }
+
     public String getId() { return id; }
     public String getEmail() { return email; }
     public String getProvider() { return provider; }
@@ -66,4 +99,6 @@ public class User {
     public String getPasswordHash() { return passwordHash; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public String getAvatarContentType() { return avatarContentType; }
+    public String getAvatarHash() { return avatarHash; }
 }

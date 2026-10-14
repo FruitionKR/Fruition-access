@@ -10,6 +10,8 @@ security:
 tags:
 - description: 회원가입 및 인증 API
   name: Auth
+- description: 사용자 프로필 사진 조회 API
+  name: Users
 - description: 워크스페이스 초대 API
   name: Workspace Invitations
 - description: 워크스페이스 멤버 관리 API
@@ -300,6 +302,68 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
           description: 인증되지 않음
       summary: 표시 이름 변경
+      tags:
+      - Auth
+  /api/auth/me/avatar:
+    delete:
+      description: 인증된 사용자의 프로필 사진을 지웁니다. 사진이 없어도 200입니다.
+      operationId: deleteAvatar
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+          description: 삭제 성공
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 인증되지 않음
+      summary: 프로필 사진 삭제
+      tags:
+      - Auth
+    put:
+      description: "인증된 사용자의 프로필 사진을 올리거나 바꿉니다. PNG·JPEG·WebP·GIF, 1MB 이하."
+      operationId: updateAvatar
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+              - file
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+          description: 업로드 성공
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 지원하지 않는 이미지 형식
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 인증되지 않음
+        "413":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 이미지가 너무 큼
+      summary: 프로필 사진 업로드
       tags:
       - Auth
   /api/auth/me/consents:
@@ -919,6 +983,48 @@ paths:
       summary: 초대 수락
       tags:
       - Workspace Invitations
+  /api/users/{user_id}/avatar:
+    get:
+      description: 본인이거나 워크스페이스를 하나라도 같이 쓰는 멤버에게 프로필 사진 bytes를 반환합니다.
+      operationId: getAvatar
+      parameters:
+      - description: 사용자 ID
+        example: user_3f1c8a6b52d7411e9c04ab5d2e7f6081
+        in: path
+        name: user_id
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: byte
+          description: 이미지 반환
+        "304":
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: byte
+          description: 캐시된 이미지 사용
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 인증되지 않음
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 사용자를 볼 수 없거나 프로필 사진이 없음
+      summary: 프로필 사진 조회
+      tags:
+      - Users
   /api/workspaces:
     get:
       description: 로그인한 사용자가 소유한 워크스페이스 목록을 반환합니다.
@@ -1974,6 +2080,10 @@ components:
     MeResponse:
       type: object
       properties:
+        avatar_url:
+          type: string
+          description: 프로필 사진 조회 경로. 사진이 없으면 null이다. 사진을 바꾸면 ?v= 값이 바뀌어 예전 이미지가 캐시에서 보이지 않는다.
+          example: /api/users/user_3f1c8a6b52d7411e9c04ab5d2e7f6081/avatar?v=9f86d081884c7d65
         consent_required:
           type: boolean
           description: true면 이용약관이 바뀌어 다시 동의받아야 한다. POST /api/auth/me/consents로 받는다.
@@ -2403,6 +2513,10 @@ components:
     WorkspaceMemberResponse:
       type: object
       properties:
+        avatar_url:
+          type: string
+          description: "프로필 사진 조회 경로(GET /api/users/{user_id}/avatar). 사진이 없으면 null이다."
+          example: /api/users/user_1f9a74af/avatar?v=9f86d081884c7d65
         display_name:
           type: string
           description: 멤버 표시 이름

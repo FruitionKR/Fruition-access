@@ -76,11 +76,14 @@ class AccountDeletionIntegrationTest {
         String shared = workspace(other, WorkspaceRole.OWNER);
         join(shared, user, WorkspaceRole.MEMBER);
         String refreshToken = refreshToken(user);
+        jdbc.update("INSERT INTO user_avatars(user_id, image) VALUES (?, ?)", user, new byte[]{1, 2, 3});
 
         deleteAccount(user, null, "{\"password\":\"" + PASSWORD + "\"}").andExpect(status().isNoContent());
 
         assertThat(users.existsById(user)).isFalse();
         assertThat(count("SELECT count(*) FROM user_refresh_tokens WHERE user_id = ?", user)).isZero();
+        // 프로필 사진은 users FK cascade로 함께 지워진다.
+        assertThat(count("SELECT count(*) FROM user_avatars WHERE user_id = ?", user)).isZero();
         assertThat(count("SELECT count(*) FROM workspace_members WHERE user_id = ?", user)).isZero();
         assertThat(count("SELECT count(*) FROM workspace_membership_periods WHERE user_id = ? AND left_at IS NOT NULL",
                 user)).isEqualTo(2);
