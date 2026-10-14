@@ -43,6 +43,32 @@ class OAuth2AuthenticationFailureHandlerTest {
     }
 
     @Test
+    void emailRegisteredFailure_redirectsWithProvidersInsteadOfGenericError() throws Exception {
+        when(request.getSession(false)).thenReturn(session);
+        var handler = new OAuth2AuthenticationFailureHandler("http://localhost:3000/oauth/callback", "fruition://oauth/callback");
+        var registered = new org.springframework.security.oauth2.core.OAuth2AuthenticationException(
+                new org.springframework.security.oauth2.core.OAuth2Error(
+                        fruition.access.security.oauth.service.CustomOAuth2UserService.EMAIL_REGISTERED, "google,local", null));
+
+        handler.onAuthenticationFailure(request, response, registered);
+
+        verify(session).invalidate();
+        verify(response).sendRedirect("http://localhost:3000/oauth/callback?error=email_registered&providers=google,local");
+    }
+
+    @Test
+    void desktopEmailRegisteredFailure_redirectsToDeepLinkWithProviders() throws Exception {
+        var handler = new OAuth2AuthenticationFailureHandler("http://localhost:3000/oauth/callback", "fruition://oauth/callback");
+        var registered = new org.springframework.security.oauth2.core.OAuth2AuthenticationException(
+                new org.springframework.security.oauth2.core.OAuth2Error(
+                        fruition.access.security.oauth.service.CustomOAuth2UserService.EMAIL_REGISTERED, "local", null));
+
+        handler.onAuthenticationFailure(OAuth2AuthenticationSuccessHandlerTest.desktopCallback("challenge"), response, registered);
+
+        verify(response).sendRedirect("fruition://oauth/callback?error=email_registered&providers=local");
+    }
+
+    @Test
     void desktopFailure_redirectsToDeepLink() throws Exception {
         var handler = new OAuth2AuthenticationFailureHandler("http://localhost:3000/oauth/callback", "fruition://oauth/callback");
 
