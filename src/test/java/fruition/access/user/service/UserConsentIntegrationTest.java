@@ -31,7 +31,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** 소셜 신규 가입은 동의를 받아야 계정이 생기고, 약관 버전이 바뀌면 기존 회원이 다시 동의하는지 확인한다. */
-@SpringBootTest(properties = {"app.legal.terms-version=2026-10-01", "app.legal.privacy-version=2026-10-01"})
+@SpringBootTest(properties = {"app.legal.terms-version=2026-10-01", "app.legal.privacy-version=2026-10-01",
+        "app.legal.consent-required=true"})
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 @ActiveProfiles("test")
@@ -115,6 +116,20 @@ class UserConsentIntegrationTest {
         User user = users.findAllByEmail(email).get(0);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM user_consents WHERE user_id = ? AND NOT marketing_opt_in",
                 Integer.class, user.getId())).isOne();
+    }
+
+    @Test
+    void emailSignupWithoutConsentIsRejected() throws Exception {
+        String email = "local-" + UUID.randomUUID() + "@example.com";
+
+        mockMvc.perform(post("/api/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"%s","password":"password1234","verification_token":"token"}
+                                """.formatted(email)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("CONSENT_REQUIRED"));
+        assertThat(users.findAllByEmail(email)).isEmpty();
     }
 
     @Test
