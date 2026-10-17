@@ -6,6 +6,24 @@
 
 - API 수: 28
 - 호출 연결: [access-svc 호출 연결 요약](README.md#호출-연결-요약) 참고
+- 약관 동의 단계: [약관 동의 플래그](#약관-동의-플래그-applegalconsent-required) 참고
+
+## 약관 동의 플래그 (`app.legal.consent-required`)
+
+약관 문안이 확정되기 전에는 환경 변수 `LEGAL_CONSENT_REQUIRED=false`(설정 `app.legal.consent-required`, 기본 `true`)로
+동의 단계를 끈다. 끈 동안에는 동의를 요구하지도, `user_consents`에 기록하지도 않는다. 받지 않은 만 18세 확인이나
+확정되지 않은 문안에 대한 동의를 남기지 않기 위해서다.
+
+| 항목 | `true`(기본, 현재 동작) | `false`(약관 확정 전) |
+|---|---|---|
+| `POST /api/auth/signup` | `age_confirmed: true`·현재 `terms_version` 필수, 없으면 `400 CONSENT_REQUIRED` | 동의 항목을 생략해도 가입된다 |
+| 소셜 신규 가입 | 콜백 `?signup_token=` → 동의 화면 → `POST /api/auth/oauth/signup/consent`(동의 필수) | 같은 흐름. 콜백은 그대로 `?signup_token=`을 주고, 프론트는 동의 화면 없이 `{ "signup_token" }`(데스크톱이면 `code_verifier`도)만 보내 가입을 끝낸다 |
+| 동의 기록(`user_consents`) | 가입·재동의 때 쌓는다 | 요청에 동의 항목이 있어도 쓰지 않는다 |
+| 로그인 응답·`GET /api/auth/me`의 `consent_required` | 최근 동의가 현재 이용약관 버전이 아니면 `true` | 항상 `false` |
+| `POST /api/auth/me/consents` | 동의 확인 후 기록, `204` | 검사·기록 없이 `204` |
+
+플래그를 `true`로 되돌리면 꺼져 있던 동안 가입한 회원은 동의 기록이 없으므로 다음 로그인부터 `consent_required: true`가 되어
+`POST /api/auth/me/consents`로 확정된 버전에 동의한다. 이때 `app.legal.terms-version`도 확정 문안 버전으로 맞춘다.
 
 ## API 목차
 
@@ -997,7 +1015,7 @@ curl -X DELETE "$ACCESS/api/auth/me/avatar" \
 | 목적 | 이용약관 버전이 바뀌어 로그인 응답·`GET /api/auth/me`의 `consent_required`가 `true`일 때 다시 동의를 받습니다. |
 | 입력 | **Header** — `Authorization: Bearer <access_token>`<br>**Body** — `ConsentRequest` `{ "age_confirmed", "terms_version", "marketing_opt_in" }` |
 | 출력 | `204` 동의 기록 완료 |
-| 조건 | 가장 최근 동의의 이용약관 버전이 서버 현재 버전과 다르면(동의 기록이 없는 기존 회원 포함) `consent_required`가 `true`다. |
+| 조건 | 가장 최근 동의의 이용약관 버전이 서버 현재 버전과 다르면(동의 기록이 없는 기존 회원 포함) `consent_required`가 `true`다. [약관 동의 플래그](#약관-동의-플래그-applegalconsent-required)가 `false`면 `consent_required`는 항상 `false`이고, 이 API는 아무것도 기록하지 않고 `204`를 준다. |
 | 주요 오류 | `400` `CONSENT_REQUIRED` 만 18세 이상 확인·현재 이용약관 동의 없음<br>`401` 인증되지 않음 |
 
 <a id="summary-put-api-auth-me-email"></a>
@@ -2089,7 +2107,7 @@ curl -X DELETE "$ACCESS/api/auth/me/oauth-accounts/kakao" \
 | 목적 | 소셜 신규 가입 확정. 만 18세 이상 확인과 이용약관 동의를 받아 계정·기본 워크스페이스를 만들고 로그인시킵니다. |
 | 입력 | **Body** — `OAuthSignupConsentRequest` `{ "signup_token", "age_confirmed", "terms_version", "marketing_opt_in", "code_verifier" }`(`code_verifier`는 데스크톱 로그인만) |
 | 출력 | `200` 가입과 로그인 완료 — `LoginResponse`(access token, HttpOnly refresh 쿠키). 다른 탭이 먼저 가입한 계정이 MFA를 켰으면 `mfa_required`·`mfa_token`만 온다 |
-| 조건 | 인증 불필요. `signup_token`은 10분 동안 한 번만 쓸 수 있다. |
+| 조건 | 인증 불필요. `signup_token`은 10분 동안 한 번만 쓸 수 있다. [약관 동의 플래그](#약관-동의-플래그-applegalconsent-required)가 `false`면 `age_confirmed`·`terms_version`·`marketing_opt_in`을 생략해도 되고 동의 기록을 남기지 않는다. |
 | 주요 오류 | `400` `CONSENT_REQUIRED` 만 18세 이상 확인·현재 이용약관 동의 없음(토큰은 소비하지 않아 다시 보낼 수 있다)<br>`401` `INVALID_SIGNUP_TOKEN` 토큰이 없거나 만료·사용됨, 또는 데스크톱 가입인데 `code_verifier`가 없거나 틀림(토큰은 소비된다). 소셜 로그인부터 다시 한다<br>`409` `EMAIL_REGISTERED` 토큰을 받은 뒤 동의 화면에 머무는 사이 같은 이메일로 다른 가입이 끝남 — `EmailRegisteredResponse`(`providers` 포함, 토큰은 소비된다). 기존 계정으로 로그인한 뒤 설정에서 연동한다 |
 
 <details>
@@ -2128,6 +2146,8 @@ curl -X DELETE "$ACCESS/api/auth/me/oauth-accounts/kakao" \
 ```
 
 - `code_verifier`: 데스크톱 로그인일 때만 보낸다. 웹 로그인 토큰에는 challenge가 없어 보내도 검사하지 않는다.
+- `marketing_opt_in`: 생략하면 `false`.
+- 동의 단계를 끈 동안(`app.legal.consent-required=false`)은 `{ "signup_token": "..." }`만 보내도 된다.
 
 #### 3. 구현 파일
 
@@ -2530,6 +2550,7 @@ curl -X POST "$ACCESS/api/auth/refresh" \
 - `age_confirmed`: 만 18세 이상 확인. `true`여야 한다.
 - `terms_version`: 화면에 보여 준 이용약관 버전. 서버의 현재 버전(`app.legal.terms-version`)과 같아야 한다.
 - `marketing_opt_in`: 마케팅 수신 동의(선택). 생략하면 `false`.
+- 동의 단계를 끈 동안(`app.legal.consent-required=false`)은 세 항목을 모두 생략해도 되고, 보내도 기록하지 않는다.
 - 동의는 `user_consents`에 이용약관·처리방침 버전, 시각과 함께 쌓인다. 처리방침은 열람한 버전만 남기고 따로 동의받지 않는다.
 
 #### 5. Response body

@@ -2203,14 +2203,14 @@ components:
       properties:
         age_confirmed:
           type: boolean
-          description: 만 18세 이상 확인. true여야 한다.
+          description: 만 18세 이상 확인. true여야 한다(app.legal.consent-required=false면 생략 가능).
           example: true
         code_verifier:
           type: string
           description: "데스크톱 로그인에서 시작할 때 보낸 code_challenge의 원문(PKCE, 43~128자 [A-Za-z0-9-._~]). 웹 로그인은 보내지 않는다."
         marketing_opt_in:
           type: boolean
-          description: 마케팅 정보 수신 동의(선택 항목)
+          description: 마케팅 정보 수신 동의(선택 항목). 생략하면 false다.
           example: false
         signup_token:
           type: string
@@ -2218,12 +2218,11 @@ components:
           minLength: 1
         terms_version:
           type: string
-          description: 화면에 보여 준 이용약관 버전. 서버의 현재 버전과 같아야 한다.
+          description: 화면에 보여 준 이용약관 버전. 서버의 현재 버전과 같아야 한다(app.legal.consent-required=false면 생략 가능).
           example: 2026-10-01
           maxLength: 32
           minLength: 0
       required:
-      - marketing_opt_in
       - signup_token
     PasswordChangeRequest:
       type: object
