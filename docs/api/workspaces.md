@@ -1584,7 +1584,7 @@ curl -X GET "$ACCESS/internal/users/<value>" \
 
 워크스페이스의 AI 모델 설정을 변경합니다.
 
-`provider`/`model`은 `AiModelCatalog`에 있는 조합만 허용하고, 그 밖의 조합은 `400 INVALID_AI_MODEL`입니다. 2026-10-10 기준으로 OpenAI 14개, Gemini 5개, Claude 9개입니다. 이 목록은 document의 `GET /api/ai-models`(Fruition-document `AiModelCatalog`)와 같아야 합니다. 기준은 document이며, CI(`scripts/check-ai-model-catalog.py`)가 Fruition-document `dev`의 목록과 다르면 실패하므로 목록 변경은 document를 먼저 머지합니다. 두 목록이 어긋나면 설정은 저장되는데 질의가 거부되거나, 그 반대가 됩니다.
+`provider`/`model`은 `AiModelCatalog`에 있는 조합만 허용하고, 그 밖의 조합은 `400 INVALID_AI_MODEL`입니다. 2026-10-18 비용 정책으로 provider마다 하나씩 `openai/gpt-6-luna`, `gemini/gemini-3.5-flash-lite`, `claude/claude-haiku-4-5-20251001` 세 개만 있습니다. 이 설정(`ingest_lint`)은 ingest·wiki lint·스킬·회의록·변환 repair가 함께 쓰는 공용 설정이라 `openai`·`gemini`만 저장할 수 있고, `claude`는 카탈로그에 있어도 `400 INVALID_AI_MODEL`입니다(Claude는 채팅·Agent에서 요청마다 직접 고를 때만 사용). 기존에 저장된 허용 목록 밖 값은 V27이 openai → `gpt-6-luna`, gemini → `gemini-3.5-flash-lite`, claude → `gemini/gemini-3.5-flash-lite`로 옮겼습니다. 이 목록은 document의 `GET /api/ai-models`(Fruition-document `AiModelCatalog`)와 같아야 합니다. 기준은 document이며, CI(`scripts/check-ai-model-catalog.py`)가 Fruition-document `dev`의 목록과 다르면 실패하므로 목록 변경은 document를 먼저 머지합니다. 두 목록이 어긋나면 설정은 저장되는데 질의가 거부되거나, 그 반대가 됩니다.
 
 #### 3. Auth 필요 여부
 
@@ -1674,7 +1674,7 @@ curl -X GET "$ACCESS/internal/workspaces/ws_9d47a0e9a6324341b47562553b75f92a/ai-
 
 워크스페이스의 AI 모델 설정을 변경합니다.
 
-`provider`/`model`은 `AiModelCatalog`에 있는 조합만 허용하고, 그 밖의 조합은 `400 INVALID_AI_MODEL`입니다. 2026-10-10 기준으로 OpenAI 14개, Gemini 5개, Claude 9개입니다. 이 목록은 document의 `GET /api/ai-models`(Fruition-document `AiModelCatalog`)와 같아야 합니다. 기준은 document이며, CI(`scripts/check-ai-model-catalog.py`)가 Fruition-document `dev`의 목록과 다르면 실패하므로 목록 변경은 document를 먼저 머지합니다. 두 목록이 어긋나면 설정은 저장되는데 질의가 거부되거나, 그 반대가 됩니다.
+`provider`/`model`은 `AiModelCatalog`에 있는 조합만 허용하고, 그 밖의 조합은 `400 INVALID_AI_MODEL`입니다. 2026-10-18 비용 정책으로 provider마다 하나씩 `openai/gpt-6-luna`, `gemini/gemini-3.5-flash-lite`, `claude/claude-haiku-4-5-20251001` 세 개만 있습니다. 이 설정(`ingest_lint`)은 ingest·wiki lint·스킬·회의록·변환 repair가 함께 쓰는 공용 설정이라 `openai`·`gemini`만 저장할 수 있고, `claude`는 카탈로그에 있어도 `400 INVALID_AI_MODEL`입니다(Claude는 채팅·Agent에서 요청마다 직접 고를 때만 사용). 기존에 저장된 허용 목록 밖 값은 V27이 openai → `gpt-6-luna`, gemini → `gemini-3.5-flash-lite`, claude → `gemini/gemini-3.5-flash-lite`로 옮겼습니다. 이 목록은 document의 `GET /api/ai-models`(Fruition-document `AiModelCatalog`)와 같아야 합니다. 기준은 document이며, CI(`scripts/check-ai-model-catalog.py`)가 Fruition-document `dev`의 목록과 다르면 실패하므로 목록 변경은 document를 먼저 머지합니다. 두 목록이 어긋나면 설정은 저장되는데 질의가 거부되거나, 그 반대가 됩니다.
 
 #### 3. Auth 필요 여부
 

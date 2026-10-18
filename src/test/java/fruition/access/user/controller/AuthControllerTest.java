@@ -656,6 +656,20 @@ class AuthControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("SESSION_NOT_FOUND"));
     }
+
+    @Test
+    void revokeSession_nonNumericSessionIdReturns400InsteadOf500() throws Exception {
+        String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
+
+        mockMvc.perform(delete("/api/auth/me/sessions/abc")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.error.message").value("요청 형식이 올바르지 않습니다."))
+                .andExpect(jsonPath("$.error.details[0].field").value("session_id"))
+                .andExpect(jsonPath("$.error.details[0].reason").value("값의 형식이 올바르지 않습니다."));
+        verify(authService, org.mockito.Mockito.never()).revokeSession(any(), any());
+    }
     @Test
     void exchangeOAuthCode_mfaRequired_doesNotSetRefreshCookie() throws Exception {
         when(authService.exchangeOAuthCode(any())).thenReturn(LoginResponse.mfaRequired("challenge"));

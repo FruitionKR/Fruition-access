@@ -7,17 +7,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AiModelCatalogTest {
     @Test
-    void enabledModels_returnsSeveralModelsPerProvider() {
+    void enabledModels_returnsOneCheapModelPerProvider() {
         AiModelCatalog catalog = new AiModelCatalog("openai,gemini,claude");
 
-        assertThat(catalog.enabledModels()).hasSize(28);
-        assertThat(catalog.enabledModels()).filteredOn(model -> model.provider().equals("openai")).hasSize(14);
-        assertThat(catalog.enabledModels()).filteredOn(model -> model.provider().equals("gemini")).hasSize(5);
-        assertThat(catalog.enabledModels()).filteredOn(model -> model.provider().equals("claude")).hasSize(9);
+        // 2026-10-18 비용 정책: provider마다 가장 싼 모델 하나만 둔다.
         assertThat(catalog.enabledModels()).extracting(AiModelCatalog.AiModel::model)
-                .contains("gpt-6-luna", "gpt-6.1-sol", "gpt-5.4-mini", "gemini-3.5-flash-lite", "gemini-3.8-flash",
-                        "claude-sonnet-5", "claude-opus-5-5", "claude-haiku-4-5-20251001")
-                .doesNotHaveDuplicates();
+                .containsExactly("gpt-6-luna", "gemini-3.5-flash-lite", "claude-haiku-4-5-20251001");
     }
 
     @Test
@@ -28,7 +23,7 @@ class AiModelCatalogTest {
         assertThat(new AiModelCatalog("gemini,claude").enabledModels().get(0).model())
                 .isEqualTo("gemini-3.5-flash-lite");
         assertThat(new AiModelCatalog("claude").enabledModels().get(0).model())
-                .isEqualTo("claude-sonnet-5");
+                .isEqualTo("claude-haiku-4-5-20251001");
     }
 
     @Test
@@ -39,7 +34,7 @@ class AiModelCatalogTest {
                 .containsOnly("gemini");
         assertThat(catalog.resolve("gemini", "gemini-3.5-flash-lite"))
                 .isEqualTo(new AiModelCatalog.AiModel("gemini", "gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite"));
-        assertThatThrownBy(() -> catalog.resolve("openai", "gpt-6.1-sol"))
+        assertThatThrownBy(() -> catalog.resolve("openai", "gpt-6-luna"))
                 .isInstanceOf(InvalidAiModelException.class);
     }
 
@@ -67,6 +62,16 @@ class AiModelCatalogTest {
         }
         for (String model : new String[]{"gemini-3.1-flash-lite", "gemini-3.7-flash", "gemini-3.5-flash"}) {
             assertThatThrownBy(() -> catalog.resolve("gemini", model)).isInstanceOf(InvalidAiModelException.class);
+        }
+        // 2026-10-18 비용 정책으로 뺀 모델
+        for (String model : new String[]{"gpt-6.1-sol", "gpt-6-sol", "gpt-5.4-mini", "gpt-4o-mini"}) {
+            assertThatThrownBy(() -> catalog.resolve("openai", model)).isInstanceOf(InvalidAiModelException.class);
+        }
+        for (String model : new String[]{"gemini-3.8-flash", "gemini-3.1-pro-preview"}) {
+            assertThatThrownBy(() -> catalog.resolve("gemini", model)).isInstanceOf(InvalidAiModelException.class);
+        }
+        for (String model : new String[]{"claude-sonnet-5", "claude-opus-5-5", "claude-sonnet-4-6"}) {
+            assertThatThrownBy(() -> catalog.resolve("claude", model)).isInstanceOf(InvalidAiModelException.class);
         }
     }
 
