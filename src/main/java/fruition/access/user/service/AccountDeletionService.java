@@ -3,21 +3,15 @@ package fruition.access.user.service;
 import fruition.access.user.domain.User;
 import fruition.access.user.dto.AccountDeletionRequest;
 import fruition.access.user.exception.AccountDeletionBlockedException;
-import fruition.access.user.exception.InvalidCredentialsException;
-import fruition.access.user.exception.InvalidMfaCodeException;
-import fruition.access.user.exception.ReauthenticationRequiredException;
 import fruition.access.user.exception.UserNotFoundException;
-import fruition.access.user.mfa.MfaService;
 import fruition.access.user.repository.UserRepository;
 import fruition.access.workspace.service.AuthzProjectionStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,20 +27,16 @@ import java.util.List;
 public class AccountDeletionService {
 
     private static final Logger log = LoggerFactory.getLogger(AccountDeletionService.class);
-    static final Duration RECENT_LOGIN = Duration.ofMinutes(10);
 
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final MfaService mfaService;
+    private final Reauthenticator reauthenticator;
     private final AuthzProjectionStore authzProjectionStore;
     private final JdbcTemplate jdbc;
 
-    public AccountDeletionService(UserRepository userRepository, PasswordEncoder passwordEncoder,
-                                  MfaService mfaService, AuthzProjectionStore authzProjectionStore,
-                                  JdbcTemplate jdbc) {
+    public AccountDeletionService(UserRepository userRepository, Reauthenticator reauthenticator,
+                                  AuthzProjectionStore authzProjectionStore, JdbcTemplate jdbc) {
         this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.mfaService = mfaService;
+        this.reauthenticator = reauthenticator;
         this.authzProjectionStore = authzProjectionStore;
         this.jdbc = jdbc;
     }
@@ -55,7 +45,7 @@ public class AccountDeletionService {
     @Transactional
     public void delete(String userId, AccountDeletionRequest request, Instant authTime) {
         User user = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
-        reauthenticate(user, request, authTime);
+        reauthenticator.verify(user, request.password(), request.mfaCode(), authTime);
 
         List<Membership> memberships = lockMemberships(userId);
         List<AccountDeletionBlockedException.Workspace> blocked = memberships.stream()
@@ -83,22 +73,6 @@ public class AccountDeletionService {
         jdbc.update("DELETE FROM users WHERE id = ?", userId);
         log.info("[회원 탈퇴] userId={} workspaces={} purgedWorkspaces={}",
                 userId, memberships.size(), purgedWorkspaces.size());
-    }
-
-    private void reauthenticate(User user, AccountDeletionRequest request, Instant authTime) {
-        if (user.getPasswordHash() != null) {
-            if (request.password() == null || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
-                throw new InvalidCredentialsException();
-            }
-        } else if (authTime == null || authTime.isBefore(Instant.now().minus(RECENT_LOGIN))) {
-            throw new ReauthenticationRequiredException();
-        }
-        if (mfaService.isEnabled(user.getId())) {
-            if (request.mfaCode() == null || request.mfaCode().isBlank()) {
-                throw new InvalidMfaCodeException();
-            }
-            mfaService.verify(user.getId(), request.mfaCode());
-        }
     }
 
     /**
