@@ -496,24 +496,43 @@ public class AuthController {
     }
 
     @Operation(summary = "이메일 변경",
-            description = "새 이메일로 받은 인증번호 토큰으로 본인 확인 후 계정 이메일을 바꿉니다."
-                    + " 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.")
+            description = "본인을 다시 확인하고 새 이메일로 받은 인증번호 토큰으로 계정 이메일을 바꿉니다."
+                    + " 비밀번호 계정은 current_password를, 소셜 전용 계정은 10분 안에 다시 로그인해 받은 access token을 씁니다."
+                    + " MFA를 켰으면 mfa_code도 필요합니다. 본인 확인에 실패하면 verification_token은 소비되지 않습니다."
+                    + " 성공하면 현재 세션을 제외한 refresh token이 폐기되고 기존 이메일로 변경 알림 메일이 갑니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "변경 성공",
             content = @Content(schema = @Schema(implementation = MeResponse.class))),
         @ApiResponse(responseCode = "400", description = "잘못된 요청이거나 유효하지 않은 verification_token",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+        @ApiResponse(responseCode = "401", description = "인증되지 않았거나 비밀번호·MFA 코드가 다름,"
+                + " 또는 소셜 계정이 최근에 로그인하지 않음(REAUTHENTICATION_REQUIRED)",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(responseCode = "409", description = "같은 provider에 이미 그 이메일 계정이 있음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "429", description = "비밀번호·MFA 확인 시도 횟수 제한 초과",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PutMapping("/me/email")
     public ResponseEntity<MeResponse> changeEmail(
             @AuthenticationPrincipal String userId,
             @Valid @RequestBody EmailChangeRequest request,
-            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshToken) {
-        return ResponseEntity.ok(authService.changeEmail(userId, request, refreshToken));
+            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshToken,
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+            HttpServletRequest servletRequest) {
+        Instant authTime = jwtTokenProvider.extractAuthTime(authorization.substring("Bearer ".length())).orElse(null);
+        // 현재 비밀번호 확인은 비밀번호 변경·회원 탈퇴와 같은 시도 제한을 받는다.
+        String clientAddress = ClientAddressResolver.of(servletRequest);
+        passwordChangeAttemptLimiter.check(userId, clientAddress);
+        MeResponse response;
+        try {
+            response = authService.changeEmail(userId, request, refreshToken, authTime);
+        } catch (InvalidCredentialsException e) {
+            passwordChangeAttemptLimiter.recordFailure(userId, clientAddress);
+            throw e;
+        }
+        passwordChangeAttemptLimiter.recordSuccess(userId, clientAddress);
+        return ResponseEntity.ok(response);
     }
 
     @Operation(summary = "로그인 세션 목록",

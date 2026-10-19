@@ -39,6 +39,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -70,6 +71,8 @@ public class AuthService {
     private final UserMfaChallengeRepository mfaChallengeRepository;
     private final UserOAuthAccountRepository oauthAccountRepository;
     private final UserConsentService userConsentService;
+    private final Reauthenticator reauthenticator;
+    private final ApplicationEventPublisher eventPublisher;
     private final long refreshTokenExpirationSeconds;
     private final long mfaChallengeTtlSeconds;
 
@@ -83,6 +86,8 @@ public class AuthService {
                        UserMfaChallengeRepository mfaChallengeRepository,
                        UserOAuthAccountRepository oauthAccountRepository,
                        UserConsentService userConsentService,
+                       Reauthenticator reauthenticator,
+                       ApplicationEventPublisher eventPublisher,
                        @Value("${app.jwt.refresh-token-expiration-seconds}") long refreshTokenExpirationSeconds,
                        @Value("${app.auth.mfa.challenge-ttl-seconds:300}") long mfaChallengeTtlSeconds) {
         this.userRepository = userRepository;
@@ -95,6 +100,8 @@ public class AuthService {
         this.mfaChallengeRepository = mfaChallengeRepository;
         this.oauthAccountRepository = oauthAccountRepository;
         this.userConsentService = userConsentService;
+        this.reauthenticator = reauthenticator;
+        this.eventPublisher = eventPublisher;
         this.refreshTokenExpirationSeconds = refreshTokenExpirationSeconds;
         this.mfaChallengeTtlSeconds = mfaChallengeTtlSeconds;
     }
@@ -270,14 +277,22 @@ public class AuthService {
      * <p>새 주소로 받은 인증번호 토큰으로 그 메일함을 통제하는지 확인한다. 계정은
      * {@code (email, provider)}로 유일해야 하므로 같은 provider의 기존 계정과 부딪히면 거절한다.
      * OAuth 로그인은 {@code (provider, provider_user_id)}로 사용자를 찾으므로 이메일이 바뀌어도 끊기지 않는다.
+     *
+     * <p>먼저 {@link Reauthenticator}로 본인을 다시 확인한다({@code authTime}은 access token의 직접 로그인 시각,
+     * refresh로 받은 토큰이면 null). 커밋되면 기존 이메일로 변경 알림을 보낸다({@link EmailChangeNotificationListener}).
      */
     @Transactional
-    public MeResponse changeEmail(String userId, EmailChangeRequest request, String currentRefreshToken) {
+    public MeResponse changeEmail(String userId, EmailChangeRequest request, String currentRefreshToken,
+                                  Instant authTime) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException(userId));
         String newEmail = request.newEmail().trim().toLowerCase();
 
+        // 이메일을 바꾸면 비밀번호 재설정 메일도 새 주소로 가므로 계정을 넘겨줄 수 있다.
+        // 세션만 탈취한 사람이 바꾸지 못하게 본인을 다시 확인한다. 거절되면 토큰을 소비하기 전에 끝난다.
+        reauthenticator.verify(user, request.currentPassword(), request.mfaCode(), authTime);
         emailVerificationService.consumeForEmailChange(newEmail, request.verificationToken());
+        String previousEmail = user.getEmail();
 
         if (!newEmail.equals(user.getEmail())
                 && userRepository.existsByEmailAndProvider(newEmail, user.getProvider())) {
@@ -299,6 +314,9 @@ public class AuthService {
             throw exception;
         }
         int revoked = revokeOtherSessions(userId, currentRefreshToken);
+        if (!previousEmail.equals(newEmail)) {
+            eventPublisher.publishEvent(new EmailChangedEvent(userId, previousEmail, newEmail, Instant.now()));
+        }
         log.info("[이메일 변경 성공] userId={} revokedSessions={}", userId, revoked);
         return toMe(user);
     }

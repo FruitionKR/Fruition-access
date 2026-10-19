@@ -40,7 +40,7 @@
 | [`PUT /api/auth/me/avatar`](#summary-put-api-auth-me-avatar) | 인증된 사용자의 프로필 사진을 올리거나 바꿉니다. PNG·JPEG·WebP·GIF, 1MB 이하. |
 | [`DELETE /api/auth/me/avatar`](#summary-delete-api-auth-me-avatar) | 인증된 사용자의 프로필 사진을 지웁니다. |
 | [`POST /api/auth/me/consents`](#summary-post-api-auth-me-consents) | 이용약관이 바뀐 뒤 기존 회원의 동의를 다시 받습니다. |
-| [`PUT /api/auth/me/email`](#summary-put-api-auth-me-email) | 새 이메일로 받은 인증번호 토큰으로 계정 이메일을 바꿉니다. |
+| [`PUT /api/auth/me/email`](#summary-put-api-auth-me-email) | 본인을 다시 확인하고 새 이메일로 받은 인증번호 토큰으로 계정 이메일을 바꿉니다. 기존 이메일로 변경 알림이 갑니다. |
 | [`GET /api/auth/me/sessions`](#summary-get-api-auth-me-sessions) | 폐기되지 않은 로그인 세션을 반환합니다. |
 | [`DELETE /api/auth/me/sessions/{session_id}`](#summary-delete-api-auth-me-sessions-session-id) | 지정한 세션의 refresh token을 폐기합니다. |
 | [`PUT /api/auth/me/password`](#summary-put-api-auth-me-password) | 현재 비밀번호를 확인하고 새 비밀번호로 바꿉니다. |
@@ -1025,11 +1025,11 @@ curl -X DELETE "$ACCESS/api/auth/me/avatar" \
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | 새 이메일로 받은 인증번호 토큰으로 본인 확인 후 계정 이메일을 바꿉니다. |
+| 목적 | 본인을 다시 확인하고 새 이메일로 받은 인증번호 토큰으로 계정 이메일을 바꿉니다. 성공하면 기존 이메일로 변경 알림 메일이 갑니다. |
 | 입력 | **Body** — `EmailChangeRequest`<br>**Cookie** — `fruition_refresh_token`(선택) |
 | 출력 | `200` 변경 성공 — `MeResponse` |
-| 조건 | 인증 필요<br>`purpose=email_change`로 **새 주소에** 발급받은 토큰이어야 한다. |
-| 주요 오류 | `400` 유효하지 않은 `verification_token` — `ErrorResponse`<br>`401` 인증되지 않음 — `ErrorResponse`<br>`409` 같은 provider에 이미 그 이메일 계정이 있음 — `ErrorResponse` |
+| 조건 | 인증 필요<br>비밀번호 계정은 `current_password`, 소셜 전용 계정은 10분 안의 직접 로그인, MFA를 켰으면 `mfa_code`<br>`purpose=email_change`로 **새 주소에** 발급받은 토큰이어야 한다. |
+| 주요 오류 | `400` 유효하지 않은 `verification_token` — `ErrorResponse`<br>`401` 인증되지 않았거나 비밀번호·MFA 코드가 다름, 또는 소셜 계정이 최근에 로그인하지 않음 — `ErrorResponse`<br>`409` 같은 provider에 이미 그 이메일 계정이 있음 — `ErrorResponse`<br>`429` 비밀번호·MFA 확인 시도 횟수 제한 초과 — `ErrorResponse` |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -1041,17 +1041,21 @@ curl -X DELETE "$ACCESS/api/auth/me/avatar" \
 #### 2. 목적
 
 계정 이메일을 바꾼다. 인증번호는 **바꾸려는 새 주소로** 발송해, 그 메일함을 통제하는지 확인한다.
+이메일을 바꾸면 비밀번호 재설정 메일도 새 주소로 가므로 계정을 넘겨줄 수 있는 변경이다. 그래서
+세션(access token·refresh 쿠키)만 탈취한 사람이 바꾸지 못하도록 [회원 탈퇴](#summary-delete-api-auth-me)와
+같은 방식으로 **본인을 다시 확인**하고, 성공하면 **기존 이메일로 변경 알림**을 보낸다.
 
 흐름은 세 단계다.
 
 1. `POST /api/auth/email-verifications` — `{"email": "<새 주소>", "purpose": "email_change"}`
 2. `POST /api/auth/email-verifications/{verification_id}/confirm` — 코드 검증, `verification_token` 발급
-3. `PUT /api/auth/me/email` — 토큰으로 확정
+3. `PUT /api/auth/me/email` — 토큰과 본인 확인 값(`current_password` / `mfa_code`)으로 확정
 
 #### 3. Auth 필요 여부
 
 - 필요
-- `Authorization: Bearer <access_token>`을 검증한다.
+- `Authorization: Bearer <access_token>`을 검증한다. 소셜 전용 계정은 이 토큰의 직접 로그인 시각(`auth_time`)이
+  10분 안이어야 한다. refresh로 다시 받은 access token에는 `auth_time`이 없다.
 - refresh 쿠키(`fruition_refresh_token`)를 함께 읽어 남길 세션을 식별한다.
 
 #### 4. Request body
@@ -1060,12 +1064,16 @@ curl -X DELETE "$ACCESS/api/auth/me/avatar" \
 |---|---|---|---|---|
 | body | `new_email` | `string` | 예 | 바꿀 새 이메일(255자 이하). 서버가 trim·소문자화한다 |
 | body | `verification_token` | `string` | 예 | `purpose=email_change`로 받은 1회용 토큰 |
+| body | `current_password` | `string` | 비밀번호 계정은 예 | 현재 비밀번호(128자 이하). 소셜 전용 계정은 보내지 않는다(보내도 무시) |
+| body | `mfa_code` | `string` | MFA를 켰으면 예 | 인증 앱 코드 또는 복구 코드(64자 이하) |
 | cookie | `fruition_refresh_token` | `string` | 아니오 | 현재 세션의 refresh token. 없으면 모든 세션이 폐기된다 |
 
 ```json
 {
   "new_email": "new@example.com",
-  "verification_token": "EXAMPLE-verification-token-not-real-0000000"
+  "verification_token": "EXAMPLE-verification-token-not-real-0000000",
+  "current_password": "password1234",
+  "mfa_code": "482917"
 }
 ```
 
@@ -1092,7 +1100,15 @@ curl -X DELETE "$ACCESS/api/auth/me/avatar" \
 | `400` | `new_email` 형식 오류 등 | `INVALID_REQUEST` |
 | `400` | 토큰이 없거나 만료·소비됐거나 `new_email`과 다른 주소로 발급됨 | `INVALID_VERIFICATION_TOKEN` |
 | `401` | access token이 없거나 유효하지 않음 | — |
+| `401` | 비밀번호 계정인데 `current_password`가 없거나 다름 | `INVALID_CREDENTIALS` |
+| `401` | 소셜 전용 계정인데 10분 안에 직접 로그인한 access token이 아님 | `REAUTHENTICATION_REQUIRED` |
+| `401` | MFA를 켰는데 `mfa_code`가 없거나 틀림 | `INVALID_MFA_CODE` |
 | `409` | 같은 provider에 이미 그 이메일 계정이 있음 | `DUPLICATE_EMAIL` |
+| `429` | 현재 비밀번호 확인 실패가 한도를 넘음(비밀번호 변경·회원 탈퇴와 공유, 기본 5분에 5회) | `PASSWORD_CHANGE_RATE_LIMITED` |
+| `429` | MFA 코드 확인 실패가 한도를 넘음 | `MFA_RATE_LIMITED` |
+
+본인 확인 오류(`401`, `429`)는 토큰을 소비하지 않는다. 같은 `verification_token`으로 값을 고쳐 다시 보낼 수 있다.
+본인 확인은 토큰 검증보다 먼저 하므로, 본인 확인과 토큰이 모두 틀리면 본인 확인 오류가 돌아온다.
 
 사전 중복 조회 이후에 들어온 동시 요청도 커밋 전 `uq_users_email_provider` 제약 위반을 잡아
 같은 `409 DUPLICATE_EMAIL` 계약으로 반환한다.
@@ -1108,6 +1124,12 @@ curl -X DELETE "$ACCESS/api/auth/me/avatar" \
 - 계정은 `(email, provider)` 단위이므로 같은 provider에 그 이메일 계정이 이미 있으면 거부한다.
 - 변경에 성공하면 현재 세션만 남기고 나머지 refresh token을 폐기한다. refresh 쿠키가 없으면
   남길 세션을 특정할 수 없어 전부 폐기한다.
+- 본인 확인은 [회원 탈퇴](#summary-delete-api-auth-me)와 같다. 비밀번호 계정은 `current_password`, 비밀번호가 없는
+  소셜 전용 계정은 10분 안의 직접 로그인, MFA를 켠 계정은 추가로 `mfa_code`.
+- 변경이 커밋되면 **기존 이메일로** "계정 이메일이 변경되었습니다" 알림을 보낸다. 새 이메일은 로컬 파트 앞 두 글자만
+  남기고 가리며(`ne*****@example.com`), 변경 시각(KST)과 본인이 아닐 때의 대응 안내를 담는다. 발송은 커밋 뒤에 하며
+  실패해도 변경은 되돌리지 않고 서버 로그에만 남긴다. 같은 이메일로 다시 저장한 경우에는 보내지 않는다.
+  SMTP가 설정되지 않은 환경(`spring.mail.host` 없음)에서는 메일 대신 로그로 남긴다.
 
 #### 9. 예시 요청/응답
 
@@ -1116,7 +1138,7 @@ curl -X PUT "$ACCESS/api/auth/me/email" \
   -H 'Authorization: Bearer <access_token>' \
   -H 'Content-Type: application/json' \
   -b 'fruition_refresh_token=<refresh_token>' \
-  --data '{"new_email":"new@example.com","verification_token":"<verification_token>"}'
+  --data '{"new_email":"new@example.com","verification_token":"<verification_token>","current_password":"<current_password>"}'
 ```
 
 ```json

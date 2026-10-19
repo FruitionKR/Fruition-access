@@ -129,9 +129,9 @@ class VerificationTokenBindingIntegrationTest {
         String emailChangeToken = token(verified, "email_change");
         String resetToken = token(target, "password_reset");
 
-        assertThatThrownBy(() -> authService.changeEmail(ownerId, new EmailChangeRequest(target, emailChangeToken), null))
+        assertThatThrownBy(() -> authService.changeEmail(ownerId, new EmailChangeRequest(target, emailChangeToken, OLD_PASSWORD, null), null, null))
                 .isInstanceOf(InvalidVerificationTokenException.class);
-        assertThatThrownBy(() -> authService.changeEmail(ownerId, new EmailChangeRequest(target, resetToken), null))
+        assertThatThrownBy(() -> authService.changeEmail(ownerId, new EmailChangeRequest(target, resetToken, OLD_PASSWORD, null), null, null))
                 .isInstanceOf(InvalidVerificationTokenException.class);
         assertThat(users.findById(ownerId).orElseThrow().getEmail()).isEqualTo(owner);
     }

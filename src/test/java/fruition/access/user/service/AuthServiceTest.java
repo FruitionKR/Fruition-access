@@ -59,6 +59,8 @@ class AuthServiceTest {
     @Mock UserRepository userRepository;
     @Mock UserRefreshTokenRepository refreshTokenRepository;
     @Mock EmailVerificationService emailVerificationService;
+    @Mock Reauthenticator reauthenticator;
+    @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
     @Mock MfaService mfaService;
     @Mock UserMfaChallengeRepository mfaChallengeRepository;
     @Mock fruition.access.user.repository.UserOAuthAccountRepository oauthAccountRepository;
@@ -92,6 +94,7 @@ class AuthServiceTest {
     void setUp() {
         authService = new AuthService(userRepository, refreshTokenRepository, passwordEncoder, jwtTokenProvider,
                 oAuthExchangeCodeStore, emailVerificationService, mfaService, mfaChallengeRepository, oauthAccountRepository, userConsentService,
+                reauthenticator, eventPublisher,
                 1209600, 300);
     }
 
@@ -359,7 +362,7 @@ class AuthServiceTest {
         when(refreshTokenRepository.findAllByUserIdAndRevokedAtIsNull("user_1")).thenReturn(List.of(current, other));
 
         MeResponse response = authService.changeEmail("user_1",
-                new EmailChangeRequest("  New@Example.COM  ", "verification-token"), "current-refresh");
+                new EmailChangeRequest("  New@Example.COM  ", "verification-token"), "current-refresh", null);
 
         assertThat(response.email()).isEqualTo("new@example.com");
         assertThat(user.getEmail()).isEqualTo("new@example.com");
@@ -376,7 +379,7 @@ class AuthServiceTest {
         when(userRepository.existsByEmailAndProvider("taken@example.com", User.PROVIDER_LOCAL)).thenReturn(true);
 
         assertThatThrownBy(() -> authService.changeEmail("user_1",
-                new EmailChangeRequest("taken@example.com", "verification-token"), null))
+                new EmailChangeRequest("taken@example.com", "verification-token"), null, null))
                 .isInstanceOf(DuplicateEmailException.class);
         assertThat(user.getEmail()).isEqualTo("user@example.com");
         verifyNoInteractions(refreshTokenRepository);
@@ -391,7 +394,7 @@ class AuthServiceTest {
         when(refreshTokenRepository.findAllByUserIdAndRevokedAtIsNull("user_1")).thenReturn(List.of());
 
         authService.changeEmail("user_1",
-                new EmailChangeRequest("shared@example.com", "verification-token"), null);
+                new EmailChangeRequest("shared@example.com", "verification-token"), null, null);
 
         assertThat(user.getEmail()).isEqualTo("shared@example.com");
     }
@@ -405,7 +408,7 @@ class AuthServiceTest {
                 .when(emailVerificationService).consumeForEmailChange("new@example.com", "bad-token");
 
         assertThatThrownBy(() -> authService.changeEmail("user_1",
-                new EmailChangeRequest("new@example.com", "bad-token"), null))
+                new EmailChangeRequest("new@example.com", "bad-token"), null, null))
                 .isInstanceOf(InvalidVerificationTokenException.class);
         assertThat(user.getEmail()).isEqualTo("user@example.com");
         verifyNoInteractions(refreshTokenRepository);
@@ -418,7 +421,7 @@ class AuthServiceTest {
         doThrow(new DataIntegrityViolationException("duplicate", violation)).when(userRepository).flush();
 
         assertThatThrownBy(() -> authService.changeEmail("user_1",
-                new EmailChangeRequest("new@example.com", "verification-token"), null))
+                new EmailChangeRequest("new@example.com", "verification-token"), null, null))
                 .isInstanceOf(DuplicateEmailException.class);
         verifyNoInteractions(refreshTokenRepository);
     }
@@ -432,7 +435,7 @@ class AuthServiceTest {
         doThrow(failure).when(userRepository).flush();
 
         assertThatThrownBy(() -> authService.changeEmail("user_1",
-                new EmailChangeRequest("new@example.com", "verification-token"), null))
+                new EmailChangeRequest("new@example.com", "verification-token"), null, null))
                 .isSameAs(failure);
         verifyNoInteractions(refreshTokenRepository);
     }

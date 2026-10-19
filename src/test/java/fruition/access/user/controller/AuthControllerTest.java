@@ -548,7 +548,7 @@ class AuthControllerTest {
     @Test
     void changeEmail_authenticated_returns200() throws Exception {
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
-        when(authService.changeEmail(eq("user_1f9a74af"), any(), eq("current-refresh"))).thenReturn(
+        when(authService.changeEmail(eq("user_1f9a74af"), any(), eq("current-refresh"), any())).thenReturn(
                 new MeResponse("user_1f9a74af", "new@example.com", "이름", null, Instant.now(), java.util.List.of(), false));
 
         mockMvc.perform(put("/api/auth/me/email")
@@ -585,7 +585,7 @@ class AuthControllerTest {
     @Test
     void changeEmail_duplicate_returns409() throws Exception {
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
-        when(authService.changeEmail(eq("user_1f9a74af"), any(), any()))
+        when(authService.changeEmail(eq("user_1f9a74af"), any(), any(), any()))
                 .thenThrow(new DuplicateEmailException("taken@example.com"));
 
         mockMvc.perform(put("/api/auth/me/email")

@@ -396,12 +396,17 @@ paths:
       - Auth
   /api/auth/me/email:
     put:
-      description: 새 이메일로 받은 인증번호 토큰으로 본인 확인 후 계정 이메일을 바꿉니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.
+      description: "본인을 다시 확인하고 새 이메일로 받은 인증번호 토큰으로 계정 이메일을 바꿉니다. 비밀번호 계정은 current_password를, 소셜 전용 계정은 10분 안에 다시 로그인해 받은 access token을 씁니다. MFA를 켰으면 mfa_code도 필요합니다. 본인 확인에 실패하면 verification_token은 소비되지 않습니다. 성공하면 현재 세션을 제외한 refresh token이 폐기되고 기존 이메일로 변경 알림 메일이 갑니다."
       operationId: changeEmail
       parameters:
       - in: cookie
         name: fruition_refresh_token
         required: false
+        schema:
+          type: string
+      - in: header
+        name: Authorization
+        required: true
         schema:
           type: string
       requestBody:
@@ -428,13 +433,19 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-          description: 인증되지 않음
+          description: "인증되지 않았거나 비밀번호·MFA 코드가 다름, 또는 소셜 계정이 최근에 로그인하지 않음(REAUTHENTICATION_REQUIRED)"
         "409":
           content:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
           description: 같은 provider에 이미 그 이메일 계정이 있음
+        "429":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 비밀번호·MFA 확인 시도 횟수 제한 초과
       summary: 이메일 변경
       tags:
       - Auth
@@ -1938,6 +1949,18 @@ components:
     EmailChangeRequest:
       type: object
       properties:
+        current_password:
+          type: string
+          description: 비밀번호 계정의 현재 비밀번호(필수). 소셜 전용 계정은 비우고 10분 안에 다시 로그인한 토큰으로 요청한다.
+          example: password1234
+          maxLength: 128
+          minLength: 0
+        mfa_code:
+          type: string
+          description: MFA를 켠 계정의 인증 앱 코드 또는 복구 코드
+          example: 482917
+          maxLength: 64
+          minLength: 0
         new_email:
           type: string
           format: email

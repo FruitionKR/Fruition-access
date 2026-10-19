@@ -49,8 +49,8 @@ class EmailChangeTokenConcurrencyTest {
         var executor = Executors.newSingleThreadExecutor();
         try {
             Future<?> second = new TransactionTemplate(transactionManager).execute(status -> {
-                authService.changeEmail("token_local", request, null);
-                Future<?> competing = executor.submit(() -> authService.changeEmail("token_google", request, null));
+                authService.changeEmail("token_local", request, null, Instant.now());
+                Future<?> competing = executor.submit(() -> authService.changeEmail("token_google", request, null, Instant.now()));
                 // 첫 소비를 미커밋 상태로 유지하고, 두 번째 요청의 실제 DB 잠금 대기를 확인한다.
                 awaitTokenLockWait();
                 return competing;
