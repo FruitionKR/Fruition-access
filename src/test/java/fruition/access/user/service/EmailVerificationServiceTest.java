@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -159,7 +160,7 @@ class EmailVerificationServiceTest {
     }
 
     @Test
-    void request_withDevFixedCode_sendsFixedCode() {
+    void request_withDevFixedCode_sendsRandomCodeAndRejectsBypass() {
         service = new EmailVerificationService(
                 verificationRepository, userRepository, sender, transactionTemplate,
                 300, 600, 60, 5, 5, "9700");
@@ -172,7 +173,18 @@ class EmailVerificationServiceTest {
 
         service.request(new EmailVerificationRequest("test@example.com", "password_reset"));
 
-        verify(sender).send("test@example.com", "password_reset", "9700");
+        ArgumentCaptor<String> code = ArgumentCaptor.forClass(String.class);
+        verify(sender).send(eq("test@example.com"), eq("password_reset"), code.capture());
+        assertThat(code.getValue()).matches("[0-9]{6}").isNotEqualTo("9700");
+        ArgumentCaptor<EmailVerification> saved = ArgumentCaptor.forClass(EmailVerification.class);
+        verify(verificationRepository).save(saved.capture());
+        EmailVerification verification = saved.getValue();
+        assertThat(verification.getCodeHash()).isEqualTo(sha256(code.getValue()));
+        when(verificationRepository.findById(verification.getId())).thenReturn(Optional.of(verification));
+        assertThatThrownBy(() -> service.confirm(verification.getId(), new VerificationConfirmRequest("9700")))
+                .isInstanceOf(InvalidVerificationCodeException.class);
+        assertThat(service.confirm(verification.getId(), new VerificationConfirmRequest(code.getValue()))
+                .verificationToken()).isNotBlank();
     }
 
     // ----- confirm -----

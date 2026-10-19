@@ -50,7 +50,8 @@ public class EmailVerificationService {
     private final long resendCooldownSeconds;
     private final long dailyLimit;
     private final int maxAttempts;
-    private final String devFixedCode;
+    // 운영 배포를 위해 개발용 고정 인증번호 사용을 비활성화한다.
+    // private final String devFixedCode;
 
     public EmailVerificationService(
             EmailVerificationRepository verificationRepository,
@@ -72,7 +73,7 @@ public class EmailVerificationService {
         this.resendCooldownSeconds = resendCooldownSeconds;
         this.dailyLimit = dailyLimit;
         this.maxAttempts = maxAttempts;
-        this.devFixedCode = devFixedCode;
+        // this.devFixedCode = devFixedCode;
     }
 
     public EmailVerificationResponse request(EmailVerificationRequest request) {
@@ -97,7 +98,8 @@ public class EmailVerificationService {
             }
         }
 
-        String code = devFixedCode.isBlank() ? generateCode() : devFixedCode;
+        // String code = devFixedCode.isBlank() ? generateCode() : devFixedCode;
+        String code = generateCode();
         String id = "ev_" + UUID.randomUUID().toString().replace("-", "");
 
         // DB 쓰기만 트랜잭션으로 처리하고 커밋한다. SMTP 발송을 트랜잭션 안에서 하면

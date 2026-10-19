@@ -7,6 +7,9 @@ import fruition.access.user.dto.VerificationConfirmRequest;
 import fruition.access.user.exception.InvalidVerificationCodeException;
 import fruition.access.user.exception.VerificationCodeAttemptsExceededException;
 import fruition.access.user.repository.EmailVerificationRepository;
+import fruition.access.user.mail.EmailVerificationSender;
+import org.mockito.ArgumentCaptor;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -16,6 +19,8 @@ import org.springframework.test.context.TestPropertySource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 
 /**
  * Mockito 단위 테스트는 in-memory 엔티티의 attempt_count 증가만 확인할 뿐,
@@ -31,37 +36,40 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Import(TestcontainersConfiguration.class)
 @ActiveProfiles("test")
 @TestPropertySource(properties = {
-        "app.auth.email-verification.dev-fixed-code=135790",
         "app.auth.email-verification.max-attempts=3"
 })
 class EmailVerificationConfirmIntegrationTest {
 
     @Autowired EmailVerificationService emailVerificationService;
     @Autowired EmailVerificationRepository verificationRepository;
+    @MockitoBean EmailVerificationSender sender;
 
     @Test
     void wrongCode_persistsAttemptCountAcrossException_andBlocksAfterMaxAttempts() {
-        // dev-fixed-code=135790이 정답 코드. password_reset은 사용자 존재 없이 발급 가능.
+        // password_reset은 사용자 존재 없이 발급 가능. 실제 발송 코드를 캡처한다.
         String verificationId = emailVerificationService
                 .request(new EmailVerificationRequest("reset@example.com", "password_reset"))
                 .verificationId();
+        ArgumentCaptor<String> code = ArgumentCaptor.forClass(String.class);
+        verify(sender).send(eq("reset@example.com"), eq("password_reset"), code.capture());
+        String wrongCode = "000000".equals(code.getValue()) ? "000001" : "000000";
 
         // 오입력 1회 → 예외를 던지지만 attempt_count는 커밋되어야 한다(noRollbackFor).
-        assertThatThrownBy(() -> emailVerificationService.confirm(verificationId, new VerificationConfirmRequest("000000")))
+        assertThatThrownBy(() -> emailVerificationService.confirm(verificationId, new VerificationConfirmRequest(wrongCode)))
                 .isInstanceOf(InvalidVerificationCodeException.class);
         assertThat(reloadAttemptCount(verificationId)).isEqualTo(1);
 
         // 오입력 2회, 3회 → 누적 유지.
-        assertThatThrownBy(() -> emailVerificationService.confirm(verificationId, new VerificationConfirmRequest("000000")))
+        assertThatThrownBy(() -> emailVerificationService.confirm(verificationId, new VerificationConfirmRequest(wrongCode)))
                 .isInstanceOf(InvalidVerificationCodeException.class);
         assertThat(reloadAttemptCount(verificationId)).isEqualTo(2);
 
-        assertThatThrownBy(() -> emailVerificationService.confirm(verificationId, new VerificationConfirmRequest("000000")))
+        assertThatThrownBy(() -> emailVerificationService.confirm(verificationId, new VerificationConfirmRequest(wrongCode)))
                 .isInstanceOf(InvalidVerificationCodeException.class);
         assertThat(reloadAttemptCount(verificationId)).isEqualTo(3);
 
         // max-attempts(3) 도달 후에는 정답 코드를 넣어도 차단된다.
-        assertThatThrownBy(() -> emailVerificationService.confirm(verificationId, new VerificationConfirmRequest("135790")))
+        assertThatThrownBy(() -> emailVerificationService.confirm(verificationId, new VerificationConfirmRequest(code.getValue())))
                 .isInstanceOf(VerificationCodeAttemptsExceededException.class);
     }
 
