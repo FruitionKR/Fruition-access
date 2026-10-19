@@ -63,7 +63,7 @@ class EmailVerificationServiceTest {
         }).when(transactionTemplate).executeWithoutResult(any());
         service = new EmailVerificationService(
                 verificationRepository, userRepository, sender, transactionTemplate,
-                300, 600, 60, 5, 5, "");
+                300, 600, 60, 5, 5);
     }
 
     private static String sha256(String value) {
@@ -160,10 +160,7 @@ class EmailVerificationServiceTest {
     }
 
     @Test
-    void request_withDevFixedCode_sendsRandomCodeAndRejectsBypass() {
-        service = new EmailVerificationService(
-                verificationRepository, userRepository, sender, transactionTemplate,
-                300, 600, 60, 5, 5, "9700");
+    void request_alwaysSendsRandomSixDigitCode_andRejects9700() {
         when(verificationRepository.findTopByEmailAndPurposeOrderByCreatedAtDesc(anyString(), anyString()))
                 .thenReturn(Optional.empty());
         when(verificationRepository.countByEmailAndPurposeAndCreatedAtAfter(anyString(), anyString(), any()))

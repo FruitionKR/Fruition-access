@@ -50,8 +50,6 @@ public class EmailVerificationService {
     private final long resendCooldownSeconds;
     private final long dailyLimit;
     private final int maxAttempts;
-    // 운영 배포를 위해 개발용 고정 인증번호 사용을 비활성화한다.
-    // private final String devFixedCode;
 
     public EmailVerificationService(
             EmailVerificationRepository verificationRepository,
@@ -62,8 +60,7 @@ public class EmailVerificationService {
             @Value("${app.auth.email-verification.token-ttl-seconds}") long tokenTtlSeconds,
             @Value("${app.auth.email-verification.resend-cooldown-seconds}") long resendCooldownSeconds,
             @Value("${app.auth.email-verification.daily-limit}") long dailyLimit,
-            @Value("${app.auth.email-verification.max-attempts}") int maxAttempts,
-            @Value("${app.auth.email-verification.dev-fixed-code:}") String devFixedCode) {
+            @Value("${app.auth.email-verification.max-attempts}") int maxAttempts) {
         this.verificationRepository = verificationRepository;
         this.userRepository = userRepository;
         this.sender = sender;
@@ -73,7 +70,6 @@ public class EmailVerificationService {
         this.resendCooldownSeconds = resendCooldownSeconds;
         this.dailyLimit = dailyLimit;
         this.maxAttempts = maxAttempts;
-        // this.devFixedCode = devFixedCode;
     }
 
     public EmailVerificationResponse request(EmailVerificationRequest request) {
@@ -98,7 +94,6 @@ public class EmailVerificationService {
             }
         }
 
-        // String code = devFixedCode.isBlank() ? generateCode() : devFixedCode;
         String code = generateCode();
         String id = "ev_" + UUID.randomUUID().toString().replace("-", "");
 
