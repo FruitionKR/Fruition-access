@@ -695,6 +695,72 @@ paths:
       summary: 비밀번호 변경
       tags:
       - Auth
+  /api/auth/me/password/verification:
+    post:
+      description: "로그인한 사용자의 계정 이메일로 비밀번호 변경용 인증번호를 보냅니다. 받는 주소는 요청에서 받지 않습니다. 받은 코드는 POST /api/auth/email-verifications/{verification_id}/confirm으로 확인합니다."
+      operationId: requestPasswordChangeVerification
+      responses:
+        "202":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/EmailVerificationResponse"
+          description: 인증번호 발급
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 비밀번호를 쓰지 않는 계정(PASSWORD_LOGIN_UNAVAILABLE)
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 인증되지 않음
+        "429":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 재요청 제한 초과
+      summary: 비밀번호 변경 인증번호 발급
+      tags:
+      - Auth
+  /api/auth/me/password/verified:
+    put:
+      description: 계정 이메일로 받은 인증번호 토큰으로 본인을 확인하고 비밀번호를 바꿉니다. 현재 비밀번호를 몰라도 됩니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.
+      operationId: changePasswordWithVerification
+      parameters:
+      - in: cookie
+        name: fruition_refresh_token
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifiedPasswordChangeRequest"
+        required: true
+      responses:
+        "204":
+          description: 변경 성공
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: "잘못된 요청, 유효하지 않은 verification_token, 또는 비밀번호를 쓰지 않는 계정"
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 인증되지 않음
+      summary: 인증번호로 비밀번호 변경
+      tags:
+      - Auth
   /api/auth/me/sessions:
     get:
       description: 폐기되지 않은 로그인 세션을 최근 로그인 순으로 반환합니다.
@@ -2386,6 +2452,23 @@ components:
           type: string
           description: 1회용 토큰. signup 또는 password-reset 요청에 그대로 실어 보낸다.
           example: EXAMPLE-verification-token-not-real-0000000
+    VerifiedPasswordChangeRequest:
+      type: object
+      properties:
+        new_password:
+          type: string
+          description: 새 비밀번호(8~72자). 성공하면 현재 세션을 제외한 refresh token이 폐기된다.
+          example: newPassword1234
+          maxLength: 72
+          minLength: 8
+        verification_token:
+          type: string
+          description: POST /api/auth/me/password/verification으로 받은 인증번호를 확인해 얻은 1회용 토큰
+          example: EXAMPLE-verification-token-not-real-0000000
+          minLength: 1
+      required:
+      - new_password
+      - verification_token
     Workspace:
       type: object
       properties:

@@ -13,8 +13,10 @@ import fruition.access.user.dto.MeResponse;
 import fruition.access.user.dto.OAuthExchangeRequest;
 import fruition.access.user.dto.DisplayNameUpdateRequest;
 import fruition.access.user.dto.EmailChangeRequest;
+import fruition.access.user.dto.EmailVerificationResponse;
 import fruition.access.user.dto.PasswordChangeRequest;
 import fruition.access.user.dto.PasswordResetRequest;
+import fruition.access.user.dto.VerifiedPasswordChangeRequest;
 import fruition.access.user.dto.RefreshRequest;
 import fruition.access.user.exception.DuplicateEmailException;
 import fruition.access.user.dto.SessionListResponse;
@@ -217,6 +219,49 @@ public class AuthService {
 
         int revoked = revokeOtherSessions(userId, currentRefreshToken);
         log.info("[비밀번호 변경 성공] userId={} revokedSessions={}", userId, revoked);
+    }
+
+    /**
+     * 로그인 상태의 비밀번호 변경용 인증번호를 세션 사용자의 계정 이메일로 보낸다.
+     *
+     * <p>받는 주소를 요청 본문에서 받지 않아, 로그인 세션만으로 다른 계정의 메일함에 코드를 보낼 수 없다.
+     * 메일 발송이 트랜잭션 밖에서 일어나도록 이 메서드는 트랜잭션을 열지 않는다.
+     */
+    public EmailVerificationResponse requestPasswordChangeVerification(String userId) {
+        User user = passwordUser(userId);
+        EmailVerificationResponse response = emailVerificationService.requestForPasswordChange(user.getEmail());
+        log.info("[비밀번호 변경 인증 요청] userId={} verificationId={}", userId, response.verificationId());
+        return response;
+    }
+
+    /**
+     * 계정 이메일로 받은 인증번호 토큰으로 본인을 확인하고 비밀번호를 바꾼다.
+     *
+     * <p>현재 비밀번호를 잊은 로그인 사용자를 위한 경로다. 토큰은 발급 당시의 계정 이메일과
+     * {@code password_change} 목적에 묶여 있어, 다른 이메일·다른 목적으로 받은 토큰은 쓸 수 없다.
+     * {@link #changePassword}처럼 현재 세션만 남기고 나머지를 폐기한다.
+     */
+    @Transactional
+    public void changePasswordWithVerification(String userId, VerifiedPasswordChangeRequest request,
+                                               String currentRefreshToken) {
+        User user = passwordUser(userId);
+        emailVerificationService.consumeForPasswordChange(user.getEmail(), request.verificationToken());
+
+        user.changePassword(passwordEncoder.encode(request.newPassword()));
+
+        int revoked = revokeOtherSessions(userId, currentRefreshToken);
+        log.info("[비밀번호 변경 성공] method=email_verification userId={} revokedSessions={}", userId, revoked);
+    }
+
+    /** 비밀번호 로그인을 쓰는 계정만 돌려준다. OAuth 전용 계정의 비밀번호는 로그인에 쓰이지 않는다. */
+    private User passwordUser(String userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException(userId));
+        if (user.getPasswordHash() == null) {
+            log.warn("[비밀번호 변경 거부] reason=no_password userId={} provider={}", userId, user.getProvider());
+            throw new PasswordLoginUnavailableException(List.of(user.getProvider()));
+        }
+        return user;
     }
 
     /**

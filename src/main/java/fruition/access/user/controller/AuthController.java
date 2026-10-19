@@ -34,6 +34,7 @@ import fruition.access.user.dto.SignupRequest;
 import fruition.access.user.dto.SignupResponse;
 import fruition.access.user.dto.VerificationConfirmRequest;
 import fruition.access.user.dto.VerificationConfirmResponse;
+import fruition.access.user.dto.VerifiedPasswordChangeRequest;
 import fruition.access.user.exception.InvalidCredentialsException;
 import fruition.access.user.exception.InvalidRefreshTokenException;
 import fruition.access.user.mfa.MfaService;
@@ -416,6 +417,45 @@ public class AuthController {
             throw e;
         }
         passwordChangeAttemptLimiter.recordSuccess(userId, clientAddress);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "비밀번호 변경 인증번호 발급",
+            description = "로그인한 사용자의 계정 이메일로 비밀번호 변경용 인증번호를 보냅니다. 받는 주소는 요청에서 받지 않습니다."
+                    + " 받은 코드는 POST /api/auth/email-verifications/{verification_id}/confirm으로 확인합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "202", description = "인증번호 발급",
+            content = @Content(schema = @Schema(implementation = EmailVerificationResponse.class))),
+        @ApiResponse(responseCode = "400", description = "비밀번호를 쓰지 않는 계정(PASSWORD_LOGIN_UNAVAILABLE)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "429", description = "재요청 제한 초과",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/me/password/verification")
+    public ResponseEntity<EmailVerificationResponse> requestPasswordChangeVerification(
+            @AuthenticationPrincipal String userId) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(authService.requestPasswordChangeVerification(userId));
+    }
+
+    @Operation(summary = "인증번호로 비밀번호 변경",
+            description = "계정 이메일로 받은 인증번호 토큰으로 본인을 확인하고 비밀번호를 바꿉니다. 현재 비밀번호를 몰라도 됩니다."
+                    + " 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "변경 성공"),
+        @ApiResponse(responseCode = "400", description = "잘못된 요청, 유효하지 않은 verification_token,"
+                + " 또는 비밀번호를 쓰지 않는 계정",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PutMapping("/me/password/verified")
+    public ResponseEntity<Void> changePasswordWithVerification(
+            @AuthenticationPrincipal String userId,
+            @Valid @RequestBody VerifiedPasswordChangeRequest request,
+            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshToken) {
+        authService.changePasswordWithVerification(userId, request, refreshToken);
         return ResponseEntity.noContent().build();
     }
 

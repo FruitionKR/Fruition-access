@@ -4,7 +4,7 @@
 
 가입·이메일 인증·로그인·토큰 API다.
 
-- API 수: 28
+- API 수: 30
 - 호출 연결: [access-svc 호출 연결 요약](README.md#호출-연결-요약) 참고
 - 약관 동의 단계: [약관 동의 플래그](#약관-동의-플래그-applegalconsent-required) 참고
 
@@ -44,6 +44,8 @@
 | [`GET /api/auth/me/sessions`](#summary-get-api-auth-me-sessions) | 폐기되지 않은 로그인 세션을 반환합니다. |
 | [`DELETE /api/auth/me/sessions/{session_id}`](#summary-delete-api-auth-me-sessions-session-id) | 지정한 세션의 refresh token을 폐기합니다. |
 | [`PUT /api/auth/me/password`](#summary-put-api-auth-me-password) | 현재 비밀번호를 확인하고 새 비밀번호로 바꿉니다. |
+| [`POST /api/auth/me/password/verification`](#summary-post-api-auth-me-password-verification) | 로그인한 사용자의 계정 이메일로 비밀번호 변경용 인증번호를 보냅니다. |
+| [`PUT /api/auth/me/password/verified`](#summary-put-api-auth-me-password-verified) | 계정 이메일 인증번호 토큰으로 본인을 확인하고 비밀번호를 바꿉니다(현재 비밀번호 불필요). |
 | [`POST /api/auth/login/mfa`](#summary-post-api-auth-login-mfa) | 다단계 인증 코드로 로그인을 마칩니다. |
 | [`GET /api/auth/me/mfa`](#summary-get-api-auth-me-mfa) | 다단계 인증 상태를 반환합니다. |
 | [`POST /api/auth/me/mfa`](#summary-post-api-auth-me-mfa) | secret과 복구 코드를 발급합니다(등록 1단계). |
@@ -1405,6 +1407,203 @@ HTTP/1.1 204 No Content
 - 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-put-api-auth-me-password)
+
+</details>
+
+<a id="summary-post-api-auth-me-password-verification"></a>
+### `POST /api/auth/me/password/verification`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 로그인한 사용자의 계정 이메일로 비밀번호 변경용 인증번호(`purpose=password_change`)를 보냅니다. |
+| 입력 | 본문 없음 |
+| 출력 | `202` 인증번호 발급 — `EmailVerificationResponse` |
+| 조건 | 인증 필요<br>비밀번호를 쓰는 계정(`provider=local`)이어야 한다. |
+| 주요 오류 | `400` 비밀번호를 쓰지 않는 계정 — `ErrorResponse`<br>`401` 인증되지 않음<br>`429` 재요청 제한 초과 — `ErrorResponse` |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+#### 1. Method + Path
+
+`POST /api/auth/me/password/verification`
+
+#### 2. 목적
+
+현재 비밀번호를 모르는 로그인 사용자가 비밀번호를 바꾸는 흐름의 1단계다. 받는 주소를 요청에서 받지 않고
+**access token 사용자의 계정 이메일**로만 보낸다. 로그인 세션만으로 다른 메일함에 코드를 보내거나 다른 계정의
+비밀번호를 바꿀 수 없게 하기 위해서다.
+
+전체 흐름:
+
+1. `POST /api/auth/me/password/verification` — 계정 이메일로 코드 발송, `verification_id` 발급
+2. [`POST /api/auth/email-verifications/{verification_id}/confirm`](#summary-post-api-auth-email-verifications-verification-id-confirm) — 코드 검증, `verification_token` 발급
+3. [`PUT /api/auth/me/password/verified`](#summary-put-api-auth-me-password-verified) — 토큰과 새 비밀번호로 변경
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+없음.
+
+#### 5. Response body
+
+- HTTP `202`: `EmailVerificationResponse` — [`POST /api/auth/email-verifications`](#summary-post-api-auth-email-verifications)와 같다.
+
+```json
+{
+  "verification_id": "ev_0123456789abcdef0123456789abcdef",
+  "expires_in": 300,
+  "retry_after": 60
+}
+```
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 코드 |
+|---|---|---|
+| `400` | OAuth로만 가입해 비밀번호가 없는 계정 | `PASSWORD_LOGIN_UNAVAILABLE` |
+| `401` | access token이 없거나 유효하지 않음 | — |
+| `429` | 같은 계정 이메일의 `password_change` 재요청 쿨다운·일일 한도 초과 | `VERIFICATION_RATE_LIMITED` |
+| `502` | 메일 발송 실패 | `EMAIL_SEND_FAILED` |
+
+#### 7. Pagination / filtering
+
+- 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 토큰의 사용자 본인만 대상이다. 받는 주소는 계정에 저장된 이메일이다.
+- `password_change` 코드는 이 경로로만 발급된다. 공개 `POST /api/auth/email-verifications`의 `purpose`로는
+  받을 수 없다(`400 INVALID_REQUEST`).
+- 재요청 제한은 `(계정 이메일, password_change)` 단위로 다른 목적과 같은 규칙(쿨다운·일일 한도)을 따른다.
+  새 코드를 받으면 같은 이메일·목적의 이전 미사용 코드는 만료된다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X POST "$ACCESS/api/auth/me/password/verification" \
+  -H 'Authorization: Bearer <access_token>' \
+  -i
+```
+
+```
+HTTP/1.1 202 Accepted
+Content-Type: application/json
+
+{"verification_id":"ev_0123456789abcdef0123456789abcdef","expires_in":300,"retry_after":60}
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: requestPasswordChangeVerification`)
+- 호출자: **호출자 미확인** (frontend 로그인 상태 비밀번호 변경 전환 예정)
+- 하위 호출: 없음
+
+[↑ 요약으로 돌아가기](#summary-post-api-auth-me-password-verification)
+
+</details>
+
+<a id="summary-put-api-auth-me-password-verified"></a>
+### `PUT /api/auth/me/password/verified`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 계정 이메일로 받은 인증번호 토큰으로 본인을 확인하고 비밀번호를 바꿉니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다. |
+| 입력 | **Body** — `VerifiedPasswordChangeRequest`<br>**Cookie** — `fruition_refresh_token`(선택) |
+| 출력 | `204` 변경 성공 — 본문 없음 |
+| 조건 | 인증 필요<br>비밀번호를 쓰는 계정(`provider=local`)이어야 한다. |
+| 주요 오류 | `400` 유효하지 않은 verification_token, 비밀번호를 쓰지 않는 계정 — `ErrorResponse`<br>`401` 인증되지 않음 |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+#### 1. Method + Path
+
+`PUT /api/auth/me/password/verified`
+
+#### 2. 목적
+
+[`POST /api/auth/me/password/verification`](#summary-post-api-auth-me-password-verification)으로 시작한 흐름의
+마지막 단계다. [`PUT /api/auth/me/password`](#summary-put-api-auth-me-password)는 현재 비밀번호로, 이 API는
+계정 이메일 인증번호로 본인을 확인한다.
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+- refresh 쿠키(`fruition_refresh_token`)를 함께 읽어 현재 세션을 식별한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| body | `new_password` | `string` | 예 | 새 비밀번호(8~72자) |
+| body | `verification_token` | `string` | 예 | `POST /api/auth/me/password/verification`의 코드를 confirm해 받은 1회용 토큰 |
+| cookie | `fruition_refresh_token` | `string` | 아니오 | 현재 세션의 refresh token. 없으면 모든 세션이 폐기된다 |
+
+```json
+{
+  "new_password": "newPassword1234",
+  "verification_token": "EXAMPLE-verification-token-not-real-0000000"
+}
+```
+
+#### 5. Response body
+
+- HTTP `204`: 변경 성공, 본문 없음
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 코드 |
+|---|---|---|
+| `400` | `new_password` 길이 위반 등 | `INVALID_REQUEST` |
+| `400` | 토큰이 없거나 만료·사용됨, 또는 이 계정 이메일·`password_change` 목적으로 발급된 토큰이 아님 | `INVALID_VERIFICATION_TOKEN` |
+| `400` | OAuth로만 가입해 비밀번호가 없는 계정 | `PASSWORD_LOGIN_UNAVAILABLE` |
+| `401` | access token이 없거나 유효하지 않음 | — |
+
+#### 7. Pagination / filtering
+
+- 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 토큰의 사용자 본인만 대상이다.
+- `verification_token`은 발급 당시 **계정 이메일**과 `password_change` 목적에 묶인다. 다른 계정 이메일로 받은
+  토큰, `password_reset`·`signup`·`email_change` 토큰은 모두 `INVALID_VERIFICATION_TOKEN`이다. 반대로 이 토큰은
+  비로그인 `POST /api/auth/password-reset`에 쓸 수 없다.
+- 코드 요청 뒤 이메일을 바꿨다면 옛 이메일로 받은 토큰은 거절된다. 새 이메일로 다시 요청한다.
+- 토큰은 1회용이며 `verification_token`의 만료(`expires_in`) 안에 써야 한다. 거절된 요청은 토큰을 소비하지 않는다.
+- 성공하면 [`PUT /api/auth/me/password`](#summary-put-api-auth-me-password)처럼 **현재 세션을 제외한**
+  refresh token을 폐기한다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X PUT "$ACCESS/api/auth/me/password/verified" \
+  -H 'Authorization: Bearer <access_token>' \
+  -H 'Content-Type: application/json' \
+  -b 'fruition_refresh_token=<refresh_token>' \
+  --data '{"new_password":"newPassword1234","verification_token":"<verification_token>"}' \
+  -i
+```
+
+```
+HTTP/1.1 204 No Content
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: changePasswordWithVerification`)
+- 호출자: **호출자 미확인** (frontend 로그인 상태 비밀번호 변경 전환 예정)
+- 하위 호출: 없음
+
+[↑ 요약으로 돌아가기](#summary-put-api-auth-me-password-verified)
 
 </details>
 

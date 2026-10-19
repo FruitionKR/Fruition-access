@@ -38,6 +38,8 @@ public class EmailVerificationService {
     private static final String PURPOSE_SIGNUP = "signup";
     private static final String PURPOSE_PASSWORD_RESET = "password_reset";
     private static final String PURPOSE_EMAIL_CHANGE = "email_change";
+    // 로그인 상태의 비밀번호 변경 전용. 공개 발급 API(purpose 패턴)로는 받을 수 없고 세션 사용자 이메일로만 발급한다.
+    private static final String PURPOSE_PASSWORD_CHANGE = "password_change";
 
     private final EmailVerificationRepository verificationRepository;
     private final UserRepository userRepository;
@@ -97,6 +99,17 @@ public class EmailVerificationService {
             }
         }
 
+        return issue(email, purpose);
+    }
+
+    /** 로그인한 사용자의 계정 이메일로 비밀번호 변경용 인증번호를 보낸다. */
+    public EmailVerificationResponse requestForPasswordChange(String accountEmail) {
+        String email = accountEmail.trim().toLowerCase();
+        enforceRateLimit(email, PURPOSE_PASSWORD_CHANGE);
+        return issue(email, PURPOSE_PASSWORD_CHANGE);
+    }
+
+    private EmailVerificationResponse issue(String email, String purpose) {
         String code = devFixedCode.isBlank() ? generateCode() : devFixedCode;
         String id = "ev_" + UUID.randomUUID().toString().replace("-", "");
 
@@ -159,6 +172,11 @@ public class EmailVerificationService {
     @Transactional
     public void consumeForEmailChange(String email, String token) {
         consumeToken(email, token, PURPOSE_EMAIL_CHANGE);
+    }
+
+    @Transactional
+    public void consumeForPasswordChange(String email, String token) {
+        consumeToken(email, token, PURPOSE_PASSWORD_CHANGE);
     }
 
     private void consumeToken(String email, String token, String purpose) {
