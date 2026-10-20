@@ -9,12 +9,14 @@ import fruition.access.user.domain.UserMfaRecoveryCode;
 import fruition.access.user.dto.EmailVerificationRequest;
 import fruition.access.user.dto.VerificationConfirmRequest;
 import fruition.access.user.mail.EmailChangeNotificationSender;
+import fruition.access.user.mail.EmailVerificationSender;
 import fruition.access.user.mfa.MfaSecretCipher;
 import fruition.access.user.repository.UserMfaRecoveryCodeRepository;
 import fruition.access.user.repository.UserMfaRepository;
 import fruition.access.user.repository.UserRepository;
 import fruition.shared.security.JwtTokenProvider;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -22,7 +24,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -53,10 +54,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 @ActiveProfiles("test")
-@TestPropertySource(properties = "app.auth.email-verification.dev-fixed-code=975310")
 class EmailChangeReauthenticationIntegrationTest {
 
-    static final String CODE = "975310";
     static final String PASSWORD = "current-password-1";
 
     @Autowired MockMvc mockMvc;
@@ -69,6 +68,7 @@ class EmailChangeReauthenticationIntegrationTest {
     @Autowired JwtTokenProvider jwtTokenProvider;
     @Autowired EmailVerificationService verificationService;
     @MockitoBean EmailChangeNotificationSender notificationSender;
+    @MockitoBean EmailVerificationSender sender;
 
     @Test
     void localAccount_correctPassword_changesEmailAndNotifiesPreviousAddress() throws Exception {
@@ -200,7 +200,14 @@ class EmailChangeReauthenticationIntegrationTest {
 
     private String token(String email) {
         String id = verificationService.request(new EmailVerificationRequest(email, "email_change")).verificationId();
-        return verificationService.confirm(id, new VerificationConfirmRequest(CODE)).verificationToken();
+        return verificationService.confirm(id, new VerificationConfirmRequest(sentCode(email, "email_change")))
+                .verificationToken();
+    }
+
+    private String sentCode(String email, String purpose) {
+        ArgumentCaptor<String> code = ArgumentCaptor.forClass(String.class);
+        verify(sender).send(eq(email), eq(purpose), code.capture());
+        return code.getValue();
     }
 
     private String enableMfa(User user) {

@@ -5,10 +5,12 @@ import fruition.TestcontainersConfiguration;
 import fruition.access.user.domain.User;
 import fruition.access.user.dto.EmailVerificationRequest;
 import fruition.access.user.dto.VerificationConfirmRequest;
+import fruition.access.user.mail.EmailVerificationSender;
 import fruition.access.user.repository.UserRepository;
 import fruition.shared.security.JwtTokenProvider;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -17,7 +19,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -28,6 +30,8 @@ import java.util.HexFormat;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -41,10 +45,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 @ActiveProfiles("test")
-@TestPropertySource(properties = "app.auth.email-verification.dev-fixed-code=864200")
 class VerifiedPasswordChangeIntegrationTest {
 
-    static final String CODE = "864200";
     static final String OLD_PASSWORD = "old-password-1234";
     static final String NEW_PASSWORD = "new-password-5678";
 
@@ -55,6 +57,7 @@ class VerifiedPasswordChangeIntegrationTest {
     @Autowired JwtTokenProvider jwtTokenProvider;
     @Autowired EmailVerificationService verificationService;
     @Autowired JdbcTemplate jdbc;
+    @MockitoBean EmailVerificationSender sender;
 
     @Test
     void sendsCodeToSessionEmail_thenChangesPasswordAndKeepsOnlyCurrentSession() throws Exception {
@@ -70,7 +73,7 @@ class VerifiedPasswordChangeIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT email || '/' || purpose FROM email_verifications WHERE id = ?",
                 String.class, id)).isEqualTo(user.getEmail() + "/password_change");
 
-        String token = confirm(id);
+        String token = confirm(id, user.getEmail(), "password_change");
         change(user, token, current).andExpect(status().isNoContent());
 
         assertThat(passwordMatches(user, NEW_PASSWORD)).isTrue();
@@ -87,7 +90,7 @@ class VerifiedPasswordChangeIntegrationTest {
         User victim = localUser();
         String id = objectMapper.readTree(requestVerification(attacker).andReturn().getResponse().getContentAsString())
                 .get("verification_id").asText();
-        String attackerToken = confirm(id);
+        String attackerToken = confirm(id, attacker.getEmail(), "password_change");
 
         change(victim, attackerToken, null).andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_VERIFICATION_TOKEN"));
@@ -100,7 +103,7 @@ class VerifiedPasswordChangeIntegrationTest {
         String id = verificationService.request(new EmailVerificationRequest(user.getEmail(), "password_reset"))
                 .verificationId();
 
-        change(user, confirm(id), null).andExpect(status().isBadRequest())
+        change(user, confirm(id, user.getEmail(), "password_reset"), null).andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_VERIFICATION_TOKEN"));
         assertThat(passwordMatches(user, OLD_PASSWORD)).isTrue();
     }
@@ -110,7 +113,7 @@ class VerifiedPasswordChangeIntegrationTest {
         User user = localUser();
         String id = objectMapper.readTree(requestVerification(user).andReturn().getResponse().getContentAsString())
                 .get("verification_id").asText();
-        String token = confirm(id);
+        String token = confirm(id, user.getEmail(), "password_change");
 
         mockMvc.perform(post("/api/auth/password-reset").contentType(MediaType.APPLICATION_JSON)
                         .content(json("email", user.getEmail(), "new_password", NEW_PASSWORD, "verification_token", token)))
@@ -159,8 +162,15 @@ class VerifiedPasswordChangeIntegrationTest {
         return mockMvc.perform(request);
     }
 
-    private String confirm(String verificationId) {
-        return verificationService.confirm(verificationId, new VerificationConfirmRequest(CODE)).verificationToken();
+    private String confirm(String verificationId, String email, String purpose) {
+        return verificationService.confirm(verificationId, new VerificationConfirmRequest(sentCode(email, purpose)))
+                .verificationToken();
+    }
+
+    private String sentCode(String email, String purpose) {
+        ArgumentCaptor<String> code = ArgumentCaptor.forClass(String.class);
+        verify(sender).send(eq(email), eq(purpose), code.capture());
+        return code.getValue();
     }
 
     private String bearer(User user) {

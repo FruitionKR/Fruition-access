@@ -8,8 +8,10 @@ import fruition.access.user.dto.PasswordResetRequest;
 import fruition.access.user.dto.SignupRequest;
 import fruition.access.user.dto.VerificationConfirmRequest;
 import fruition.access.user.exception.InvalidVerificationTokenException;
+import fruition.access.user.mail.EmailVerificationSender;
 import fruition.access.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -17,12 +19,14 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 
 /**
  * 인증번호로 받은 verification_token이 발급받은 이메일·목적에 묶이고, 1회용이며 만료되는지
@@ -31,10 +35,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest
 @Import(TestcontainersConfiguration.class)
 @ActiveProfiles("test")
-@TestPropertySource(properties = "app.auth.email-verification.dev-fixed-code=246802")
 class VerificationTokenBindingIntegrationTest {
 
-    static final String CODE = "246802";
     static final String OLD_PASSWORD = "old-password-1234";
     static final String NEW_PASSWORD = "new-password-5678";
 
@@ -44,6 +46,7 @@ class VerificationTokenBindingIntegrationTest {
     @Autowired UserRepository users;
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired JdbcTemplate jdbc;
+    @MockitoBean EmailVerificationSender sender;
     @Value("${app.legal.terms-version}") String termsVersion;
 
     @Test
@@ -138,7 +141,14 @@ class VerificationTokenBindingIntegrationTest {
 
     private String token(String email, String purpose) {
         String verificationId = verificationService.request(new EmailVerificationRequest(email, purpose)).verificationId();
-        return verificationService.confirm(verificationId, new VerificationConfirmRequest(CODE)).verificationToken();
+        return verificationService.confirm(verificationId, new VerificationConfirmRequest(sentCode(email, purpose)))
+                .verificationToken();
+    }
+
+    private String sentCode(String email, String purpose) {
+        ArgumentCaptor<String> code = ArgumentCaptor.forClass(String.class);
+        verify(sender).send(eq(email), eq(purpose), code.capture());
+        return code.getValue();
     }
 
     private String localUser() {
