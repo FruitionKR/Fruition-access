@@ -96,6 +96,14 @@ public class EmailVerificationService {
             }
         }
 
+        // 이메일 변경은 다른 계정(소셜 가입 포함)이 쓰는 주소로 바꿀 수 없으므로 쓸 수 없는 주소로 메일을 보내지 않는다.
+        // 존재 여부는 signup 거절과 같은 범위로만 드러나고 같은 rate limit을 받는다.
+        // 인증 없이 부르는 API라 현재 본인 주소도 함께 거절된다(본인 주소로의 변경은 아무것도 바꾸지 않는다).
+        if (PURPOSE_EMAIL_CHANGE.equals(purpose) && userRepository.existsByEmail(email)) {
+            log.warn("[인증 요청 거부] reason=email_in_use purpose={} email={}", purpose, email);
+            throw new DuplicateEmailException(email);
+        }
+
         return issue(email, purpose);
     }
 

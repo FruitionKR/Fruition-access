@@ -53,7 +53,7 @@ paths:
       - Auth
   /api/auth/email-verifications:
     post:
-      description: 회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다. purpose=signup은 같은 이메일의 계정이 있으면 메일을 보내지 않고 409로 거절합니다.
+      description: 회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다. purpose=signup은 같은 이메일의 계정이 있으면 메일을 보내지 않고 409로 거절합니다. purpose=email_change는 다른 계정(소셜 가입 포함)이 쓰는 주소면 409 DUPLICATE_EMAIL로 거절합니다.
       operationId: requestEmailVerification
       requestBody:
         content:
@@ -81,7 +81,7 @@ paths:
                 oneOf:
                 - $ref: "#/components/schemas/ErrorResponse"
                 - $ref: "#/components/schemas/EmailRegisteredWithOAuthResponse"
-          description: "이미 가입된 이메일(purpose=signup). 이메일 가입 계정이면 DUPLICATE_EMAIL(ErrorResponse), 소셜 가입 계정만 있으면 EMAIL_REGISTERED_WITH_OAUTH(EmailRegisteredWithOAuthResponse)"
+          description: "이미 가입된 이메일(purpose=signup). 이메일 가입 계정이면 DUPLICATE_EMAIL(ErrorResponse), 소셜 가입 계정만 있으면 EMAIL_REGISTERED_WITH_OAUTH(EmailRegisteredWithOAuthResponse). purpose=email_change는 그 주소를 쓰는 계정이 있으면 DUPLICATE_EMAIL(ErrorResponse)"
         "429":
           content:
             '*/*':
@@ -439,7 +439,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-          description: 같은 provider에 이미 그 이메일 계정이 있음
+          description: "이미 다른 계정(소셜 가입 포함)이 쓰는 이메일(DUPLICATE_EMAIL). 본인 확인 뒤, verification_token을 소비하기 전에 거절합니다"
         "429":
           content:
             '*/*':

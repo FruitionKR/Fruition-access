@@ -98,9 +98,11 @@ class VerificationTokenBindingIntegrationTest {
 
     @Test
     void passwordReset_tokenForOtherPurpose_isRejected() {
-        String email = localUser();
-        String signupToken = token(uniqueEmail(), "signup");
+        // 쓰고 있는 주소로는 email_change 인증번호가 나가지 않으므로 계정을 만들기 전에 받아 둔다.
+        String email = uniqueEmail();
         String emailChangeToken = token(email, "email_change");
+        localUser(email);
+        String signupToken = token(uniqueEmail(), "signup");
 
         assertThatThrownBy(() -> authService.resetPassword(new PasswordResetRequest(email, NEW_PASSWORD, signupToken)))
                 .isInstanceOf(InvalidVerificationTokenException.class);
@@ -152,7 +154,10 @@ class VerificationTokenBindingIntegrationTest {
     }
 
     private String localUser() {
-        String email = uniqueEmail();
+        return localUser(uniqueEmail());
+    }
+
+    private String localUser(String email) {
         users.saveAndFlush(new User("u_" + UUID.randomUUID().toString().replace("-", ""), email,
                 User.PROVIDER_LOCAL, "사용자", passwordEncoder.encode(OLD_PASSWORD)));
         return email;

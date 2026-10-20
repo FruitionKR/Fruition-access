@@ -175,7 +175,7 @@ curl -X POST "$ACCESS/api/auth/email-availability" \
 | 입력 | **Body** — `EmailVerificationRequest` |
 | 출력 | `202` 인증번호 발급 — `EmailVerificationResponse` |
 | 조건 | 인증 불필요<br>인증 없이 호출할 수 있다.<br>공개 API이므로 별도의 사용자 권한 검증이 없다. |
-| 주요 오류 | `400` 잘못된 요청 — `ErrorResponse`<br>`409` 이미 가입된 이메일(purpose=signup): 이메일 가입 계정이면 `DUPLICATE_EMAIL` — `ErrorResponse`, 소셜 가입 계정만 있으면 `EMAIL_REGISTERED_WITH_OAUTH` — `EmailRegisteredWithOAuthResponse`(`oauth_providers` 포함)<br>`429` 재요청 제한 초과 — `ErrorResponse` |
+| 주요 오류 | `400` 잘못된 요청 — `ErrorResponse`<br>`409` 이미 가입된 이메일(purpose=signup): 이메일 가입 계정이면 `DUPLICATE_EMAIL` — `ErrorResponse`, 소셜 가입 계정만 있으면 `EMAIL_REGISTERED_WITH_OAUTH` — `EmailRegisteredWithOAuthResponse`(`oauth_providers` 포함)<br>`409` 이미 다른 계정이 쓰는 주소(purpose=email_change, 소셜 가입 포함): `DUPLICATE_EMAIL` — `ErrorResponse`<br>`429` 재요청 제한 초과 — `ErrorResponse` |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -191,7 +191,7 @@ curl -X POST "$ACCESS/api/auth/email-availability" \
 
 회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다.
 
-`purpose=signup`은 같은 이메일의 계정이 있으면 인증번호를 만들지도 메일을 보내지도 않고 `409`로 거절한다. 이메일 가입 계정이면 `DUPLICATE_EMAIL`, 소셜 가입 계정만 있으면 `EMAIL_REGISTERED_WITH_OAUTH`와 `oauth_providers`를 돌려주며, 프론트는 "그 소셜 계정으로 로그인한 뒤 설정 > 계정에서 연동"을 안내한다. 같은 이메일로 두 번째 계정이 생기면 이후 연동으로 합칠 수 없기 때문이다(#31). `password_reset`은 존재 여부를 노출하지 않는다.
+`purpose=signup`은 같은 이메일의 계정이 있으면 인증번호를 만들지도 메일을 보내지도 않고 `409`로 거절한다. 이메일 가입 계정이면 `DUPLICATE_EMAIL`, 소셜 가입 계정만 있으면 `EMAIL_REGISTERED_WITH_OAUTH`와 `oauth_providers`를 돌려주며, 프론트는 "그 소셜 계정으로 로그인한 뒤 설정 > 계정에서 연동"을 안내한다. 같은 이메일로 두 번째 계정이 생기면 이후 연동으로 합칠 수 없기 때문이다(#31). `purpose=email_change`도 그 주소를 쓰는 계정이 provider와 상관없이 하나라도 있으면 메일을 보내지 않고 `409 DUPLICATE_EMAIL`로 거절한다. 그 주소로는 [이메일 변경](#summary-put-api-auth-me-email)이 거절되기 때문이다. 인증 없이 부르는 API라 요청자 본인의 현재 주소도 같이 거절된다. 드러나는 정보는 `signup` 거절과 같은 범위다. `password_reset`은 존재 여부를 노출하지 않는다.
 
 #### 3. Auth 필요 여부
 
@@ -231,6 +231,7 @@ curl -X POST "$ACCESS/api/auth/email-availability" \
 | `400` | 잘못된 요청 | `ErrorResponse` |
 | `409` | 이미 가입된 이메일(purpose=signup). `DUPLICATE_EMAIL`(이메일 가입 계정) | `ErrorResponse` |
 | `409` | 같은 이메일의 소셜 가입 계정이 있음(purpose=signup). `EMAIL_REGISTERED_WITH_OAUTH` | `EmailRegisteredWithOAuthResponse` |
+| `409` | 이미 다른 계정(소셜 가입 포함)이 쓰는 주소(purpose=email_change). `DUPLICATE_EMAIL` | `ErrorResponse` |
 | `429` | 재요청 제한 초과 | `ErrorResponse` |
 
 ```json
@@ -1029,7 +1030,7 @@ curl -X DELETE "$ACCESS/api/auth/me/avatar" \
 | 입력 | **Body** — `EmailChangeRequest`<br>**Cookie** — `fruition_refresh_token`(선택) |
 | 출력 | `200` 변경 성공 — `MeResponse` |
 | 조건 | 인증 필요<br>비밀번호 계정은 `current_password`, 소셜 전용 계정은 10분 안의 직접 로그인, MFA를 켰으면 `mfa_code`<br>`purpose=email_change`로 **새 주소에** 발급받은 토큰이어야 한다. |
-| 주요 오류 | `400` 유효하지 않은 `verification_token` — `ErrorResponse`<br>`401` 인증되지 않았거나 비밀번호·MFA 코드가 다름, 또는 소셜 계정이 최근에 로그인하지 않음 — `ErrorResponse`<br>`409` 같은 provider에 이미 그 이메일 계정이 있음 — `ErrorResponse`<br>`429` 비밀번호·MFA 확인 시도 횟수 제한 초과 — `ErrorResponse` |
+| 주요 오류 | `400` 유효하지 않은 `verification_token` — `ErrorResponse`<br>`401` 인증되지 않았거나 비밀번호·MFA 코드가 다름, 또는 소셜 계정이 최근에 로그인하지 않음 — `ErrorResponse`<br>`409` 이미 다른 계정(소셜 가입 포함)이 쓰는 이메일(`DUPLICATE_EMAIL`) — `ErrorResponse`<br>`429` 비밀번호·MFA 확인 시도 횟수 제한 초과 — `ErrorResponse` |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -1103,15 +1104,18 @@ curl -X DELETE "$ACCESS/api/auth/me/avatar" \
 | `401` | 비밀번호 계정인데 `current_password`가 없거나 다름 | `INVALID_CREDENTIALS` |
 | `401` | 소셜 전용 계정인데 10분 안에 직접 로그인한 access token이 아님 | `REAUTHENTICATION_REQUIRED` |
 | `401` | MFA를 켰는데 `mfa_code`가 없거나 틀림 | `INVALID_MFA_CODE` |
-| `409` | 같은 provider에 이미 그 이메일 계정이 있음 | `DUPLICATE_EMAIL` |
+| `409` | 이미 다른 계정이 그 이메일을 씀. provider와 상관없다(이메일 가입·소셜 가입 모두). 현재 본인 주소는 해당하지 않는다 | `DUPLICATE_EMAIL` |
 | `429` | 현재 비밀번호 확인 실패가 한도를 넘음(비밀번호 변경·회원 탈퇴와 공유, 기본 5분에 5회) | `PASSWORD_CHANGE_RATE_LIMITED` |
 | `429` | MFA 코드 확인 실패가 한도를 넘음 | `MFA_RATE_LIMITED` |
 
 본인 확인 오류(`401`, `429`)는 토큰을 소비하지 않는다. 같은 `verification_token`으로 값을 고쳐 다시 보낼 수 있다.
 본인 확인은 토큰 검증보다 먼저 하므로, 본인 확인과 토큰이 모두 틀리면 본인 확인 오류가 돌아온다.
+중복 이메일(`409`)도 본인 확인 뒤, 토큰을 소비하기 전에 거절한다. 순서는 본인 확인 → 중복 확인 → 토큰 소비다.
+소셜 계정이 쓰는 주소라도 `EMAIL_REGISTERED_WITH_OAUTH`가 아니라 `DUPLICATE_EMAIL`이다. 이미 로그인한 계정의 주소를 바꾸는 것이라
+"그 소셜 계정으로 로그인해 연동" 안내가 맞지 않고, 다른 주소를 고르게 하면 되기 때문이다.
 
-사전 중복 조회 이후에 들어온 동시 요청도 커밋 전 `uq_users_email_provider` 제약 위반을 잡아
-같은 `409 DUPLICATE_EMAIL` 계약으로 반환한다.
+사전 중복 조회 이후에 들어온 같은 provider의 동시 요청도 커밋 전 `uq_users_email_provider` 제약 위반을 잡아
+같은 `409 DUPLICATE_EMAIL` 계약으로 반환한다. 다른 provider끼리의 동시 변경은 DB 제약이 없어 사전 조회로만 막는다.
 
 #### 7. Pagination / filtering
 

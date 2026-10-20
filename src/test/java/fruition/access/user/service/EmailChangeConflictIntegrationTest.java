@@ -40,7 +40,7 @@ class EmailChangeConflictIntegrationTest {
             competitor.executeWithoutResult(status -> users.findById("email_winner").orElseThrow()
                     .changeEmail("shared@example.com"));
             return false;
-        }).when(users).existsByEmailAndProvider("shared@example.com", "local");
+        }).when(users).existsByEmail("shared@example.com");
 
         assertThatThrownBy(() -> authService.changeEmail("email_loser",
                 new EmailChangeRequest("shared@example.com", "verification-token"), null, java.time.Instant.now()))

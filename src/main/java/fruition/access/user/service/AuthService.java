@@ -275,7 +275,7 @@ public class AuthService {
      * 로그인 상태에서 이메일을 바꾼다.
      *
      * <p>새 주소로 받은 인증번호 토큰으로 그 메일함을 통제하는지 확인한다. 계정은
-     * {@code (email, provider)}로 유일해야 하므로 같은 provider의 기존 계정과 부딪히면 거절한다.
+     * 다른 계정(소셜 가입 포함)이 이미 쓰는 주소면 {@code 409 DUPLICATE_EMAIL}로 거절한다.
      * OAuth 로그인은 {@code (provider, provider_user_id)}로 사용자를 찾으므로 이메일이 바뀌어도 끊기지 않는다.
      *
      * <p>먼저 {@link Reauthenticator}로 본인을 다시 확인한다({@code authTime}은 access token의 직접 로그인 시각,
@@ -291,14 +291,15 @@ public class AuthService {
         // 이메일을 바꾸면 비밀번호 재설정 메일도 새 주소로 가므로 계정을 넘겨줄 수 있다.
         // 세션만 탈취한 사람이 바꾸지 못하게 본인을 다시 확인한다. 거절되면 토큰을 소비하기 전에 끝난다.
         reauthenticator.verify(user, request.currentPassword(), request.mfaCode(), authTime);
-        emailVerificationService.consumeForEmailChange(newEmail, request.verificationToken());
-        String previousEmail = user.getEmail();
-
-        if (!newEmail.equals(user.getEmail())
-                && userRepository.existsByEmailAndProvider(newEmail, user.getProvider())) {
+        // 다른 계정이 이미 쓰는 주소면 provider와 상관없이 거절한다. 소셜 계정의 주소로 바꾸게 두면
+        // 한 이메일에 계정이 둘 생기고, 이후 연동으로 합칠 수 없다(가입 거절과 같은 이유).
+        // 본인 확인을 통과한 뒤에만 알려 주고, 토큰을 소비하기 전에 거절해 토큰을 태우지 않는다.
+        if (!newEmail.equals(user.getEmail()) && userRepository.existsByEmail(newEmail)) {
             log.warn("[이메일 변경 거부] reason=duplicate_email userId={} provider={}", userId, user.getProvider());
             throw new DuplicateEmailException(newEmail);
         }
+        emailVerificationService.consumeForEmailChange(newEmail, request.verificationToken());
+        String previousEmail = user.getEmail();
 
         user.changeEmail(newEmail);
         // 사전 조회 이후 발생한 중복도 커밋 전에 확인해 같은 오류 계약으로 반환한다.

@@ -152,7 +152,8 @@ public class AuthController {
 
     @Operation(summary = "이메일 인증번호 발급",
             description = "회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다. purpose=signup은 같은 이메일의 계정이 있으면"
-                    + " 메일을 보내지 않고 409로 거절합니다.")
+                    + " 메일을 보내지 않고 409로 거절합니다. purpose=email_change는 다른 계정(소셜 가입 포함)이 쓰는 주소면"
+                    + " 409 DUPLICATE_EMAIL로 거절합니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "202", description = "인증번호 발급",
             content = @Content(schema = @Schema(implementation = EmailVerificationResponse.class))),
@@ -160,7 +161,8 @@ public class AuthController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(responseCode = "409",
             description = "이미 가입된 이메일(purpose=signup). 이메일 가입 계정이면 DUPLICATE_EMAIL(ErrorResponse),"
-                    + " 소셜 가입 계정만 있으면 EMAIL_REGISTERED_WITH_OAUTH(EmailRegisteredWithOAuthResponse)",
+                    + " 소셜 가입 계정만 있으면 EMAIL_REGISTERED_WITH_OAUTH(EmailRegisteredWithOAuthResponse)."
+                    + " purpose=email_change는 그 주소를 쓰는 계정이 있으면 DUPLICATE_EMAIL(ErrorResponse)",
             content = @Content(schema = @Schema(oneOf = {ErrorResponse.class, EmailRegisteredWithOAuthResponse.class}))),
         @ApiResponse(responseCode = "429", description = "재요청 제한 초과",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
@@ -508,7 +510,8 @@ public class AuthController {
         @ApiResponse(responseCode = "401", description = "인증되지 않았거나 비밀번호·MFA 코드가 다름,"
                 + " 또는 소셜 계정이 최근에 로그인하지 않음(REAUTHENTICATION_REQUIRED)",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @ApiResponse(responseCode = "409", description = "같은 provider에 이미 그 이메일 계정이 있음",
+        @ApiResponse(responseCode = "409", description = "이미 다른 계정(소셜 가입 포함)이 쓰는 이메일(DUPLICATE_EMAIL)."
+                + " 본인 확인 뒤, verification_token을 소비하기 전에 거절합니다",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(responseCode = "429", description = "비밀번호·MFA 확인 시도 횟수 제한 초과",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))

@@ -103,6 +103,26 @@ class EmailVerificationServiceTest {
     }
 
     @Test
+    void request_emailChangeToAddressInUse_rejectsBeforeSendingMail() {
+        // 이메일 변경은 provider와 상관없이 다른 계정이 쓰는 주소로 바꿀 수 없으므로 인증번호를 보내지 않는다.
+        when(userRepository.existsByEmail("taken@example.com")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.request(new EmailVerificationRequest("taken@example.com", "email_change")))
+                .isInstanceOf(DuplicateEmailException.class);
+        verify(sender, org.mockito.Mockito.never()).send(any(), any(), any());
+        verify(verificationRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void request_emailChangeToUnusedAddress_sendsCode() {
+        when(userRepository.existsByEmail("free@example.com")).thenReturn(false);
+
+        service.request(new EmailVerificationRequest("free@example.com", "email_change"));
+
+        verify(sender).send(eq("free@example.com"), eq("email_change"), anyString());
+    }
+
+    @Test
     void request_passwordResetForOAuthEmail_doesNotRevealOrBlock() {
         // 비밀번호 재설정은 존재 여부를 노출하지 않으므로 소셜 계정 검사를 하지 않는다.
         service.request(new EmailVerificationRequest("oauth@example.com", "password_reset"));

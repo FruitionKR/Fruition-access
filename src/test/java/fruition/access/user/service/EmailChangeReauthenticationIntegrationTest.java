@@ -8,6 +8,7 @@ import fruition.access.user.domain.UserMfa;
 import fruition.access.user.domain.UserMfaRecoveryCode;
 import fruition.access.user.dto.EmailVerificationRequest;
 import fruition.access.user.dto.VerificationConfirmRequest;
+import fruition.access.user.exception.DuplicateEmailException;
 import fruition.access.user.mail.EmailChangeNotificationSender;
 import fruition.access.user.mail.EmailVerificationSender;
 import fruition.access.user.mfa.MfaSecretCipher;
@@ -35,6 +36,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -181,6 +183,49 @@ class EmailChangeReauthenticationIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("INVALID_VERIFICATION_TOKEN"));
 
         verify(notificationSender, never()).send(anyString(), anyString(), any());
+    }
+
+    @Test
+    void localAccount_toAddressOfGoogleAccount_isRejectedWithoutConsumingToken() throws Exception {
+        assertAddressInUseRejected("google");
+    }
+
+    @Test
+    void localAccount_toAddressOfOtherLocalAccount_isRejectedWithoutConsumingToken() throws Exception {
+        assertAddressInUseRejected(User.PROVIDER_LOCAL);
+    }
+
+    @Test
+    void emailChangeCode_forAddressInUse_isNotSent() {
+        String taken = socialUser().getEmail();
+
+        assertThatThrownBy(() -> verificationService.request(new EmailVerificationRequest(taken, "email_change")))
+                .isInstanceOf(DuplicateEmailException.class);
+        verify(sender, never()).send(eq(taken), anyString(), anyString());
+    }
+
+    /**
+     * 토큰을 받은 뒤 다른 계정이 그 주소를 차지하면 provider와 상관없이 409로 거절한다.
+     * 거절은 토큰을 소비하지 않으므로, 주소가 다시 비면 같은 토큰으로 바꿀 수 있다.
+     */
+    private void assertAddressInUseRejected(String occupantProvider) throws Exception {
+        User user = localUser();
+        String newEmail = uniqueEmail();
+        String token = token(newEmail);
+        String occupantId = "u_" + shortId();
+        users.saveAndFlush(new User(occupantId, newEmail, occupantProvider, "다른 사용자", null));
+
+        change(user, Instant.now(), body(newEmail, token, PASSWORD, null))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("DUPLICATE_EMAIL"));
+        assertThat(emailOf(user)).isEqualTo(user.getEmail());
+        verify(notificationSender, never()).send(anyString(), anyString(), any());
+
+        User occupant = users.findById(occupantId).orElseThrow();
+        occupant.changeEmail(uniqueEmail());
+        users.saveAndFlush(occupant);
+        change(user, Instant.now(), body(newEmail, token, PASSWORD, null)).andExpect(status().isOk());
+        assertThat(emailOf(user)).isEqualTo(newEmail);
     }
 
     private ResultActions change(User user, Instant authTime, String body) throws Exception {
