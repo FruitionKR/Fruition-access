@@ -55,6 +55,7 @@ import java.util.Base64;
 import java.util.UUID;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class AuthService {
@@ -108,7 +109,7 @@ public class AuthService {
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
-        String email = request.email().trim().toLowerCase();
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
         log.info("[로그인 요청] email={}", email);
 
         User user = userRepository.findByEmailAndProvider(email, User.PROVIDER_LOCAL)
@@ -292,7 +293,7 @@ public class AuthService {
                                   Instant authTime) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException(userId));
-        String newEmail = request.newEmail().trim().toLowerCase();
+        String newEmail = request.newEmail().trim().toLowerCase(Locale.ROOT);
 
         // 이메일을 바꾸면 비밀번호 재설정 메일도 새 주소로 가므로 계정을 넘겨줄 수 있다.
         // 세션만 탈취한 사람이 바꾸지 못하게 본인을 다시 확인한다. 거절되면 토큰을 소비하기 전에 끝난다.
@@ -347,7 +348,7 @@ public class AuthService {
 
     @Transactional
     public void resetPassword(PasswordResetRequest request) {
-        String email = request.email().trim().toLowerCase();
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
         emailVerificationService.consumeForPasswordReset(email, request.verificationToken());
 
         // 인증코드를 통과했으므로 이 시점의 요청자는 해당 메일함을 통제한다. 따라서 OAuth로만

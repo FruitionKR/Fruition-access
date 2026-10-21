@@ -29,6 +29,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -75,13 +76,18 @@ public class EmailVerificationService {
     }
 
     public EmailVerificationResponse request(EmailVerificationRequest request) {
-        String email = request.email().trim().toLowerCase();
+        String email = normalizeEmail(request.email());
         String purpose = request.purpose();
+        return issue(email, purpose, () -> rejectUnusableEmail(email, purpose));
+    }
 
-        // 존재 노출(signup 409)도 throttle 대상이 되도록 rate limit을 먼저 적용한다.
-        // 단 per-(email, purpose) 범위라 서로 다른 이메일 대량 열거는 못 막으며, 그건 IP/전역 제한 영역이다.
-        enforceRateLimit(email, purpose);
+    /** 로그인한 사용자의 계정 이메일로 비밀번호 변경용 인증번호를 보낸다. */
+    public EmailVerificationResponse requestForPasswordChange(String accountEmail) {
+        String email = normalizeEmail(accountEmail);
+        return issue(email, PURPOSE_PASSWORD_CHANGE, () -> {});
+    }
 
+    private void rejectUnusableEmail(String email, String purpose) {
         // 회원가입은 의도적으로 존재 여부를 노출한다. 비밀번호 재설정은 노출하지 않는다.
         if (PURPOSE_SIGNUP.equals(purpose)) {
             if (userRepository.existsByEmailAndProvider(email, User.PROVIDER_LOCAL)) {
@@ -103,27 +109,24 @@ public class EmailVerificationService {
             log.warn("[인증 요청 거부] reason=email_in_use purpose={} email={}", purpose, email);
             throw new DuplicateEmailException(email);
         }
-
-        return issue(email, purpose);
     }
 
-    /** 로그인한 사용자의 계정 이메일로 비밀번호 변경용 인증번호를 보낸다. */
-    public EmailVerificationResponse requestForPasswordChange(String accountEmail) {
-        String email = accountEmail.trim().toLowerCase();
-        enforceRateLimit(email, PURPOSE_PASSWORD_CHANGE);
-        return issue(email, PURPOSE_PASSWORD_CHANGE);
-    }
-
-    private EmailVerificationResponse issue(String email, String purpose) {
+    private EmailVerificationResponse issue(String email, String purpose, Runnable eligibilityCheck) {
         String code = generateCode();
         String id = "ev_" + UUID.randomUUID().toString().replace("-", "");
 
         // DB 쓰기만 트랜잭션으로 처리하고 커밋한다. SMTP 발송을 트랜잭션 안에서 하면
         // 외부 메일 서버 왕복 동안 DB 커넥션을 붙잡으므로, 발송은 커밋 후 트랜잭션 밖에서 한다.
         transactionTemplate.executeWithoutResult(status -> {
-            // 새 코드 발급 전 같은 (email, purpose)의 미소비 코드를 폐기한다.
+            // 같은 (email, purpose)의 발급을 커밋까지 직렬화해, 동시 요청이 쿨다운·일일 한도를 함께 통과하지 못하게 한다.
+            verificationRepository.lockIssuance(purpose + ":" + email);
+            // 존재 노출(signup 409)도 throttle 대상이 되도록 rate limit을 먼저 적용한다.
+            // 단 per-(email, purpose) 범위라 서로 다른 이메일 대량 열거는 못 막으며, 그건 IP/전역 제한 영역이다.
+            enforceRateLimit(email, purpose);
+            eligibilityCheck.run();
+            // 새 코드 발급 전 같은 (email, purpose)의 미소비 코드와 이미 받은 토큰을 폐기한다.
             for (EmailVerification previous : verificationRepository.findByEmailAndPurposeAndConsumedAtIsNull(email, purpose)) {
-                previous.expireCode();
+                previous.invalidate();
             }
             verificationRepository.save(new EmailVerification(
                     id, email, purpose, OpaqueTokens.sha256(code), Instant.now().plusSeconds(codeTtlSeconds)));
@@ -184,7 +187,12 @@ public class EmailVerificationService {
         consumeToken(email, token, PURPOSE_PASSWORD_CHANGE);
     }
 
-    private void consumeToken(String email, String token, String purpose) {
+    /**
+     * 발급은 정규화한 이메일로 저장하므로 소비도 같은 정규화를 거쳐 비교한다.
+     * 계정 이메일을 그대로 넘기는 호출(비밀번호 변경)에서 대문자가 섞인 예전 데이터도 같은 주소로 맞춘다.
+     */
+    private void consumeToken(String rawEmail, String token, String purpose) {
+        String email = normalizeEmail(rawEmail);
         EmailVerification verification = verificationRepository.findByTokenHash(OpaqueTokens.sha256(token))
                 .orElseThrow(InvalidVerificationTokenException::new);
 
@@ -218,6 +226,10 @@ public class EmailVerificationService {
                     .orElse(resendCooldownSeconds);
             throw new VerificationRateLimitedException(retryAfter);
         }
+    }
+
+    private static String normalizeEmail(String email) {
+        return email.trim().toLowerCase(Locale.ROOT);
     }
 
     private String generateCode() {
