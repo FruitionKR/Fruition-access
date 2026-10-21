@@ -1,34 +1,35 @@
 package fruition.access.user.service;
 
-import fruition.access.user.mail.EmailChangeNotificationSender;
 import fruition.access.user.mail.EmailMasker;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.context.event.EventListener;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.event.TransactionPhase;
-import org.springframework.transaction.event.TransactionalEventListener;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.sql.Timestamp;
 
 /**
- * 이메일 변경이 커밋된 뒤 기존 이메일로 알림을 보낸다. 변경이 롤백되면 보내지 않고,
- * 발송이 실패해도 이미 커밋된 변경은 되돌리지 않는다(실패는 로그로만 남긴다).
+ * 이메일 변경 트랜잭션 안에서 기존 이메일로 보낼 알림을 outbox({@code email_change_notifications})에 넣는다.
+ * 변경과 함께 커밋되고 롤백되면 같이 사라지며, 발송은 {@link EmailChangeNotificationJob}이 요청 스레드 밖에서 한다.
+ * 새 이메일은 메일에 실리는 가린 값만 저장한다. 넣지 못하면 알림 없는 변경이 남지 않도록 변경도 롤백된다.
  */
 @Component
 public class EmailChangeNotificationListener {
 
-    private static final Logger log = LoggerFactory.getLogger(EmailChangeNotificationListener.class);
+    private final JdbcTemplate jdbc;
 
-    private final EmailChangeNotificationSender sender;
-
-    public EmailChangeNotificationListener(EmailChangeNotificationSender sender) {
-        this.sender = sender;
+    public EmailChangeNotificationListener(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
     }
 
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @EventListener
+    @Transactional(propagation = Propagation.MANDATORY)
     public void onEmailChanged(EmailChangedEvent event) {
-        try {
-            sender.send(event.previousEmail(), EmailMasker.mask(event.newEmail()), event.changedAt());
-        } catch (RuntimeException e) {
-            log.warn("[이메일 변경 알림 발송 실패] userId={} error={}", event.userId(), e.getMessage());
-        }
+        jdbc.update("""
+                INSERT INTO email_change_notifications (user_id, recipient_email, masked_new_email, changed_at)
+                VALUES (?, ?, ?, ?)
+                """, event.userId(), event.previousEmail(), EmailMasker.mask(event.newEmail()),
+                Timestamp.from(event.changedAt()));
     }
 }

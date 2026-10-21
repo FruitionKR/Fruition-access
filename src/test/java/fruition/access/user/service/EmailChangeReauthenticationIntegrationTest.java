@@ -23,6 +23,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -32,6 +33,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -40,7 +42,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -50,7 +51,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 이메일 변경은 새 메일함 인증에 더해 본인 재확인을 요구한다. 세션만 탈취한 사람이 이메일을 바꿔
  * 비밀번호 재설정까지 가져가지 못하게 하기 위해서다. 재확인에 실패하면 새 이메일 토큰은 남아 있어야 하고,
- * 성공하면 커밋 뒤 기존 이메일로 알림이 간다.
+ * 성공하면 변경과 함께 기존 이메일로 보낼 알림이 outbox에 남고, 발송 작업이 그 알림을 보낸다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -69,6 +70,8 @@ class EmailChangeReauthenticationIntegrationTest {
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired JwtTokenProvider jwtTokenProvider;
     @Autowired EmailVerificationService verificationService;
+    @Autowired EmailChangeNotificationJob notificationJob;
+    @Autowired JdbcTemplate jdbc;
     @MockitoBean EmailChangeNotificationSender notificationSender;
     @MockitoBean EmailVerificationSender sender;
 
@@ -83,7 +86,14 @@ class EmailChangeReauthenticationIntegrationTest {
 
         assertThat(emailOf(user)).isEqualTo(newEmail);
         String masked = newEmail.substring(0, 2) + "*".repeat(newEmail.indexOf('@') - 2) + "@example.com";
+        // 요청 스레드는 메일을 보내지 않고 outbox에 남긴다. 새 이메일은 가린 값만 저장한다.
+        verify(notificationSender, never()).send(anyString(), anyString(), any());
+        assertThat(notificationsOf(user)).containsExactly(user.getEmail() + " " + masked);
+
+        notificationJob.run(Instant.now());
+
         verify(notificationSender).send(eq(user.getEmail()), eq(masked), any(Instant.class));
+        assertThat(notificationsOf(user)).isEmpty();
     }
 
     @Test
@@ -99,7 +109,7 @@ class EmailChangeReauthenticationIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("INVALID_CREDENTIALS"));
         assertThat(emailOf(user)).isEqualTo(user.getEmail());
-        verify(notificationSender, never()).send(anyString(), anyString(), any());
+        assertThat(notificationsOf(user)).isEmpty();
 
         // 거절된 요청은 토큰을 소비하지 않았으므로 같은 토큰으로 다시 시도할 수 있다.
         change(user, Instant.now(), body(newEmail, token, PASSWORD, null)).andExpect(status().isOk());
@@ -162,18 +172,6 @@ class EmailChangeReauthenticationIntegrationTest {
     }
 
     @Test
-    void notificationFailure_doesNotRollBackEmailChange() throws Exception {
-        User user = localUser();
-        String newEmail = uniqueEmail();
-        doThrow(new IllegalStateException("smtp down")).when(notificationSender).send(anyString(), anyString(), any());
-
-        change(user, Instant.now(), body(newEmail, token(newEmail), PASSWORD, null)).andExpect(status().isOk());
-
-        assertThat(emailOf(user)).isEqualTo(newEmail);
-        verify(notificationSender).send(eq(user.getEmail()), anyString(), any());
-    }
-
-    @Test
     void failedChange_sendsNoNotification() throws Exception {
         User user = localUser();
         String newEmail = uniqueEmail();
@@ -182,7 +180,7 @@ class EmailChangeReauthenticationIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_VERIFICATION_TOKEN"));
 
-        verify(notificationSender, never()).send(anyString(), anyString(), any());
+        assertThat(notificationsOf(user)).isEmpty();
     }
 
     @Test
@@ -219,7 +217,7 @@ class EmailChangeReauthenticationIntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("DUPLICATE_EMAIL"));
         assertThat(emailOf(user)).isEqualTo(user.getEmail());
-        verify(notificationSender, never()).send(anyString(), anyString(), any());
+        assertThat(notificationsOf(user)).isEmpty();
 
         User occupant = users.findById(occupantId).orElseThrow();
         occupant.changeEmail(uniqueEmail());
@@ -274,6 +272,11 @@ class EmailChangeReauthenticationIntegrationTest {
     private User socialUser() {
         String id = "u_" + shortId();
         return users.saveAndFlush(new User(id, id + "@example.com", "google", "사용자", null));
+    }
+
+    private List<String> notificationsOf(User user) {
+        return jdbc.queryForList("SELECT recipient_email || ' ' || masked_new_email FROM email_change_notifications "
+                + "WHERE user_id = ?", String.class, user.getId());
     }
 
     private String emailOf(User user) {
