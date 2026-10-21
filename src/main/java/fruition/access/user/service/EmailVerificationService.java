@@ -121,9 +121,9 @@ public class EmailVerificationService {
         // DB 쓰기만 트랜잭션으로 처리하고 커밋한다. SMTP 발송을 트랜잭션 안에서 하면
         // 외부 메일 서버 왕복 동안 DB 커넥션을 붙잡으므로, 발송은 커밋 후 트랜잭션 밖에서 한다.
         transactionTemplate.executeWithoutResult(status -> {
-            // 새 코드 발급 전 같은 (email, purpose)의 미소비 코드를 폐기한다.
+            // 새 코드 발급 전 같은 (email, purpose)의 미소비 코드와 이미 받은 토큰을 폐기한다.
             for (EmailVerification previous : verificationRepository.findByEmailAndPurposeAndConsumedAtIsNull(email, purpose)) {
-                previous.expireCode();
+                previous.invalidate();
             }
             verificationRepository.save(new EmailVerification(
                     id, email, purpose, OpaqueTokens.sha256(code), Instant.now().plusSeconds(codeTtlSeconds)));

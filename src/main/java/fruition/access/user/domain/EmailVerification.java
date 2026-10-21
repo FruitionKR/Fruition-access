@@ -52,9 +52,16 @@ public class EmailVerification {
         this.createdAt = Instant.now();
     }
 
-    /** 새 코드 발급 시 기존 미소비 코드를 즉시 만료 처리한다. */
-    public void expireCode() {
-        this.codeExpiresAt = Instant.now();
+    /**
+     * 새 코드 발급 시 기존 미소비 레코드를 즉시 무효화한다.
+     * 코드뿐 아니라 이미 확인해 받은 토큰도 만료시켜, 재발급 이전 토큰을 더는 쓸 수 없게 한다.
+     */
+    public void invalidate() {
+        Instant now = Instant.now();
+        this.codeExpiresAt = now;
+        if (this.tokenHash != null) {
+            this.tokenExpiresAt = now;
+        }
     }
 
     public void increaseAttempt() {
