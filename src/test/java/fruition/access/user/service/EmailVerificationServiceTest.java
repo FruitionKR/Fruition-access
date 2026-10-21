@@ -31,6 +31,7 @@ import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -177,6 +178,22 @@ class EmailVerificationServiceTest {
         assertThat(response.retryAfter()).isEqualTo(60);
         verify(verificationRepository).save(any(EmailVerification.class));
         verify(sender).send(eq("test@example.com"), eq("signup"), anyString());
+    }
+
+    @Test
+    void request_normalizesEmailIndependentOfDefaultLocale() {
+        // 터키어 로케일에서는 기본 toLowerCase가 'I'를 점 없는 'ı'로 바꿔 발급·소비 이메일이 어긋난다.
+        Locale original = Locale.getDefault();
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        try {
+            service.request(new EmailVerificationRequest(" INFO@EXAMPLE.COM ", "password_reset"));
+            service.requestForPasswordChange("ADMIN@EXAMPLE.COM");
+        } finally {
+            Locale.setDefault(original);
+        }
+
+        verify(sender).send(eq("info@example.com"), eq("password_reset"), anyString());
+        verify(sender).send(eq("admin@example.com"), eq("password_change"), anyString());
     }
 
     @Test

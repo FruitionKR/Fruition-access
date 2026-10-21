@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -42,7 +43,7 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public EmailAvailabilityResponse checkEmailAvailability(EmailAvailabilityRequest request) {
-        String email = request.email().trim().toLowerCase();
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
         List<User> accounts = userRepository.findAllByEmail(email);
         // 같은 이메일의 계정이 하나라도 있으면(local이든 소셜이든) 신규 가입할 수 없다.
         // 소셜 계정의 provider는 "그 계정으로 로그인 후 설정에서 연동" 안내용으로 알린다.
@@ -57,7 +58,7 @@ public class UserService {
 
     @Transactional
     public SignupResponse signup(SignupRequest request) {
-        String email = request.email().trim().toLowerCase();
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
         log.info("[회원가입 요청] email={}", email);
 
         // 유효 토큰 낭비를 막기 위해 중복 검사를 토큰 소비보다 먼저 수행한다.

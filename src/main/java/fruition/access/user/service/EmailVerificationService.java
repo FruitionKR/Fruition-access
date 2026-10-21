@@ -29,6 +29,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -75,14 +76,14 @@ public class EmailVerificationService {
     }
 
     public EmailVerificationResponse request(EmailVerificationRequest request) {
-        String email = request.email().trim().toLowerCase();
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
         String purpose = request.purpose();
         return issue(email, purpose, () -> rejectUnusableEmail(email, purpose));
     }
 
     /** 로그인한 사용자의 계정 이메일로 비밀번호 변경용 인증번호를 보낸다. */
     public EmailVerificationResponse requestForPasswordChange(String accountEmail) {
-        String email = accountEmail.trim().toLowerCase();
+        String email = accountEmail.trim().toLowerCase(Locale.ROOT);
         return issue(email, PURPOSE_PASSWORD_CHANGE, () -> {});
     }
 
