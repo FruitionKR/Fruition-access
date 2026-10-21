@@ -66,6 +66,9 @@ class ExpiredRecordCleanupJobIntegrationTest {
         String recentlyRevokedInvitation = invitation(workspace, user, later(1), null, ago(10));
         UUID staleIdempotency = idempotency(user, ago(0).toInstant().minusSeconds(60));
         UUID liveIdempotency = idempotency(user, later(1).toInstant());
+        long oldFailedNotification = notification(user, "failed", ago(31));
+        long recentFailedNotification = notification(user, "failed", ago(29));
+        long oldPendingNotification = notification(user, "pending", ago(31));
 
         job.run(now);
 
@@ -81,6 +84,9 @@ class ExpiredRecordCleanupJobIntegrationTest {
         assertThat(exists("workspace_invitations", recentlyRevokedInvitation)).isTrue();
         assertThat(exists("idempotency_records", staleIdempotency)).isFalse();
         assertThat(exists("idempotency_records", liveIdempotency)).isTrue();
+        assertThat(exists("email_change_notifications", oldFailedNotification)).isFalse();
+        assertThat(exists("email_change_notifications", recentFailedNotification)).isTrue();
+        assertThat(exists("email_change_notifications", oldPendingNotification)).isTrue();
     }
 
     @Test
@@ -181,6 +187,14 @@ class ExpiredRecordCleanupJobIntegrationTest {
                 VALUES (?, ?, 'TEST', ?, 'hash', 200, now(), ?, 'COMPLETED')
                 """, id, user, id.toString(), Timestamp.from(expiresAt));
         return id;
+    }
+
+    private long notification(String user, String status, Timestamp createdAt) {
+        return jdbc.queryForObject("""
+                INSERT INTO email_change_notifications(user_id, recipient_email, masked_new_email, changed_at,
+                    status, created_at)
+                VALUES (?, ?, 'ne***@example.com', ?, ?, ?) RETURNING id
+                """, Long.class, user, user + "@example.com", createdAt, status, createdAt);
     }
 
     private boolean exists(String table, Object id) {

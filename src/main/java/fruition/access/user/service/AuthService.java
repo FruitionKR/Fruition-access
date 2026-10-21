@@ -284,7 +284,8 @@ public class AuthService {
      * OAuth 로그인은 {@code (provider, provider_user_id)}로 사용자를 찾으므로 이메일이 바뀌어도 끊기지 않는다.
      *
      * <p>먼저 {@link Reauthenticator}로 본인을 다시 확인한다({@code authTime}은 access token의 직접 로그인 시각,
-     * refresh로 받은 토큰이면 null). 커밋되면 기존 이메일로 변경 알림을 보낸다({@link EmailChangeNotificationListener}).
+     * refresh로 받은 토큰이면 null). 같은 트랜잭션에서 기존 이메일로 보낼 변경 알림을 outbox에 남기고
+     * ({@link EmailChangeNotificationListener}), 발송은 {@link EmailChangeNotificationJob}이 한다.
      */
     @Transactional
     public MeResponse changeEmail(String userId, EmailChangeRequest request, String currentRefreshToken,

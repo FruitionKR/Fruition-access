@@ -17,7 +17,7 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * 만료된 인증·세션·초대·멱등 기록을 지우고, 휴지통 보관 기간이 지난 워크스페이스를 영구 삭제한다.
+ * 만료된 인증·세션·초대·멱등 기록과 발송을 포기한 이메일 변경 알림을 지우고, 휴지통 보관 기간이 지난 워크스페이스를 영구 삭제한다.
  *
  * <p>기록 정리는 조건부 DELETE라 여러 replica가 동시에 돌아도 결과가 같다. 워크스페이스는 행을
  * {@code FOR UPDATE SKIP LOCKED}로 잡은 채 document → ai 파기를 호출하므로 한 replica만 처리한다.
@@ -38,6 +38,7 @@ public class ExpiredRecordCleanupJob {
     private final Duration refreshTokenRetention;
     private final Duration invitationRetention;
     private final Duration workspaceTrashRetention;
+    private final Duration failedNotificationRetention;
 
     public ExpiredRecordCleanupJob(
             JdbcTemplate jdbc,
@@ -48,7 +49,8 @@ public class ExpiredRecordCleanupJob {
             @Value("${app.cleanup.verification-retention:7d}") Duration verificationRetention,
             @Value("${app.cleanup.refresh-token-retention:7d}") Duration refreshTokenRetention,
             @Value("${app.cleanup.invitation-retention:30d}") Duration invitationRetention,
-            @Value("${app.cleanup.workspace-trash-retention:30d}") Duration workspaceTrashRetention) {
+            @Value("${app.cleanup.workspace-trash-retention:30d}") Duration workspaceTrashRetention,
+            @Value("${app.cleanup.failed-email-change-notification-retention:30d}") Duration failedNotificationRetention) {
         this.jdbc = jdbc;
         this.transactionTemplate = transactionTemplate;
         this.documentClient = documentClient;
@@ -58,6 +60,7 @@ public class ExpiredRecordCleanupJob {
         this.refreshTokenRetention = refreshTokenRetention;
         this.invitationRetention = invitationRetention;
         this.workspaceTrashRetention = workspaceTrashRetention;
+        this.failedNotificationRetention = failedNotificationRetention;
     }
 
     @Scheduled(fixedDelayString = "${app.cleanup.delay-ms:86400000}")
@@ -79,9 +82,14 @@ public class ExpiredRecordCleanupJob {
                 WHERE LEAST(expires_at, COALESCE(accepted_at, expires_at), COALESCE(revoked_at, expires_at)) < ?
                 """, before(now, invitationRetention));
         int idempotency = jdbc.update("DELETE FROM idempotency_records WHERE expires_at < ?", Timestamp.from(now));
+        // 발송을 포기한 알림은 운영자가 확인할 동안만 기존 이메일을 남긴다. 보낸 알림은 발송 즉시 지워진다.
+        int notifications = jdbc.update(
+                "DELETE FROM email_change_notifications WHERE status = 'failed' AND created_at < ?",
+                before(now, failedNotificationRetention));
         int workspaces = purgeTrashedWorkspaces(now);
-        log.info("[만료 기록 정리] verifications={} refreshTokens={} invitations={} idempotency={} workspaces={}",
-                verifications, refreshTokens, invitations, idempotency, workspaces);
+        log.info("[만료 기록 정리] verifications={} refreshTokens={} invitations={} idempotency={} "
+                        + "failedEmailChangeNotifications={} workspaces={}",
+                verifications, refreshTokens, invitations, idempotency, notifications, workspaces);
     }
 
     /**
