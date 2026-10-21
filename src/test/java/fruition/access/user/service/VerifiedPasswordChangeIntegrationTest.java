@@ -2,10 +2,16 @@ package fruition.access.user.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fruition.TestcontainersConfiguration;
+import fruition.access.security.OpaqueTokens;
 import fruition.access.user.domain.User;
+import fruition.access.user.domain.UserMfa;
+import fruition.access.user.domain.UserMfaRecoveryCode;
 import fruition.access.user.dto.EmailVerificationRequest;
 import fruition.access.user.dto.VerificationConfirmRequest;
 import fruition.access.user.mail.EmailVerificationSender;
+import fruition.access.user.mfa.MfaSecretCipher;
+import fruition.access.user.repository.UserMfaRecoveryCodeRepository;
+import fruition.access.user.repository.UserMfaRepository;
 import fruition.access.user.repository.UserRepository;
 import fruition.shared.security.JwtTokenProvider;
 import jakarta.servlet.http.Cookie;
@@ -57,6 +63,9 @@ class VerifiedPasswordChangeIntegrationTest {
     @Autowired JwtTokenProvider jwtTokenProvider;
     @Autowired EmailVerificationService verificationService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired UserMfaRepository mfas;
+    @Autowired UserMfaRecoveryCodeRepository recoveryCodes;
+    @Autowired MfaSecretCipher cipher;
     @MockitoBean EmailVerificationSender sender;
 
     @Test
@@ -82,6 +91,31 @@ class VerifiedPasswordChangeIntegrationTest {
         // 1회용: 같은 토큰으로 다시 바꿀 수 없다.
         change(user, token, current).andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_VERIFICATION_TOKEN"));
+    }
+
+    @Test
+    void mfaAccount_requiresValidMfaCodeWithoutBurningToken() throws Exception {
+        User user = localUser();
+        String recoveryCode = enableMfa(user);
+        String token = passwordChangeToken(user);
+
+        change(user, token, null, null).andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("INVALID_MFA_CODE"));
+        change(user, token, null, "not-a-code").andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("INVALID_MFA_CODE"));
+        assertThat(passwordMatches(user, OLD_PASSWORD)).isTrue();
+
+        // 거절된 요청은 토큰을 소비하지 않아 같은 토큰으로 다시 시도할 수 있다.
+        change(user, token, null, recoveryCode).andExpect(status().isNoContent());
+        assertThat(passwordMatches(user, NEW_PASSWORD)).isTrue();
+    }
+
+    @Test
+    void accountWithoutMfa_ignoresMfaCode() throws Exception {
+        User user = localUser();
+
+        change(user, passwordChangeToken(user), null, "not-a-code").andExpect(status().isNoContent());
+        assertThat(passwordMatches(user, NEW_PASSWORD)).isTrue();
     }
 
     @Test
@@ -153,13 +187,36 @@ class VerifiedPasswordChangeIntegrationTest {
     }
 
     private ResultActions change(User user, String token, String refreshToken) throws Exception {
+        return change(user, token, refreshToken, null);
+    }
+
+    private ResultActions change(User user, String token, String refreshToken, String mfaCode) throws Exception {
+        String body = mfaCode == null
+                ? json("new_password", NEW_PASSWORD, "verification_token", token)
+                : json("new_password", NEW_PASSWORD, "verification_token", token, "mfa_code", mfaCode);
         var request = put("/api/auth/me/password/verified").header("Authorization", bearer(user))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(json("new_password", NEW_PASSWORD, "verification_token", token));
+                .content(body);
         if (refreshToken != null) {
             request.cookie(new Cookie("fruition_refresh_token", refreshToken));
         }
         return mockMvc.perform(request);
+    }
+
+    private String passwordChangeToken(User user) throws Exception {
+        String id = objectMapper.readTree(requestVerification(user).andReturn().getResponse().getContentAsString())
+                .get("verification_id").asText();
+        return confirm(id, user.getEmail(), "password_change");
+    }
+
+    private String enableMfa(User user) {
+        var encrypted = cipher.encrypt(new byte[20]);
+        var mfa = new UserMfa(user.getId(), encrypted.ciphertext(), encrypted.nonce());
+        mfa.activate(Instant.now().getEpochSecond() / 30 - 2);
+        mfas.saveAndFlush(mfa);
+        String code = "recovery-" + UUID.randomUUID();
+        recoveryCodes.saveAndFlush(new UserMfaRecoveryCode(user.getId(), OpaqueTokens.sha256(code)));
+        return code;
     }
 
     private String confirm(String verificationId, String email, String purpose) {

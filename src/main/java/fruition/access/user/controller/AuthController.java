@@ -443,13 +443,16 @@ public class AuthController {
 
     @Operation(summary = "인증번호로 비밀번호 변경",
             description = "계정 이메일로 받은 인증번호 토큰으로 본인을 확인하고 비밀번호를 바꿉니다. 현재 비밀번호를 몰라도 됩니다."
+                    + " MFA를 켰으면 mfa_code도 필요합니다. MFA 확인에 실패하면 verification_token은 소비되지 않습니다."
                     + " 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "204", description = "변경 성공"),
         @ApiResponse(responseCode = "400", description = "잘못된 요청, 유효하지 않은 verification_token,"
                 + " 또는 비밀번호를 쓰지 않는 계정",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+        @ApiResponse(responseCode = "401", description = "인증되지 않았거나 MFA를 켰는데 mfa_code가 없거나 틀림(INVALID_MFA_CODE)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "429", description = "MFA 확인 시도 횟수 제한 초과(MFA_RATE_LIMITED)",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PutMapping("/me/password/verified")

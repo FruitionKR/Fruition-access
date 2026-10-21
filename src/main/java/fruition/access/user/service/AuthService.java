@@ -247,11 +247,16 @@ public class AuthService {
      * <p>현재 비밀번호를 잊은 로그인 사용자를 위한 경로다. 토큰은 발급 당시의 계정 이메일과
      * {@code password_change} 목적에 묶여 있어, 다른 이메일·다른 목적으로 받은 토큰은 쓸 수 없다.
      * {@link #changePassword}처럼 현재 세션만 남기고 나머지를 폐기한다.
+     *
+     * <p>MFA를 켠 계정은 세션과 메일함을 함께 가진 사람이 2차 인증 없이 비밀번호를 바꾸지 못하게
+     * {@code mfa_code}도 요구한다.
      */
     @Transactional
     public void changePasswordWithVerification(String userId, VerifiedPasswordChangeRequest request,
                                                String currentRefreshToken) {
         User user = passwordUser(userId);
+        // 거절되면 토큰을 소비하기 전에 끝나, 코드를 틀려도 같은 토큰으로 다시 시도할 수 있다.
+        reauthenticator.verifyMfa(user, request.mfaCode());
         emailVerificationService.consumeForPasswordChange(user.getEmail(), request.verificationToken());
 
         user.changePassword(passwordEncoder.encode(request.newPassword()));

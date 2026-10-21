@@ -17,5 +17,11 @@ public record VerifiedPasswordChangeRequest(
         @NotBlank(message = "verification_token은 필수입니다.")
         @Schema(description = "POST /api/auth/me/password/verification으로 받은 인증번호를 확인해 얻은 1회용 토큰",
                 example = "EXAMPLE-verification-token-not-real-0000000")
-        String verificationToken
+        String verificationToken,
+
+        @JsonProperty("mfa_code")
+        @Size(max = 64, message = "mfa_code는 64자 이하여야 합니다.")
+        @Schema(description = "MFA를 켠 계정의 인증 앱 코드 또는 복구 코드(필수). MFA를 끈 계정은 무시한다.",
+                example = "482917")
+        String mfaCode
 ) {}

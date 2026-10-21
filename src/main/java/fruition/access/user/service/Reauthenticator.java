@@ -16,6 +16,7 @@ import java.time.Instant;
  *
  * <p>비밀번호 계정은 현재 비밀번호, 비밀번호가 없는 소셜 계정은 {@link #RECENT_LOGIN} 안의 직접 로그인
  * (refresh로 받은 access token이면 {@code authTime}이 없다)을 요구한다. MFA를 켰으면 코드도 확인한다.
+ * 인증번호로 비밀번호를 바꾸는 경로는 이메일 인증번호가 첫 번째 확인이라 {@link #verifyMfa}만 쓴다.
  */
 @Component
 public class Reauthenticator {
@@ -38,6 +39,11 @@ public class Reauthenticator {
         } else if (authTime == null || authTime.isBefore(Instant.now().minus(RECENT_LOGIN))) {
             throw new ReauthenticationRequiredException();
         }
+        verifyMfa(user, mfaCode);
+    }
+
+    /** MFA를 켠 계정이면 코드를 확인한다. 코드 검증은 {@link MfaService}의 사용자별 시도 제한을 받는다. */
+    public void verifyMfa(User user, String mfaCode) {
         if (mfaService.isEnabled(user.getId())) {
             if (mfaCode == null || mfaCode.isBlank()) {
                 throw new InvalidMfaCodeException();
