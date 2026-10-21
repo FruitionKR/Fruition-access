@@ -740,7 +740,7 @@ paths:
       - Auth
   /api/auth/me/password/verified:
     put:
-      description: 계정 이메일로 받은 인증번호 토큰으로 본인을 확인하고 비밀번호를 바꿉니다. 현재 비밀번호를 몰라도 됩니다. MFA를 켰으면 mfa_code도 필요합니다. MFA 확인에 실패하면 verification_token은 소비되지 않습니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.
+      description: 계정 이메일로 받은 인증번호 토큰으로 본인을 확인하고 비밀번호를 바꿉니다. 현재 비밀번호를 몰라도 됩니다. MFA를 켰으면 mfa_code도 필요합니다. verification_token을 먼저 확인하므로 토큰이 유효하지 않으면 MFA 코드는 확인하지 않습니다. MFA 확인에 실패하면 verification_token은 소비되지 않습니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.
       operationId: changePasswordWithVerification
       parameters:
       - in: cookie

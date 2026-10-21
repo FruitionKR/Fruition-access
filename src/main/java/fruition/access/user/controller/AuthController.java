@@ -448,8 +448,8 @@ public class AuthController {
 
     @Operation(summary = "인증번호로 비밀번호 변경",
             description = "계정 이메일로 받은 인증번호 토큰으로 본인을 확인하고 비밀번호를 바꿉니다. 현재 비밀번호를 몰라도 됩니다."
-                    + " MFA를 켰으면 mfa_code도 필요합니다. MFA 확인에 실패하면 verification_token은 소비되지 않습니다."
-                    + " 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.")
+                    + " MFA를 켰으면 mfa_code도 필요합니다. verification_token을 먼저 확인하므로 토큰이 유효하지 않으면 MFA 코드는 확인하지 않습니다."
+                    + " MFA 확인에 실패하면 verification_token은 소비되지 않습니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "204", description = "변경 성공"),
         @ApiResponse(responseCode = "400", description = "잘못된 요청, 유효하지 않은 verification_token,"

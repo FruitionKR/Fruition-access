@@ -1612,8 +1612,10 @@ Content-Type: application/json
 | `401` | MFA를 켰는데 `mfa_code`가 없거나 틀림 | `INVALID_MFA_CODE` |
 | `429` | MFA 코드 확인 시도가 한도를 넘음(로그인 MFA·이메일 변경·회원 탈퇴·현재 비밀번호 변경과 공유, 사용자별 5분에 5회) | `MFA_RATE_LIMITED` |
 
-검사 순서는 비밀번호 계정 여부 → MFA 코드 → 토큰 소비다. MFA 오류(`401`, `429`)는 토큰을 소비하지 않으므로
-같은 `verification_token`으로 `mfa_code`를 고쳐 다시 보낼 수 있다. MFA 코드와 토큰이 모두 틀리면 MFA 오류가 돌아온다.
+검사 순서는 비밀번호 계정 여부 → 토큰 확인 → MFA 코드다. 유효한 토큰이 없는 요청은 MFA 코드를 확인하지 않아
+로그인 등과 공유하는 MFA 시도 한도를 쓰지 않는다. MFA 오류(`401`, `429`)가 나면 토큰 소비가 함께 되돌려지므로
+같은 `verification_token`으로 `mfa_code`를 고쳐 다시 보낼 수 있다. MFA 코드와 토큰이 모두 틀리면 토큰 오류
+(`400 INVALID_VERIFICATION_TOKEN`)가 돌아온다.
 
 #### 7. Pagination / filtering
 

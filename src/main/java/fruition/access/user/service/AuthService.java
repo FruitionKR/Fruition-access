@@ -261,9 +261,10 @@ public class AuthService {
     public void changePasswordWithVerification(String userId, VerifiedPasswordChangeRequest request,
                                                String currentRefreshToken) {
         User user = passwordUser(userId);
-        // 거절되면 토큰을 소비하기 전에 끝나, 코드를 틀려도 같은 토큰으로 다시 시도할 수 있다.
-        reauthenticator.verifyMfa(user, request.mfaCode());
+        // 토큰을 먼저 확인해, 유효한 토큰이 없는 요청은 로그인과 공유하는 MFA 시도 예산을 쓰지 못하게 한다.
+        // MFA가 거절되면 예외로 이 트랜잭션이 롤백돼 소비도 되돌아가므로, 같은 토큰으로 코드만 고쳐 다시 시도할 수 있다.
         emailVerificationService.consumeForPasswordChange(user.getEmail(), request.verificationToken());
+        reauthenticator.verifyMfa(user, request.mfaCode());
 
         user.changePassword(passwordEncoder.encode(request.newPassword()));
 

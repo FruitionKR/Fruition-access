@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -66,6 +67,7 @@ class VerifiedPasswordChangeIntegrationTest {
     @Autowired UserMfaRepository mfas;
     @Autowired UserMfaRecoveryCodeRepository recoveryCodes;
     @Autowired MfaSecretCipher cipher;
+    @Autowired StringRedisTemplate redis;
     @MockitoBean EmailVerificationSender sender;
 
     @Test
@@ -107,6 +109,22 @@ class VerifiedPasswordChangeIntegrationTest {
 
         // 거절된 요청은 토큰을 소비하지 않아 같은 토큰으로 다시 시도할 수 있다.
         change(user, token, null, recoveryCode).andExpect(status().isNoContent());
+        assertThat(passwordMatches(user, NEW_PASSWORD)).isTrue();
+    }
+
+    @Test
+    void invalidToken_isRejectedBeforeMfaAndDoesNotSpendMfaBudget() throws Exception {
+        User user = localUser();
+        String recoveryCode = enableMfa(user);
+
+        // 토큰과 코드가 모두 틀리면 토큰 오류가 먼저다. 사용자별 MFA 한도(5분 5회)를 넘겨 보내도 429가 되지 않는다.
+        for (int i = 0; i < 6; i++) {
+            change(user, "not-a-token", null, "not-a-code").andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("INVALID_VERIFICATION_TOKEN"));
+        }
+        assertThat(redis.hasKey("auth:mfa:attempts:" + user.getId())).isFalse();
+
+        change(user, passwordChangeToken(user), null, recoveryCode).andExpect(status().isNoContent());
         assertThat(passwordMatches(user, NEW_PASSWORD)).isTrue();
     }
 
