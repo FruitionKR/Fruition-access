@@ -62,6 +62,7 @@ import java.time.Instant;
 
 import fruition.access.user.exception.UnsupportedUserAvatarException;
 import fruition.access.user.exception.UserAvatarTooLargeException;
+import fruition.access.user.exception.VerificationRateLimitedException;
 import fruition.access.user.service.UserAvatarService;
 import org.springframework.http.HttpMethod;
 import org.springframework.mock.web.MockMultipartFile;
@@ -69,6 +70,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
@@ -232,6 +234,21 @@ class AuthControllerTest {
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.verification_id").value("ev_abc123"))
                 .andExpect(jsonPath("$.expires_in").value(300));
+    }
+
+    @Test
+    void requestEmailVerification_requestLimitExceeded_returns429WithoutIssuing() throws Exception {
+        doThrow(new VerificationRateLimitedException(60))
+                .when(emailAvailabilityRateLimiter).checkVerificationRequest(any(), any());
+
+        mockMvc.perform(post("/api/auth/email-verifications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new EmailVerificationRequest("test@example.com", "signup"))))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "60"))
+                .andExpect(jsonPath("$.error.code").value("VERIFICATION_RATE_LIMITED"));
+        verify(emailVerificationService, never()).request(any());
     }
 
     @Test

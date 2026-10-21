@@ -164,12 +164,16 @@ public class AuthController {
                     + " 소셜 가입 계정만 있으면 EMAIL_REGISTERED_WITH_OAUTH(EmailRegisteredWithOAuthResponse)."
                     + " purpose=email_change는 그 주소를 쓰는 계정이 있으면 DUPLICATE_EMAIL(ErrorResponse)",
             content = @Content(schema = @Schema(oneOf = {ErrorResponse.class, EmailRegisteredWithOAuthResponse.class}))),
-        @ApiResponse(responseCode = "429", description = "재요청 제한 초과",
+        @ApiResponse(responseCode = "429", description = "재요청 제한 초과(VERIFICATION_RATE_LIMITED)."
+                + " 재발송 쿨다운·일일 한도, 또는 IP별·이메일별 요청 수 제한",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PostMapping("/email-verifications")
     public ResponseEntity<EmailVerificationResponse> requestEmailVerification(
-            @Valid @RequestBody EmailVerificationRequest request) {
+            @Valid @RequestBody EmailVerificationRequest request,
+            HttpServletRequest servletRequest) {
+        // 거절된 요청(409)은 발급 기록이 남지 않아 쿨다운·일일 한도에 걸리지 않는다. 요청 자체를 IP별·이메일별로 센다.
+        emailAvailabilityRateLimiter.checkVerificationRequest(request.email(), ClientAddressResolver.of(servletRequest));
         EmailVerificationResponse response = emailVerificationService.request(request);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
     }

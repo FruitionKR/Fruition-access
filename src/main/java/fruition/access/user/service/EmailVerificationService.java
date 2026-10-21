@@ -103,7 +103,8 @@ public class EmailVerificationService {
         }
 
         // 이메일 변경은 다른 계정(소셜 가입 포함)이 쓰는 주소로 바꿀 수 없으므로 쓸 수 없는 주소로 메일을 보내지 않는다.
-        // 존재 여부는 signup 거절과 같은 범위로만 드러나고 같은 rate limit을 받는다.
+        // 존재 여부는 signup 거절과 같은 범위로만 드러난다. 거절은 롤백돼 발급 기록이 남지 않으므로 아래 쿨다운·일일 한도에는
+        // 걸리지 않고, 반복 조회는 컨트롤러의 IP별·이메일별 요청 제한(EmailAvailabilityRateLimiter)이 막는다.
         // 인증 없이 부르는 API라 현재 본인 주소도 함께 거절된다(본인 주소로의 변경은 아무것도 바꾸지 않는다).
         if (PURPOSE_EMAIL_CHANGE.equals(purpose) && userRepository.existsByEmail(email)) {
             log.warn("[인증 요청 거부] reason=email_in_use purpose={} email={}", purpose, email);
@@ -120,8 +121,9 @@ public class EmailVerificationService {
         transactionTemplate.executeWithoutResult(status -> {
             // 같은 (email, purpose)의 발급을 커밋까지 직렬화해, 동시 요청이 쿨다운·일일 한도를 함께 통과하지 못하게 한다.
             verificationRepository.lockIssuance(purpose + ":" + email);
-            // 존재 노출(signup 409)도 throttle 대상이 되도록 rate limit을 먼저 적용한다.
-            // 단 per-(email, purpose) 범위라 서로 다른 이메일 대량 열거는 못 막으며, 그건 IP/전역 제한 영역이다.
+            // 쿨다운·일일 한도는 발급된 레코드로 센다. 직전 발급이 있으면 거절(409) 검사보다 먼저 429로 끝나지만,
+            // 거절된 요청은 롤백돼 레코드를 남기지 않으므로 거절만 반복하는 요청은 여기서 세지 않는다.
+            // 그 반복과 서로 다른 이메일 대량 열거는 컨트롤러의 IP별·이메일별 요청 제한이 막는다.
             enforceRateLimit(email, purpose);
             eligibilityCheck.run();
             // 새 코드 발급 전 같은 (email, purpose)의 미소비 코드와 이미 받은 토큰을 폐기한다.

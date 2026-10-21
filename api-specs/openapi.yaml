@@ -87,7 +87,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-          description: 재요청 제한 초과
+          description: "재요청 제한 초과(VERIFICATION_RATE_LIMITED). 재발송 쿨다운·일일 한도, 또는 IP별·이메일별 요청 수 제한"
       summary: 이메일 인증번호 발급
       tags:
       - Auth

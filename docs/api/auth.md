@@ -175,7 +175,7 @@ curl -X POST "$ACCESS/api/auth/email-availability" \
 | 입력 | **Body** — `EmailVerificationRequest` |
 | 출력 | `202` 인증번호 발급 — `EmailVerificationResponse` |
 | 조건 | 인증 불필요<br>인증 없이 호출할 수 있다.<br>공개 API이므로 별도의 사용자 권한 검증이 없다. |
-| 주요 오류 | `400` 잘못된 요청 — `ErrorResponse`<br>`409` 이미 가입된 이메일(purpose=signup): 이메일 가입 계정이면 `DUPLICATE_EMAIL` — `ErrorResponse`, 소셜 가입 계정만 있으면 `EMAIL_REGISTERED_WITH_OAUTH` — `EmailRegisteredWithOAuthResponse`(`oauth_providers` 포함)<br>`409` 이미 다른 계정이 쓰는 주소(purpose=email_change, 소셜 가입 포함): `DUPLICATE_EMAIL` — `ErrorResponse`<br>`429` 재요청 제한 초과 — `ErrorResponse` |
+| 주요 오류 | `400` 잘못된 요청 — `ErrorResponse`<br>`409` 이미 가입된 이메일(purpose=signup): 이메일 가입 계정이면 `DUPLICATE_EMAIL` — `ErrorResponse`, 소셜 가입 계정만 있으면 `EMAIL_REGISTERED_WITH_OAUTH` — `EmailRegisteredWithOAuthResponse`(`oauth_providers` 포함)<br>`409` 이미 다른 계정이 쓰는 주소(purpose=email_change, 소셜 가입 포함): `DUPLICATE_EMAIL` — `ErrorResponse`<br>`429` 재요청 제한 초과(`VERIFICATION_RATE_LIMITED`, `Retry-After`) — `ErrorResponse` |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -232,7 +232,13 @@ curl -X POST "$ACCESS/api/auth/email-availability" \
 | `409` | 이미 가입된 이메일(purpose=signup). `DUPLICATE_EMAIL`(이메일 가입 계정) | `ErrorResponse` |
 | `409` | 같은 이메일의 소셜 가입 계정이 있음(purpose=signup). `EMAIL_REGISTERED_WITH_OAUTH` | `EmailRegisteredWithOAuthResponse` |
 | `409` | 이미 다른 계정(소셜 가입 포함)이 쓰는 주소(purpose=email_change). `DUPLICATE_EMAIL` | `ErrorResponse` |
-| `429` | 재요청 제한 초과 | `ErrorResponse` |
+| `429` | 재요청 제한 초과(`VERIFICATION_RATE_LIMITED`). 아래 제한 중 하나를 넘음. `Retry-After` 헤더에 기다릴 초 | `ErrorResponse` |
+
+요청 제한은 두 겹이다.
+
+- 요청 수 제한: Redis에서 IP당 30회/분, 이메일당 5회/분으로 요청 자체를 센다(`Retry-After: 60`). 거절(`409`)된 요청도 센다.
+  [`POST /api/auth/email-availability`](#summary-post-api-auth-email-availability)와 수치는 같지만 횟수는 따로 센다.
+- 발급 제한: 같은 `(email, purpose)`의 재발송 쿨다운(60초)과 일일 한도(5회). 발급된 인증번호로 세므로 거절(`409`)된 요청은 세지 않는다.
 
 ```json
 {
