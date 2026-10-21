@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -83,7 +84,7 @@ public class OAuthUserService {
             log.warn("[OAuth 로그인 실패] provider={} reason=email_not_provided", provider);
             throw new OAuthEmailNotProvidedException(provider);
         }
-        String normalizedEmail = email.trim().toLowerCase();
+        String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
         rejectIfEmailRegistered(provider, normalizedEmail);
         log.info("[OAuth 신규 가입 대기] provider={}", provider);
         return codeStore.issueSignupToken(new OAuthExchangeCodeStore.PendingSignup(
