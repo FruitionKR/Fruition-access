@@ -502,10 +502,10 @@ class AuthControllerTest {
                         .cookie(new jakarta.servlet.http.Cookie("fruition_refresh_token", "current-refresh"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new PasswordChangeRequest("oldPassword1", "newPassword1"))))
+                                new PasswordChangeRequest("oldPassword1", "newPassword1", null))))
                 .andExpect(status().isNoContent());
         verify(authService).changePassword("user_1f9a74af",
-                new PasswordChangeRequest("oldPassword1", "newPassword1"), "current-refresh");
+                new PasswordChangeRequest("oldPassword1", "newPassword1", null), "current-refresh");
     }
 
     @Test
@@ -513,7 +513,7 @@ class AuthControllerTest {
         mockMvc.perform(put("/api/auth/me/password")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new PasswordChangeRequest("oldPassword1", "newPassword1"))))
+                                new PasswordChangeRequest("oldPassword1", "newPassword1", null))))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -525,7 +525,7 @@ class AuthControllerTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new PasswordChangeRequest("oldPassword1", "short"))))
+                                new PasswordChangeRequest("oldPassword1", "short", null))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
     }
@@ -540,7 +540,7 @@ class AuthControllerTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new PasswordChangeRequest("wrongPassword", "newPassword1"))))
+                                new PasswordChangeRequest("wrongPassword", "newPassword1", null))))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("INVALID_CREDENTIALS"));
     }
@@ -756,7 +756,7 @@ class AuthControllerTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new PasswordChangeRequest("oldPassword1", "newPassword1"))))
+                                new PasswordChangeRequest("oldPassword1", "newPassword1", null))))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().string("Retry-After", "300"));
 
@@ -775,7 +775,7 @@ class AuthControllerTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new PasswordChangeRequest("wrongPassword1", "newPassword1"))))
+                                new PasswordChangeRequest("wrongPassword1", "newPassword1", null))))
                 .andExpect(status().isUnauthorized());
 
         verify(passwordChangeAttemptLimiter).recordFailure(eq("user_1f9a74af"), any());

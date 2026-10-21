@@ -43,7 +43,7 @@
 | [`PUT /api/auth/me/email`](#summary-put-api-auth-me-email) | 본인을 다시 확인하고 새 이메일로 받은 인증번호 토큰으로 계정 이메일을 바꿉니다. 기존 이메일로 변경 알림이 갑니다. |
 | [`GET /api/auth/me/sessions`](#summary-get-api-auth-me-sessions) | 폐기되지 않은 로그인 세션을 반환합니다. |
 | [`DELETE /api/auth/me/sessions/{session_id}`](#summary-delete-api-auth-me-sessions-session-id) | 지정한 세션의 refresh token을 폐기합니다. |
-| [`PUT /api/auth/me/password`](#summary-put-api-auth-me-password) | 현재 비밀번호를 확인하고 새 비밀번호로 바꿉니다. |
+| [`PUT /api/auth/me/password`](#summary-put-api-auth-me-password) | 현재 비밀번호(MFA를 켰으면 `mfa_code`도)를 확인하고 새 비밀번호로 바꿉니다. |
 | [`POST /api/auth/me/password/verification`](#summary-post-api-auth-me-password-verification) | 로그인한 사용자의 계정 이메일로 비밀번호 변경용 인증번호를 보냅니다. |
 | [`PUT /api/auth/me/password/verified`](#summary-put-api-auth-me-password-verified) | 계정 이메일 인증번호 토큰(MFA를 켰으면 `mfa_code`도)으로 본인을 확인하고 비밀번호를 바꿉니다(현재 비밀번호 불필요). |
 | [`POST /api/auth/login/mfa`](#summary-post-api-auth-login-mfa) | 다단계 인증 코드로 로그인을 마칩니다. |
@@ -1348,8 +1348,8 @@ curl -X DELETE "$ACCESS/api/auth/me/sessions/42" \
 | 목적 | 현재 비밀번호를 확인하고 새 비밀번호로 바꿉니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다. |
 | 입력 | **Body** — `PasswordChangeRequest`<br>**Cookie** — `fruition_refresh_token`(선택) |
 | 출력 | `204` 변경 성공 — 본문 없음 |
-| 조건 | 인증 필요<br>비밀번호를 쓰는 계정(`provider=local`)이어야 한다. |
-| 주요 오류 | `400` 비밀번호를 쓰지 않는 계정 — `ErrorResponse`<br>`401` 인증되지 않았거나 현재 비밀번호가 다름 — `ErrorResponse` |
+| 조건 | 인증 필요<br>비밀번호를 쓰는 계정(`provider=local`)이어야 한다.<br>MFA를 켰으면 `mfa_code`도 맞아야 한다. |
+| 주요 오류 | `400` 비밀번호를 쓰지 않는 계정 — `ErrorResponse`<br>`401` 인증되지 않았거나 현재 비밀번호가 다름(`INVALID_CREDENTIALS`), MFA 코드 없음·틀림(`INVALID_MFA_CODE`) — `ErrorResponse`<br>`429` 현재 비밀번호 시도 제한 초과(`PASSWORD_CHANGE_RATE_LIMITED`), MFA 시도 제한 초과(`MFA_RATE_LIMITED`) |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -1377,12 +1377,14 @@ curl -X DELETE "$ACCESS/api/auth/me/sessions/42" \
 |---|---|---|---|---|
 | body | `current_password` | `string` | 예 | 현재 비밀번호 |
 | body | `new_password` | `string` | 예 | 새 비밀번호(8~72자) |
+| body | `mfa_code` | `string` | MFA를 켰으면 예 | 인증 앱 코드 또는 복구 코드(64자 이하). MFA를 끈 계정은 무시한다 |
 | cookie | `fruition_refresh_token` | `string` | 아니오 | 현재 세션의 refresh token. 없으면 모든 세션이 폐기된다 |
 
 ```json
 {
   "current_password": "password1234",
-  "new_password": "newPassword1234"
+  "new_password": "newPassword1234",
+  "mfa_code": "482917"
 }
 ```
 
@@ -1398,6 +1400,14 @@ curl -X DELETE "$ACCESS/api/auth/me/sessions/42" \
 | `400` | OAuth로만 가입해 비밀번호가 없는 계정 | `PASSWORD_LOGIN_UNAVAILABLE` |
 | `401` | access token이 없거나 유효하지 않음 | — |
 | `401` | 현재 비밀번호가 다름 | `INVALID_CREDENTIALS` |
+| `401` | MFA를 켰는데 `mfa_code`가 없거나 틀림 | `INVALID_MFA_CODE` |
+| `429` | 현재 비밀번호 실패가 한도를 넘음((사용자, 출처)별 5분에 5회) | `PASSWORD_CHANGE_RATE_LIMITED` |
+| `429` | MFA 코드 확인 시도가 한도를 넘음(로그인 MFA·이메일 변경·회원 탈퇴·인증번호 비밀번호 변경과 공유, 사용자별 5분에 5회) | `MFA_RATE_LIMITED` |
+
+검사 순서는 비밀번호 변경 시도 제한 → 비밀번호 계정 여부 → 현재 비밀번호 → MFA 코드다. 현재 비밀번호가 틀리면
+MFA 코드는 확인하지 않고 `INVALID_CREDENTIALS`가 돌아오므로, 비밀번호를 모르는 요청은 MFA 시도 횟수를 쓰지 않는다.
+`PASSWORD_CHANGE_RATE_LIMITED` 예산은 현재 비밀번호 실패만 센다. MFA 코드 실패는 이 예산을 쓰지 않고
+`MFA_RATE_LIMITED`의 사용자별 제한에만 잡힌다. MFA 오류로 거절되면 비밀번호는 바뀌지 않는다.
 
 #### 7. Pagination / filtering
 
@@ -1407,6 +1417,9 @@ curl -X DELETE "$ACCESS/api/auth/me/sessions/42" \
 
 - 토큰의 사용자 본인만 대상이다.
 - `password_hash`가 없는 계정(OAuth 전용)은 "현재 비밀번호"가 성립하지 않아 `400`이다.
+- MFA를 켠 계정은 현재 비밀번호에 더해 `mfa_code`(인증 앱 코드 또는 복구 코드)를 요구한다. access token과
+  현재 비밀번호를 함께 가진 사람이 2차 인증 없이 비밀번호를 바꾸지 못하게 하기 위해서다. MFA 사용 여부는
+  [`GET /api/auth/me/mfa`](#summary-get-api-auth-me-mfa)의 `enabled`로 알 수 있다.
 - 성공하면 **현재 세션을 제외한** refresh token을 전부 폐기한다. 비밀번호가 샜을 때 다른 기기의
   세션을 끊으면서, 방금 현재 비밀번호로 본인 확인을 마친 사용자는 로그아웃시키지 않기 위해서다.
   refresh 쿠키가 없으면 지킬 세션을 특정할 수 없어 전부 폐기한다.
@@ -1597,7 +1610,7 @@ Content-Type: application/json
 | `400` | OAuth로만 가입해 비밀번호가 없는 계정 | `PASSWORD_LOGIN_UNAVAILABLE` |
 | `401` | access token이 없거나 유효하지 않음 | — |
 | `401` | MFA를 켰는데 `mfa_code`가 없거나 틀림 | `INVALID_MFA_CODE` |
-| `429` | MFA 코드 확인 시도가 한도를 넘음(로그인 MFA·이메일 변경·회원 탈퇴와 공유, 사용자별 5분에 5회) | `MFA_RATE_LIMITED` |
+| `429` | MFA 코드 확인 시도가 한도를 넘음(로그인 MFA·이메일 변경·회원 탈퇴·현재 비밀번호 변경과 공유, 사용자별 5분에 5회) | `MFA_RATE_LIMITED` |
 
 검사 순서는 비밀번호 계정 여부 → MFA 코드 → 토큰 소비다. MFA 오류(`401`, `429`)는 토큰을 소비하지 않으므로
 같은 `verification_token`으로 `mfa_code`를 고쳐 다시 보낼 수 있다. MFA 코드와 토큰이 모두 틀리면 MFA 오류가 돌아온다.

@@ -299,7 +299,7 @@ class AuthServiceTest {
         when(refreshTokenRepository.findAllByUserIdAndRevokedAtIsNull("user_1")).thenReturn(List.of(current, other));
 
         authService.changePassword("user_1",
-                new PasswordChangeRequest("oldPassword1", "newPassword1"), "current-refresh");
+                new PasswordChangeRequest("oldPassword1", "newPassword1", null), "current-refresh");
 
         assertThat(passwordEncoder.matches("newPassword1", user.getPasswordHash())).isTrue();
         assertThat(current.getRevokedAt()).isNull();
@@ -313,7 +313,7 @@ class AuthServiceTest {
         UserRefreshToken only = new UserRefreshToken("user_1", sha256("some-refresh"), Instant.now().plusSeconds(3600));
         when(refreshTokenRepository.findAllByUserIdAndRevokedAtIsNull("user_1")).thenReturn(List.of(only));
 
-        authService.changePassword("user_1", new PasswordChangeRequest("oldPassword1", "newPassword1"), null);
+        authService.changePassword("user_1", new PasswordChangeRequest("oldPassword1", "newPassword1", null), null);
 
         assertThat(only.getRevokedAt()).isNotNull();
     }
@@ -324,7 +324,7 @@ class AuthServiceTest {
         when(userRepository.findById("user_1")).thenReturn(Optional.of(user));
 
         assertThatThrownBy(() -> authService.changePassword("user_1",
-                new PasswordChangeRequest("wrongPassword", "newPassword1"), "current-refresh"))
+                new PasswordChangeRequest("wrongPassword", "newPassword1", null), "current-refresh"))
                 .isInstanceOf(InvalidCredentialsException.class);
         assertThat(passwordEncoder.matches("oldPassword1", user.getPasswordHash())).isTrue();
         verifyNoInteractions(refreshTokenRepository);
@@ -336,7 +336,7 @@ class AuthServiceTest {
         when(userRepository.findById("user_1")).thenReturn(Optional.of(user));
 
         assertThatThrownBy(() -> authService.changePassword("user_1",
-                new PasswordChangeRequest("anything", "newPassword1"), null))
+                new PasswordChangeRequest("anything", "newPassword1", null), null))
                 .isInstanceOf(PasswordLoginUnavailableException.class);
         verifyNoInteractions(refreshTokenRepository);
     }

@@ -668,7 +668,7 @@ paths:
       - Auth
   /api/auth/me/password:
     put:
-      description: 현재 비밀번호를 확인하고 새 비밀번호로 바꿉니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.
+      description: "현재 비밀번호를 확인하고 새 비밀번호로 바꿉니다. MFA를 켰으면 mfa_code도 필요합니다. 현재 비밀번호를 먼저 확인하므로, 비밀번호가 틀리면 MFA 코드는 확인하지 않습니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다."
       operationId: changePassword
       parameters:
       - in: cookie
@@ -696,13 +696,13 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-          description: 인증되지 않았거나 현재 비밀번호가 다름
+          description: "인증되지 않았거나 현재 비밀번호가 다름(INVALID_CREDENTIALS), 또는 MFA를 켰는데 mfa_code가 없거나 틀림(INVALID_MFA_CODE)"
         "429":
           content:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-          description: 현재 비밀번호 확인 시도 횟수 제한 초과
+          description: 현재 비밀번호 확인 시도 횟수 제한 초과(PASSWORD_CHANGE_RATE_LIMITED) 또는 MFA 확인 시도 횟수 제한 초과(MFA_RATE_LIMITED)
       summary: 비밀번호 변경
       tags:
       - Auth
@@ -2327,6 +2327,12 @@ components:
           description: 현재 비밀번호
           example: password1234
           minLength: 1
+        mfa_code:
+          type: string
+          description: MFA를 켠 계정의 인증 앱 코드 또는 복구 코드(필수). MFA를 끈 계정은 무시한다.
+          example: 482917
+          maxLength: 64
+          minLength: 0
         new_password:
           type: string
           description: 새 비밀번호(8~72자). 성공하면 현재 세션을 제외한 refresh token이 폐기된다.

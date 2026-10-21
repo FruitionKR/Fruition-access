@@ -207,6 +207,9 @@ public class AuthService {
      * <p>{@code currentRefreshToken}은 요청에 실려 온 refresh 쿠키다. 이 세션만 남기고
      * 나머지를 폐기해, 비밀번호가 샜을 때 다른 기기의 세션을 끊으면서도 방금 인증을 마친
      * 사용자를 로그아웃시키지 않는다. 쿠키가 없으면 전부 폐기한다.
+     *
+     * <p>MFA를 켠 계정은 토큰과 현재 비밀번호를 함께 가진 사람이 2차 인증 없이 비밀번호를 바꾸지 못하게
+     * {@code mfa_code}도 요구한다.
      */
     @Transactional
     public void changePassword(String userId, PasswordChangeRequest request, String currentRefreshToken) {
@@ -222,6 +225,8 @@ public class AuthService {
             log.warn("[비밀번호 변경 거부] reason=current_password_mismatch userId={}", userId);
             throw new InvalidCredentialsException();
         }
+        // 현재 비밀번호를 먼저 확인해, 비밀번호를 모르는 요청이 MFA 시도 횟수를 쓰지 못하게 한다.
+        reauthenticator.verifyMfa(user, request.mfaCode());
 
         user.changePassword(passwordEncoder.encode(request.newPassword()));
 

@@ -392,14 +392,18 @@ public class AuthController {
     }
 
     @Operation(summary = "비밀번호 변경",
-            description = "현재 비밀번호를 확인하고 새 비밀번호로 바꿉니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.")
+            description = "현재 비밀번호를 확인하고 새 비밀번호로 바꿉니다. MFA를 켰으면 mfa_code도 필요합니다."
+                    + " 현재 비밀번호를 먼저 확인하므로, 비밀번호가 틀리면 MFA 코드는 확인하지 않습니다."
+                    + " 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "204", description = "변경 성공"),
         @ApiResponse(responseCode = "400", description = "잘못된 요청이거나 비밀번호를 쓰지 않는 계정",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @ApiResponse(responseCode = "401", description = "인증되지 않았거나 현재 비밀번호가 다름",
+        @ApiResponse(responseCode = "401", description = "인증되지 않았거나 현재 비밀번호가 다름(INVALID_CREDENTIALS),"
+                + " 또는 MFA를 켰는데 mfa_code가 없거나 틀림(INVALID_MFA_CODE)",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @ApiResponse(responseCode = "429", description = "현재 비밀번호 확인 시도 횟수 제한 초과",
+        @ApiResponse(responseCode = "429", description = "현재 비밀번호 확인 시도 횟수 제한 초과(PASSWORD_CHANGE_RATE_LIMITED)"
+                + " 또는 MFA 확인 시도 횟수 제한 초과(MFA_RATE_LIMITED)",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PutMapping("/me/password")
@@ -415,6 +419,7 @@ public class AuthController {
         try {
             authService.changePassword(userId, request, refreshToken);
         } catch (InvalidCredentialsException e) {
+            // 현재 비밀번호 실패만 센다. MFA 코드 실패는 MfaService의 사용자별 제한이 따로 센다.
             passwordChangeAttemptLimiter.recordFailure(userId, clientAddress);
             throw e;
         }
@@ -492,6 +497,7 @@ public class AuthController {
         try {
             accountDeletionService.delete(userId, body, authTime);
         } catch (InvalidCredentialsException e) {
+            // 현재 비밀번호 실패만 센다. MFA 코드 실패는 MfaService의 사용자별 제한이 따로 센다.
             passwordChangeAttemptLimiter.recordFailure(userId, clientAddress);
             throw e;
         }
@@ -534,6 +540,7 @@ public class AuthController {
         try {
             response = authService.changeEmail(userId, request, refreshToken, authTime);
         } catch (InvalidCredentialsException e) {
+            // 현재 비밀번호 실패만 센다. MFA 코드 실패는 MfaService의 사용자별 제한이 따로 센다.
             passwordChangeAttemptLimiter.recordFailure(userId, clientAddress);
             throw e;
         }
