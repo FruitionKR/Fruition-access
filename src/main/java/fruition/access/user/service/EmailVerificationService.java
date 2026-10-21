@@ -76,14 +76,14 @@ public class EmailVerificationService {
     }
 
     public EmailVerificationResponse request(EmailVerificationRequest request) {
-        String email = request.email().trim().toLowerCase(Locale.ROOT);
+        String email = normalizeEmail(request.email());
         String purpose = request.purpose();
         return issue(email, purpose, () -> rejectUnusableEmail(email, purpose));
     }
 
     /** 로그인한 사용자의 계정 이메일로 비밀번호 변경용 인증번호를 보낸다. */
     public EmailVerificationResponse requestForPasswordChange(String accountEmail) {
-        String email = accountEmail.trim().toLowerCase(Locale.ROOT);
+        String email = normalizeEmail(accountEmail);
         return issue(email, PURPOSE_PASSWORD_CHANGE, () -> {});
     }
 
@@ -187,7 +187,12 @@ public class EmailVerificationService {
         consumeToken(email, token, PURPOSE_PASSWORD_CHANGE);
     }
 
-    private void consumeToken(String email, String token, String purpose) {
+    /**
+     * 발급은 정규화한 이메일로 저장하므로 소비도 같은 정규화를 거쳐 비교한다.
+     * 계정 이메일을 그대로 넘기는 호출(비밀번호 변경)에서 대문자가 섞인 예전 데이터도 같은 주소로 맞춘다.
+     */
+    private void consumeToken(String rawEmail, String token, String purpose) {
+        String email = normalizeEmail(rawEmail);
         EmailVerification verification = verificationRepository.findByTokenHash(OpaqueTokens.sha256(token))
                 .orElseThrow(InvalidVerificationTokenException::new);
 
@@ -221,6 +226,10 @@ public class EmailVerificationService {
                     .orElse(resendCooldownSeconds);
             throw new VerificationRateLimitedException(retryAfter);
         }
+    }
+
+    private static String normalizeEmail(String email) {
+        return email.trim().toLowerCase(Locale.ROOT);
     }
 
     private String generateCode() {
