@@ -16,8 +16,11 @@ import org.springframework.transaction.IllegalTransactionStateException;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.UUID;
@@ -26,9 +29,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -160,6 +165,103 @@ class EmailChangeNotificationOutboxIntegrationTest {
 
         verify(sender, times(1)).send(anyString(), anyString(), any());
         assertThat(countOf(userId)).isZero();
+    }
+
+    /** 발송은 됐는데 행을 지우지 못하면 발송 실패로 세지 않는다. 마지막 시도였어도 failed로 남기지 않는다. */
+    @Test
+    void deleteFailureAfterSend_isNotRecordedAsSendFailure() {
+        String userId = userId();
+        long id = insert(userId, 4, now);
+        JdbcTemplate failingDelete = spy(jdbc);
+        doThrow(new org.springframework.dao.QueryTimeoutException("db down"))
+                .when(failingDelete).update(eq(DELETE_SQL), eq(id));
+
+        jobWith(failingDelete, Clock.systemUTC()).run(now);
+
+        verify(sender, times(1)).send(anyString(), anyString(), any());
+        // 일시적인 오류일 수 있어 한 번 더 지워 본다.
+        verify(failingDelete, times(2)).update(DELETE_SQL, id);
+        Map<String, Object> row = rowOf(userId);
+        assertThat(row.get("status")).isEqualTo("pending");
+        assertThat(row.get("last_error")).isNull();
+    }
+
+    @Test
+    void deleteFailingOnce_isRetriedAndDeletes() {
+        String userId = userId();
+        long id = insert(userId, 0, now);
+        JdbcTemplate flakyDelete = spy(jdbc);
+        doThrow(new org.springframework.dao.QueryTimeoutException("db down"))
+                .doCallRealMethod()
+                .when(flakyDelete).update(eq(DELETE_SQL), eq(id));
+
+        jobWith(flakyDelete, Clock.systemUTC()).run(now);
+
+        assertThat(exists(id)).isFalse();
+    }
+
+    /** 배치가 대기 시간에 가까워지면 남은 행은 보내지 않고 시도 횟수를 되돌려 바로 다시 고를 수 있게 둔다. */
+    @Test
+    void batchNearingLease_releasesUnsentNotifications() {
+        String userId = userId();
+        insert(userId, 0, now);
+        insert(userId, 0, now);
+        insert(userId, 0, now);
+        MutableClock clock = new MutableClock(now);
+        // 첫 발송이 SMTP 지연으로 마감 시간을 다 쓴 것으로 둔다.
+        doAnswer(invocation -> {
+            clock.advance(EmailChangeNotificationJob.SEND_DEADLINE);
+            return null;
+        }).when(sender).send(anyString(), anyString(), any());
+
+        jobWith(jdbc, clock).run(now);
+
+        verify(sender, times(1)).send(anyString(), anyString(), any());
+        assertThat(countOf(userId)).isEqualTo(2);
+        Instant releasedAt = now.plus(EmailChangeNotificationJob.SEND_DEADLINE);
+        for (Map<String, Object> row : jdbc.queryForList(
+                "SELECT * FROM email_change_notifications WHERE user_id = ?", userId)) {
+            assertThat(row.get("attempts")).isEqualTo(0);
+            assertThat(((Timestamp) row.get("next_attempt_at")).toInstant()).isEqualTo(releasedAt);
+        }
+
+        // 다음 실행이 남은 행을 바로 보낸다.
+        jobWith(jdbc, Clock.systemUTC()).run(releasedAt);
+        verify(sender, times(3)).send(anyString(), anyString(), any());
+        assertThat(countOf(userId)).isZero();
+    }
+
+    private static final String DELETE_SQL = "DELETE FROM email_change_notifications WHERE id = ?";
+
+    private EmailChangeNotificationJob jobWith(JdbcTemplate jdbcTemplate, Clock clock) {
+        return new EmailChangeNotificationJob(jdbcTemplate, sender, 5, Duration.ofMinutes(1), clock);
+    }
+
+    private static final class MutableClock extends Clock {
+        private Instant instant;
+
+        MutableClock(Instant instant) {
+            this.instant = instant;
+        }
+
+        void advance(Duration duration) {
+            instant = instant.plus(duration);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return instant;
+        }
     }
 
     private void publish(String userId) {
