@@ -41,4 +41,18 @@ public class EmailSenderConfig {
     WorkspaceInvitationSender loggingWorkspaceInvitationSender() {
         return new LoggingWorkspaceInvitationSender();
     }
+
+    @Bean
+    @ConditionalOnProperty(name = "spring.mail.host")
+    EmailChangeNotificationSender smtpEmailChangeNotificationSender(
+            JavaMailSender mailSender,
+            @Value("${app.auth.email-verification.from:}") String from) {
+        return new SmtpEmailChangeNotificationSender(mailSender, from);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(EmailChangeNotificationSender.class)
+    EmailChangeNotificationSender loggingEmailChangeNotificationSender() {
+        return new LoggingEmailChangeNotificationSender();
+    }
 }

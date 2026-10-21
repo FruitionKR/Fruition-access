@@ -62,6 +62,7 @@ import java.time.Instant;
 
 import fruition.access.user.exception.UnsupportedUserAvatarException;
 import fruition.access.user.exception.UserAvatarTooLargeException;
+import fruition.access.user.exception.VerificationRateLimitedException;
 import fruition.access.user.service.UserAvatarService;
 import org.springframework.http.HttpMethod;
 import org.springframework.mock.web.MockMultipartFile;
@@ -69,6 +70,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
@@ -232,6 +234,21 @@ class AuthControllerTest {
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.verification_id").value("ev_abc123"))
                 .andExpect(jsonPath("$.expires_in").value(300));
+    }
+
+    @Test
+    void requestEmailVerification_requestLimitExceeded_returns429WithoutIssuing() throws Exception {
+        doThrow(new VerificationRateLimitedException(60))
+                .when(emailAvailabilityRateLimiter).checkVerificationRequest(any(), any());
+
+        mockMvc.perform(post("/api/auth/email-verifications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new EmailVerificationRequest("test@example.com", "signup"))))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "60"))
+                .andExpect(jsonPath("$.error.code").value("VERIFICATION_RATE_LIMITED"));
+        verify(emailVerificationService, never()).request(any());
     }
 
     @Test
@@ -502,10 +519,10 @@ class AuthControllerTest {
                         .cookie(new jakarta.servlet.http.Cookie("fruition_refresh_token", "current-refresh"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new PasswordChangeRequest("oldPassword1", "newPassword1"))))
+                                new PasswordChangeRequest("oldPassword1", "newPassword1", null))))
                 .andExpect(status().isNoContent());
         verify(authService).changePassword("user_1f9a74af",
-                new PasswordChangeRequest("oldPassword1", "newPassword1"), "current-refresh");
+                new PasswordChangeRequest("oldPassword1", "newPassword1", null), "current-refresh");
     }
 
     @Test
@@ -513,7 +530,7 @@ class AuthControllerTest {
         mockMvc.perform(put("/api/auth/me/password")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new PasswordChangeRequest("oldPassword1", "newPassword1"))))
+                                new PasswordChangeRequest("oldPassword1", "newPassword1", null))))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -525,7 +542,7 @@ class AuthControllerTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new PasswordChangeRequest("oldPassword1", "short"))))
+                                new PasswordChangeRequest("oldPassword1", "short", null))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
     }
@@ -540,7 +557,7 @@ class AuthControllerTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new PasswordChangeRequest("wrongPassword", "newPassword1"))))
+                                new PasswordChangeRequest("wrongPassword", "newPassword1", null))))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("INVALID_CREDENTIALS"));
     }
@@ -548,7 +565,7 @@ class AuthControllerTest {
     @Test
     void changeEmail_authenticated_returns200() throws Exception {
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
-        when(authService.changeEmail(eq("user_1f9a74af"), any(), eq("current-refresh"))).thenReturn(
+        when(authService.changeEmail(eq("user_1f9a74af"), any(), eq("current-refresh"), any())).thenReturn(
                 new MeResponse("user_1f9a74af", "new@example.com", "이름", null, Instant.now(), java.util.List.of(), false));
 
         mockMvc.perform(put("/api/auth/me/email")
@@ -585,7 +602,7 @@ class AuthControllerTest {
     @Test
     void changeEmail_duplicate_returns409() throws Exception {
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
-        when(authService.changeEmail(eq("user_1f9a74af"), any(), any()))
+        when(authService.changeEmail(eq("user_1f9a74af"), any(), any(), any()))
                 .thenThrow(new DuplicateEmailException("taken@example.com"));
 
         mockMvc.perform(put("/api/auth/me/email")
@@ -756,7 +773,7 @@ class AuthControllerTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new PasswordChangeRequest("oldPassword1", "newPassword1"))))
+                                new PasswordChangeRequest("oldPassword1", "newPassword1", null))))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().string("Retry-After", "300"));
 
@@ -775,7 +792,7 @@ class AuthControllerTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new PasswordChangeRequest("wrongPassword1", "newPassword1"))))
+                                new PasswordChangeRequest("wrongPassword1", "newPassword1", null))))
                 .andExpect(status().isUnauthorized());
 
         verify(passwordChangeAttemptLimiter).recordFailure(eq("user_1f9a74af"), any());

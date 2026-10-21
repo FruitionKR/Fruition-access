@@ -31,6 +31,7 @@ import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -103,6 +104,26 @@ class EmailVerificationServiceTest {
     }
 
     @Test
+    void request_emailChangeToAddressInUse_rejectsBeforeSendingMail() {
+        // 이메일 변경은 provider와 상관없이 다른 계정이 쓰는 주소로 바꿀 수 없으므로 인증번호를 보내지 않는다.
+        when(userRepository.existsByEmail("taken@example.com")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.request(new EmailVerificationRequest("taken@example.com", "email_change")))
+                .isInstanceOf(DuplicateEmailException.class);
+        verify(sender, org.mockito.Mockito.never()).send(any(), any(), any());
+        verify(verificationRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void request_emailChangeToUnusedAddress_sendsCode() {
+        when(userRepository.existsByEmail("free@example.com")).thenReturn(false);
+
+        service.request(new EmailVerificationRequest("free@example.com", "email_change"));
+
+        verify(sender).send(eq("free@example.com"), eq("email_change"), anyString());
+    }
+
+    @Test
     void request_passwordResetForOAuthEmail_doesNotRevealOrBlock() {
         // 비밀번호 재설정은 존재 여부를 노출하지 않으므로 소셜 계정 검사를 하지 않는다.
         service.request(new EmailVerificationRequest("oauth@example.com", "password_reset"));
@@ -157,6 +178,22 @@ class EmailVerificationServiceTest {
         assertThat(response.retryAfter()).isEqualTo(60);
         verify(verificationRepository).save(any(EmailVerification.class));
         verify(sender).send(eq("test@example.com"), eq("signup"), anyString());
+    }
+
+    @Test
+    void request_normalizesEmailIndependentOfDefaultLocale() {
+        // 터키어 로케일에서는 기본 toLowerCase가 'I'를 점 없는 'ı'로 바꿔 발급·소비 이메일이 어긋난다.
+        Locale original = Locale.getDefault();
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        try {
+            service.request(new EmailVerificationRequest(" INFO@EXAMPLE.COM ", "password_reset"));
+            service.requestForPasswordChange("ADMIN@EXAMPLE.COM");
+        } finally {
+            Locale.setDefault(original);
+        }
+
+        verify(sender).send(eq("info@example.com"), eq("password_reset"), anyString());
+        verify(sender).send(eq("admin@example.com"), eq("password_change"), anyString());
     }
 
     @Test

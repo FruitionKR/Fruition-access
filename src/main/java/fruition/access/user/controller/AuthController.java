@@ -34,6 +34,7 @@ import fruition.access.user.dto.SignupRequest;
 import fruition.access.user.dto.SignupResponse;
 import fruition.access.user.dto.VerificationConfirmRequest;
 import fruition.access.user.dto.VerificationConfirmResponse;
+import fruition.access.user.dto.VerifiedPasswordChangeRequest;
 import fruition.access.user.exception.InvalidCredentialsException;
 import fruition.access.user.exception.InvalidRefreshTokenException;
 import fruition.access.user.mfa.MfaService;
@@ -151,7 +152,8 @@ public class AuthController {
 
     @Operation(summary = "이메일 인증번호 발급",
             description = "회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다. purpose=signup은 같은 이메일의 계정이 있으면"
-                    + " 메일을 보내지 않고 409로 거절합니다.")
+                    + " 메일을 보내지 않고 409로 거절합니다. purpose=email_change는 다른 계정(소셜 가입 포함)이 쓰는 주소면"
+                    + " 409 DUPLICATE_EMAIL로 거절합니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "202", description = "인증번호 발급",
             content = @Content(schema = @Schema(implementation = EmailVerificationResponse.class))),
@@ -159,14 +161,19 @@ public class AuthController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(responseCode = "409",
             description = "이미 가입된 이메일(purpose=signup). 이메일 가입 계정이면 DUPLICATE_EMAIL(ErrorResponse),"
-                    + " 소셜 가입 계정만 있으면 EMAIL_REGISTERED_WITH_OAUTH(EmailRegisteredWithOAuthResponse)",
+                    + " 소셜 가입 계정만 있으면 EMAIL_REGISTERED_WITH_OAUTH(EmailRegisteredWithOAuthResponse)."
+                    + " purpose=email_change는 그 주소를 쓰는 계정이 있으면 DUPLICATE_EMAIL(ErrorResponse)",
             content = @Content(schema = @Schema(oneOf = {ErrorResponse.class, EmailRegisteredWithOAuthResponse.class}))),
-        @ApiResponse(responseCode = "429", description = "재요청 제한 초과",
+        @ApiResponse(responseCode = "429", description = "재요청 제한 초과(VERIFICATION_RATE_LIMITED)."
+                + " 재발송 쿨다운·일일 한도, 또는 IP별·이메일별 요청 수 제한",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PostMapping("/email-verifications")
     public ResponseEntity<EmailVerificationResponse> requestEmailVerification(
-            @Valid @RequestBody EmailVerificationRequest request) {
+            @Valid @RequestBody EmailVerificationRequest request,
+            HttpServletRequest servletRequest) {
+        // 거절된 요청(409)은 발급 기록이 남지 않아 쿨다운·일일 한도에 걸리지 않는다. 요청 자체를 IP별·이메일별로 센다.
+        emailAvailabilityRateLimiter.checkVerificationRequest(request.email(), ClientAddressResolver.of(servletRequest));
         EmailVerificationResponse response = emailVerificationService.request(request);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
     }
@@ -389,14 +396,18 @@ public class AuthController {
     }
 
     @Operation(summary = "비밀번호 변경",
-            description = "현재 비밀번호를 확인하고 새 비밀번호로 바꿉니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.")
+            description = "현재 비밀번호를 확인하고 새 비밀번호로 바꿉니다. MFA를 켰으면 mfa_code도 필요합니다."
+                    + " 현재 비밀번호를 먼저 확인하므로, 비밀번호가 틀리면 MFA 코드는 확인하지 않습니다."
+                    + " 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "204", description = "변경 성공"),
         @ApiResponse(responseCode = "400", description = "잘못된 요청이거나 비밀번호를 쓰지 않는 계정",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @ApiResponse(responseCode = "401", description = "인증되지 않았거나 현재 비밀번호가 다름",
+        @ApiResponse(responseCode = "401", description = "인증되지 않았거나 현재 비밀번호가 다름(INVALID_CREDENTIALS),"
+                + " 또는 MFA를 켰는데 mfa_code가 없거나 틀림(INVALID_MFA_CODE)",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @ApiResponse(responseCode = "429", description = "현재 비밀번호 확인 시도 횟수 제한 초과",
+        @ApiResponse(responseCode = "429", description = "현재 비밀번호 확인 시도 횟수 제한 초과(PASSWORD_CHANGE_RATE_LIMITED)"
+                + " 또는 MFA 확인 시도 횟수 제한 초과(MFA_RATE_LIMITED)",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PutMapping("/me/password")
@@ -412,10 +423,53 @@ public class AuthController {
         try {
             authService.changePassword(userId, request, refreshToken);
         } catch (InvalidCredentialsException e) {
+            // 현재 비밀번호 실패만 센다. MFA 코드 실패는 MfaService의 사용자별 제한이 따로 센다.
             passwordChangeAttemptLimiter.recordFailure(userId, clientAddress);
             throw e;
         }
         passwordChangeAttemptLimiter.recordSuccess(userId, clientAddress);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "비밀번호 변경 인증번호 발급",
+            description = "로그인한 사용자의 계정 이메일로 비밀번호 변경용 인증번호를 보냅니다. 받는 주소는 요청에서 받지 않습니다."
+                    + " 받은 코드는 POST /api/auth/email-verifications/{verification_id}/confirm으로 확인합니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "202", description = "인증번호 발급",
+            content = @Content(schema = @Schema(implementation = EmailVerificationResponse.class))),
+        @ApiResponse(responseCode = "400", description = "비밀번호를 쓰지 않는 계정(PASSWORD_LOGIN_UNAVAILABLE)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "429", description = "재요청 제한 초과",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/me/password/verification")
+    public ResponseEntity<EmailVerificationResponse> requestPasswordChangeVerification(
+            @AuthenticationPrincipal String userId) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(authService.requestPasswordChangeVerification(userId));
+    }
+
+    @Operation(summary = "인증번호로 비밀번호 변경",
+            description = "계정 이메일로 받은 인증번호 토큰으로 본인을 확인하고 비밀번호를 바꿉니다. 현재 비밀번호를 몰라도 됩니다."
+                    + " MFA를 켰으면 mfa_code도 필요합니다. verification_token을 먼저 확인하므로 토큰이 유효하지 않으면 MFA 코드는 확인하지 않습니다."
+                    + " MFA 확인에 실패하면 verification_token은 소비되지 않습니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "변경 성공"),
+        @ApiResponse(responseCode = "400", description = "잘못된 요청, 유효하지 않은 verification_token,"
+                + " 또는 비밀번호를 쓰지 않는 계정",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않았거나 MFA를 켰는데 mfa_code가 없거나 틀림(INVALID_MFA_CODE)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "429", description = "MFA 확인 시도 횟수 제한 초과(MFA_RATE_LIMITED)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PutMapping("/me/password/verified")
+    public ResponseEntity<Void> changePasswordWithVerification(
+            @AuthenticationPrincipal String userId,
+            @Valid @RequestBody VerifiedPasswordChangeRequest request,
+            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshToken) {
+        authService.changePasswordWithVerification(userId, request, refreshToken);
         return ResponseEntity.noContent().build();
     }
 
@@ -447,6 +501,7 @@ public class AuthController {
         try {
             accountDeletionService.delete(userId, body, authTime);
         } catch (InvalidCredentialsException e) {
+            // 현재 비밀번호 실패만 센다. MFA 코드 실패는 MfaService의 사용자별 제한이 따로 센다.
             passwordChangeAttemptLimiter.recordFailure(userId, clientAddress);
             throw e;
         }
@@ -456,24 +511,45 @@ public class AuthController {
     }
 
     @Operation(summary = "이메일 변경",
-            description = "새 이메일로 받은 인증번호 토큰으로 본인 확인 후 계정 이메일을 바꿉니다."
-                    + " 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.")
+            description = "본인을 다시 확인하고 새 이메일로 받은 인증번호 토큰으로 계정 이메일을 바꿉니다."
+                    + " 비밀번호 계정은 current_password를, 소셜 전용 계정은 10분 안에 다시 로그인해 받은 access token을 씁니다."
+                    + " MFA를 켰으면 mfa_code도 필요합니다. 본인 확인에 실패하면 verification_token은 소비되지 않습니다."
+                    + " 성공하면 현재 세션을 제외한 refresh token이 폐기되고 기존 이메일로 변경 알림 메일이 갑니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "변경 성공",
             content = @Content(schema = @Schema(implementation = MeResponse.class))),
         @ApiResponse(responseCode = "400", description = "잘못된 요청이거나 유효하지 않은 verification_token",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+        @ApiResponse(responseCode = "401", description = "인증되지 않았거나 비밀번호·MFA 코드가 다름,"
+                + " 또는 소셜 계정이 최근에 로그인하지 않음(REAUTHENTICATION_REQUIRED)",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @ApiResponse(responseCode = "409", description = "같은 provider에 이미 그 이메일 계정이 있음",
+        @ApiResponse(responseCode = "409", description = "이미 다른 계정(소셜 가입 포함)이 쓰는 이메일(DUPLICATE_EMAIL)."
+                + " 본인 확인 뒤, verification_token을 소비하기 전에 거절합니다",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "429", description = "비밀번호·MFA 확인 시도 횟수 제한 초과",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PutMapping("/me/email")
     public ResponseEntity<MeResponse> changeEmail(
             @AuthenticationPrincipal String userId,
             @Valid @RequestBody EmailChangeRequest request,
-            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshToken) {
-        return ResponseEntity.ok(authService.changeEmail(userId, request, refreshToken));
+            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshToken,
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+            HttpServletRequest servletRequest) {
+        Instant authTime = jwtTokenProvider.extractAuthTime(authorization.substring("Bearer ".length())).orElse(null);
+        // 현재 비밀번호 확인은 비밀번호 변경·회원 탈퇴와 같은 시도 제한을 받는다.
+        String clientAddress = ClientAddressResolver.of(servletRequest);
+        passwordChangeAttemptLimiter.check(userId, clientAddress);
+        MeResponse response;
+        try {
+            response = authService.changeEmail(userId, request, refreshToken, authTime);
+        } catch (InvalidCredentialsException e) {
+            // 현재 비밀번호 실패만 센다. MFA 코드 실패는 MfaService의 사용자별 제한이 따로 센다.
+            passwordChangeAttemptLimiter.recordFailure(userId, clientAddress);
+            throw e;
+        }
+        passwordChangeAttemptLimiter.recordSuccess(userId, clientAddress);
+        return ResponseEntity.ok(response);
     }
 
     @Operation(summary = "로그인 세션 목록",

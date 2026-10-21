@@ -68,4 +68,14 @@ class SmtpEmailVerificationSenderTest {
         assertThat(captor.getValue().getText()).contains("이메일 변경", "123456").doesNotContain("회원가입");
     }
 
+    @Test
+    void send_passwordChange_explainsPurposeInSubjectAndBody() {
+        SmtpEmailVerificationSender sender = new SmtpEmailVerificationSender(mailSender, "no-reply@fruition.app");
+        sender.send("user@example.com", "password_change", "123456");
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(captor.capture());
+        assertThat(captor.getValue().getSubject()).contains("비밀번호 변경");
+        assertThat(captor.getValue().getText()).contains("비밀번호 변경", "123456").doesNotContain("회원가입");
+    }
 }

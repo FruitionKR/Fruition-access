@@ -13,8 +13,10 @@ import fruition.access.user.dto.MeResponse;
 import fruition.access.user.dto.OAuthExchangeRequest;
 import fruition.access.user.dto.DisplayNameUpdateRequest;
 import fruition.access.user.dto.EmailChangeRequest;
+import fruition.access.user.dto.EmailVerificationResponse;
 import fruition.access.user.dto.PasswordChangeRequest;
 import fruition.access.user.dto.PasswordResetRequest;
+import fruition.access.user.dto.VerifiedPasswordChangeRequest;
 import fruition.access.user.dto.RefreshRequest;
 import fruition.access.user.exception.DuplicateEmailException;
 import fruition.access.user.dto.SessionListResponse;
@@ -37,6 +39,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,6 +55,7 @@ import java.util.Base64;
 import java.util.UUID;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class AuthService {
@@ -68,6 +72,8 @@ public class AuthService {
     private final UserMfaChallengeRepository mfaChallengeRepository;
     private final UserOAuthAccountRepository oauthAccountRepository;
     private final UserConsentService userConsentService;
+    private final Reauthenticator reauthenticator;
+    private final ApplicationEventPublisher eventPublisher;
     private final long refreshTokenExpirationSeconds;
     private final long mfaChallengeTtlSeconds;
 
@@ -81,6 +87,8 @@ public class AuthService {
                        UserMfaChallengeRepository mfaChallengeRepository,
                        UserOAuthAccountRepository oauthAccountRepository,
                        UserConsentService userConsentService,
+                       Reauthenticator reauthenticator,
+                       ApplicationEventPublisher eventPublisher,
                        @Value("${app.jwt.refresh-token-expiration-seconds}") long refreshTokenExpirationSeconds,
                        @Value("${app.auth.mfa.challenge-ttl-seconds:300}") long mfaChallengeTtlSeconds) {
         this.userRepository = userRepository;
@@ -93,13 +101,15 @@ public class AuthService {
         this.mfaChallengeRepository = mfaChallengeRepository;
         this.oauthAccountRepository = oauthAccountRepository;
         this.userConsentService = userConsentService;
+        this.reauthenticator = reauthenticator;
+        this.eventPublisher = eventPublisher;
         this.refreshTokenExpirationSeconds = refreshTokenExpirationSeconds;
         this.mfaChallengeTtlSeconds = mfaChallengeTtlSeconds;
     }
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
-        String email = request.email().trim().toLowerCase();
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
         log.info("[로그인 요청] email={}", email);
 
         User user = userRepository.findByEmailAndProvider(email, User.PROVIDER_LOCAL)
@@ -197,6 +207,9 @@ public class AuthService {
      * <p>{@code currentRefreshToken}은 요청에 실려 온 refresh 쿠키다. 이 세션만 남기고
      * 나머지를 폐기해, 비밀번호가 샜을 때 다른 기기의 세션을 끊으면서도 방금 인증을 마친
      * 사용자를 로그아웃시키지 않는다. 쿠키가 없으면 전부 폐기한다.
+     *
+     * <p>MFA를 켠 계정은 토큰과 현재 비밀번호를 함께 가진 사람이 2차 인증 없이 비밀번호를 바꾸지 못하게
+     * {@code mfa_code}도 요구한다.
      */
     @Transactional
     public void changePassword(String userId, PasswordChangeRequest request, String currentRefreshToken) {
@@ -212,6 +225,8 @@ public class AuthService {
             log.warn("[비밀번호 변경 거부] reason=current_password_mismatch userId={}", userId);
             throw new InvalidCredentialsException();
         }
+        // 현재 비밀번호를 먼저 확인해, 비밀번호를 모르는 요청이 MFA 시도 횟수를 쓰지 못하게 한다.
+        reauthenticator.verifyMfa(user, request.mfaCode());
 
         user.changePassword(passwordEncoder.encode(request.newPassword()));
 
@@ -220,25 +235,84 @@ public class AuthService {
     }
 
     /**
+     * 로그인 상태의 비밀번호 변경용 인증번호를 세션 사용자의 계정 이메일로 보낸다.
+     *
+     * <p>받는 주소를 요청 본문에서 받지 않아, 로그인 세션만으로 다른 계정의 메일함에 코드를 보낼 수 없다.
+     * 메일 발송이 트랜잭션 밖에서 일어나도록 이 메서드는 트랜잭션을 열지 않는다.
+     */
+    public EmailVerificationResponse requestPasswordChangeVerification(String userId) {
+        User user = passwordUser(userId);
+        EmailVerificationResponse response = emailVerificationService.requestForPasswordChange(user.getEmail());
+        log.info("[비밀번호 변경 인증 요청] userId={} verificationId={}", userId, response.verificationId());
+        return response;
+    }
+
+    /**
+     * 계정 이메일로 받은 인증번호 토큰으로 본인을 확인하고 비밀번호를 바꾼다.
+     *
+     * <p>현재 비밀번호를 잊은 로그인 사용자를 위한 경로다. 토큰은 발급 당시의 계정 이메일과
+     * {@code password_change} 목적에 묶여 있어, 다른 이메일·다른 목적으로 받은 토큰은 쓸 수 없다.
+     * {@link #changePassword}처럼 현재 세션만 남기고 나머지를 폐기한다.
+     *
+     * <p>MFA를 켠 계정은 세션과 메일함을 함께 가진 사람이 2차 인증 없이 비밀번호를 바꾸지 못하게
+     * {@code mfa_code}도 요구한다.
+     */
+    @Transactional
+    public void changePasswordWithVerification(String userId, VerifiedPasswordChangeRequest request,
+                                               String currentRefreshToken) {
+        User user = passwordUser(userId);
+        // 토큰을 먼저 확인해, 유효한 토큰이 없는 요청은 로그인과 공유하는 MFA 시도 예산을 쓰지 못하게 한다.
+        // MFA가 거절되면 예외로 이 트랜잭션이 롤백돼 소비도 되돌아가므로, 같은 토큰으로 코드만 고쳐 다시 시도할 수 있다.
+        emailVerificationService.consumeForPasswordChange(user.getEmail(), request.verificationToken());
+        reauthenticator.verifyMfa(user, request.mfaCode());
+
+        user.changePassword(passwordEncoder.encode(request.newPassword()));
+
+        int revoked = revokeOtherSessions(userId, currentRefreshToken);
+        log.info("[비밀번호 변경 성공] method=email_verification userId={} revokedSessions={}", userId, revoked);
+    }
+
+    /** 비밀번호 로그인을 쓰는 계정만 돌려준다. OAuth 전용 계정의 비밀번호는 로그인에 쓰이지 않는다. */
+    private User passwordUser(String userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException(userId));
+        if (user.getPasswordHash() == null) {
+            log.warn("[비밀번호 변경 거부] reason=no_password userId={} provider={}", userId, user.getProvider());
+            throw new PasswordLoginUnavailableException(List.of(user.getProvider()));
+        }
+        return user;
+    }
+
+    /**
      * 로그인 상태에서 이메일을 바꾼다.
      *
      * <p>새 주소로 받은 인증번호 토큰으로 그 메일함을 통제하는지 확인한다. 계정은
-     * {@code (email, provider)}로 유일해야 하므로 같은 provider의 기존 계정과 부딪히면 거절한다.
+     * 다른 계정(소셜 가입 포함)이 이미 쓰는 주소면 {@code 409 DUPLICATE_EMAIL}로 거절한다.
      * OAuth 로그인은 {@code (provider, provider_user_id)}로 사용자를 찾으므로 이메일이 바뀌어도 끊기지 않는다.
+     *
+     * <p>먼저 {@link Reauthenticator}로 본인을 다시 확인한다({@code authTime}은 access token의 직접 로그인 시각,
+     * refresh로 받은 토큰이면 null). 같은 트랜잭션에서 기존 이메일로 보낼 변경 알림을 outbox에 남기고
+     * ({@link EmailChangeNotificationListener}), 발송은 {@link EmailChangeNotificationJob}이 한다.
      */
     @Transactional
-    public MeResponse changeEmail(String userId, EmailChangeRequest request, String currentRefreshToken) {
+    public MeResponse changeEmail(String userId, EmailChangeRequest request, String currentRefreshToken,
+                                  Instant authTime) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException(userId));
-        String newEmail = request.newEmail().trim().toLowerCase();
+        String newEmail = request.newEmail().trim().toLowerCase(Locale.ROOT);
 
-        emailVerificationService.consumeForEmailChange(newEmail, request.verificationToken());
-
-        if (!newEmail.equals(user.getEmail())
-                && userRepository.existsByEmailAndProvider(newEmail, user.getProvider())) {
+        // 이메일을 바꾸면 비밀번호 재설정 메일도 새 주소로 가므로 계정을 넘겨줄 수 있다.
+        // 세션만 탈취한 사람이 바꾸지 못하게 본인을 다시 확인한다. 거절되면 토큰을 소비하기 전에 끝난다.
+        reauthenticator.verify(user, request.currentPassword(), request.mfaCode(), authTime);
+        // 다른 계정이 이미 쓰는 주소면 provider와 상관없이 거절한다. 소셜 계정의 주소로 바꾸게 두면
+        // 한 이메일에 계정이 둘 생기고, 이후 연동으로 합칠 수 없다(가입 거절과 같은 이유).
+        // 본인 확인을 통과한 뒤에만 알려 주고, 토큰을 소비하기 전에 거절해 토큰을 태우지 않는다.
+        if (!newEmail.equals(user.getEmail()) && userRepository.existsByEmail(newEmail)) {
             log.warn("[이메일 변경 거부] reason=duplicate_email userId={} provider={}", userId, user.getProvider());
             throw new DuplicateEmailException(newEmail);
         }
+        emailVerificationService.consumeForEmailChange(newEmail, request.verificationToken());
+        String previousEmail = user.getEmail();
 
         user.changeEmail(newEmail);
         // 사전 조회 이후 발생한 중복도 커밋 전에 확인해 같은 오류 계약으로 반환한다.
@@ -254,6 +328,9 @@ public class AuthService {
             throw exception;
         }
         int revoked = revokeOtherSessions(userId, currentRefreshToken);
+        if (!previousEmail.equals(newEmail)) {
+            eventPublisher.publishEvent(new EmailChangedEvent(userId, previousEmail, newEmail, Instant.now()));
+        }
         log.info("[이메일 변경 성공] userId={} revokedSessions={}", userId, revoked);
         return toMe(user);
     }
@@ -277,7 +354,7 @@ public class AuthService {
 
     @Transactional
     public void resetPassword(PasswordResetRequest request) {
-        String email = request.email().trim().toLowerCase();
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
         emailVerificationService.consumeForPasswordReset(email, request.verificationToken());
 
         // 인증코드를 통과했으므로 이 시점의 요청자는 해당 메일함을 통제한다. 따라서 OAuth로만

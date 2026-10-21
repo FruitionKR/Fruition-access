@@ -53,7 +53,7 @@ paths:
       - Auth
   /api/auth/email-verifications:
     post:
-      description: 회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다. purpose=signup은 같은 이메일의 계정이 있으면 메일을 보내지 않고 409로 거절합니다.
+      description: 회원가입/비밀번호 재설정을 위한 인증번호를 발급합니다. purpose=signup은 같은 이메일의 계정이 있으면 메일을 보내지 않고 409로 거절합니다. purpose=email_change는 다른 계정(소셜 가입 포함)이 쓰는 주소면 409 DUPLICATE_EMAIL로 거절합니다.
       operationId: requestEmailVerification
       requestBody:
         content:
@@ -81,13 +81,13 @@ paths:
                 oneOf:
                 - $ref: "#/components/schemas/ErrorResponse"
                 - $ref: "#/components/schemas/EmailRegisteredWithOAuthResponse"
-          description: "이미 가입된 이메일(purpose=signup). 이메일 가입 계정이면 DUPLICATE_EMAIL(ErrorResponse), 소셜 가입 계정만 있으면 EMAIL_REGISTERED_WITH_OAUTH(EmailRegisteredWithOAuthResponse)"
+          description: "이미 가입된 이메일(purpose=signup). 이메일 가입 계정이면 DUPLICATE_EMAIL(ErrorResponse), 소셜 가입 계정만 있으면 EMAIL_REGISTERED_WITH_OAUTH(EmailRegisteredWithOAuthResponse). purpose=email_change는 그 주소를 쓰는 계정이 있으면 DUPLICATE_EMAIL(ErrorResponse)"
         "429":
           content:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-          description: 재요청 제한 초과
+          description: "재요청 제한 초과(VERIFICATION_RATE_LIMITED). 재발송 쿨다운·일일 한도, 또는 IP별·이메일별 요청 수 제한"
       summary: 이메일 인증번호 발급
       tags:
       - Auth
@@ -396,12 +396,17 @@ paths:
       - Auth
   /api/auth/me/email:
     put:
-      description: 새 이메일로 받은 인증번호 토큰으로 본인 확인 후 계정 이메일을 바꿉니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.
+      description: "본인을 다시 확인하고 새 이메일로 받은 인증번호 토큰으로 계정 이메일을 바꿉니다. 비밀번호 계정은 current_password를, 소셜 전용 계정은 10분 안에 다시 로그인해 받은 access token을 씁니다. MFA를 켰으면 mfa_code도 필요합니다. 본인 확인에 실패하면 verification_token은 소비되지 않습니다. 성공하면 현재 세션을 제외한 refresh token이 폐기되고 기존 이메일로 변경 알림 메일이 갑니다."
       operationId: changeEmail
       parameters:
       - in: cookie
         name: fruition_refresh_token
         required: false
+        schema:
+          type: string
+      - in: header
+        name: Authorization
+        required: true
         schema:
           type: string
       requestBody:
@@ -428,13 +433,19 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-          description: 인증되지 않음
+          description: "인증되지 않았거나 비밀번호·MFA 코드가 다름, 또는 소셜 계정이 최근에 로그인하지 않음(REAUTHENTICATION_REQUIRED)"
         "409":
           content:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-          description: 같은 provider에 이미 그 이메일 계정이 있음
+          description: "이미 다른 계정(소셜 가입 포함)이 쓰는 이메일(DUPLICATE_EMAIL). 본인 확인 뒤, verification_token을 소비하기 전에 거절합니다"
+        "429":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 비밀번호·MFA 확인 시도 횟수 제한 초과
       summary: 이메일 변경
       tags:
       - Auth
@@ -657,7 +668,7 @@ paths:
       - Auth
   /api/auth/me/password:
     put:
-      description: 현재 비밀번호를 확인하고 새 비밀번호로 바꿉니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.
+      description: "현재 비밀번호를 확인하고 새 비밀번호로 바꿉니다. MFA를 켰으면 mfa_code도 필요합니다. 현재 비밀번호를 먼저 확인하므로, 비밀번호가 틀리면 MFA 코드는 확인하지 않습니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다."
       operationId: changePassword
       parameters:
       - in: cookie
@@ -685,14 +696,86 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-          description: 인증되지 않았거나 현재 비밀번호가 다름
+          description: "인증되지 않았거나 현재 비밀번호가 다름(INVALID_CREDENTIALS), 또는 MFA를 켰는데 mfa_code가 없거나 틀림(INVALID_MFA_CODE)"
         "429":
           content:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-          description: 현재 비밀번호 확인 시도 횟수 제한 초과
+          description: 현재 비밀번호 확인 시도 횟수 제한 초과(PASSWORD_CHANGE_RATE_LIMITED) 또는 MFA 확인 시도 횟수 제한 초과(MFA_RATE_LIMITED)
       summary: 비밀번호 변경
+      tags:
+      - Auth
+  /api/auth/me/password/verification:
+    post:
+      description: "로그인한 사용자의 계정 이메일로 비밀번호 변경용 인증번호를 보냅니다. 받는 주소는 요청에서 받지 않습니다. 받은 코드는 POST /api/auth/email-verifications/{verification_id}/confirm으로 확인합니다."
+      operationId: requestPasswordChangeVerification
+      responses:
+        "202":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/EmailVerificationResponse"
+          description: 인증번호 발급
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 비밀번호를 쓰지 않는 계정(PASSWORD_LOGIN_UNAVAILABLE)
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 인증되지 않음
+        "429":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 재요청 제한 초과
+      summary: 비밀번호 변경 인증번호 발급
+      tags:
+      - Auth
+  /api/auth/me/password/verified:
+    put:
+      description: 계정 이메일로 받은 인증번호 토큰으로 본인을 확인하고 비밀번호를 바꿉니다. 현재 비밀번호를 몰라도 됩니다. MFA를 켰으면 mfa_code도 필요합니다. verification_token을 먼저 확인하므로 토큰이 유효하지 않으면 MFA 코드는 확인하지 않습니다. MFA 확인에 실패하면 verification_token은 소비되지 않습니다. 성공하면 현재 세션을 제외한 refresh token이 폐기됩니다.
+      operationId: changePasswordWithVerification
+      parameters:
+      - in: cookie
+        name: fruition_refresh_token
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifiedPasswordChangeRequest"
+        required: true
+      responses:
+        "204":
+          description: 변경 성공
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: "잘못된 요청, 유효하지 않은 verification_token, 또는 비밀번호를 쓰지 않는 계정"
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 인증되지 않았거나 MFA를 켰는데 mfa_code가 없거나 틀림(INVALID_MFA_CODE)
+        "429":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: MFA 확인 시도 횟수 제한 초과(MFA_RATE_LIMITED)
+      summary: 인증번호로 비밀번호 변경
       tags:
       - Auth
   /api/auth/me/sessions:
@@ -1872,6 +1955,18 @@ components:
     EmailChangeRequest:
       type: object
       properties:
+        current_password:
+          type: string
+          description: 비밀번호 계정의 현재 비밀번호(필수). 소셜 전용 계정은 비우고 10분 안에 다시 로그인한 토큰으로 요청한다.
+          example: password1234
+          maxLength: 128
+          minLength: 0
+        mfa_code:
+          type: string
+          description: MFA를 켠 계정의 인증 앱 코드 또는 복구 코드
+          example: 482917
+          maxLength: 64
+          minLength: 0
         new_email:
           type: string
           format: email
@@ -2232,6 +2327,12 @@ components:
           description: 현재 비밀번호
           example: password1234
           minLength: 1
+        mfa_code:
+          type: string
+          description: MFA를 켠 계정의 인증 앱 코드 또는 복구 코드(필수). MFA를 끈 계정은 무시한다.
+          example: 482917
+          maxLength: 64
+          minLength: 0
         new_password:
           type: string
           description: 새 비밀번호(8~72자). 성공하면 현재 세션을 제외한 refresh token이 폐기된다.
@@ -2386,6 +2487,29 @@ components:
           type: string
           description: 1회용 토큰. signup 또는 password-reset 요청에 그대로 실어 보낸다.
           example: EXAMPLE-verification-token-not-real-0000000
+    VerifiedPasswordChangeRequest:
+      type: object
+      properties:
+        mfa_code:
+          type: string
+          description: MFA를 켠 계정의 인증 앱 코드 또는 복구 코드(필수). MFA를 끈 계정은 무시한다.
+          example: 482917
+          maxLength: 64
+          minLength: 0
+        new_password:
+          type: string
+          description: 새 비밀번호(8~72자). 성공하면 현재 세션을 제외한 refresh token이 폐기된다.
+          example: newPassword1234
+          maxLength: 72
+          minLength: 8
+        verification_token:
+          type: string
+          description: POST /api/auth/me/password/verification으로 받은 인증번호를 확인해 얻은 1회용 토큰
+          example: EXAMPLE-verification-token-not-real-0000000
+          minLength: 1
+      required:
+      - new_password
+      - verification_token
     Workspace:
       type: object
       properties:

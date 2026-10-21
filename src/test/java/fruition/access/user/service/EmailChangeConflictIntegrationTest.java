@@ -40,10 +40,10 @@ class EmailChangeConflictIntegrationTest {
             competitor.executeWithoutResult(status -> users.findById("email_winner").orElseThrow()
                     .changeEmail("shared@example.com"));
             return false;
-        }).when(users).existsByEmailAndProvider("shared@example.com", "local");
+        }).when(users).existsByEmail("shared@example.com");
 
         assertThatThrownBy(() -> authService.changeEmail("email_loser",
-                new EmailChangeRequest("shared@example.com", "verification-token"), null))
+                new EmailChangeRequest("shared@example.com", "verification-token"), null, java.time.Instant.now()))
                 .isInstanceOf(DuplicateEmailException.class);
         assertThat(users.findById("email_loser").orElseThrow().getEmail()).isEqualTo("loser@example.com");
         assertThat(users.findById("email_winner").orElseThrow().getEmail()).isEqualTo("shared@example.com");
