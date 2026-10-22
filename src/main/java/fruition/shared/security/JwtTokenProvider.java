@@ -220,15 +220,21 @@ public class JwtTokenProvider {
     }
 
     private Claims parseClaims(String token) {
-        if (rsaParser == null) return legacyParser.parseSignedClaims(token).getPayload();
+        if (rsaParser == null) return requiredClaims(legacyParser.parseSignedClaims(token).getPayload());
         try {
-            return rsaParser.parseSignedClaims(token).getPayload();
+            return requiredClaims(rsaParser.parseSignedClaims(token).getPayload());
         } catch (JwtException | IllegalArgumentException e) {
             // Time-bounded migration only; removing the old secret disables this path entirely.
             if (legacyParser != null && Instant.now().isBefore(legacyUntil)) {
-                return legacyParser.parseSignedClaims(token).getPayload();
+                return requiredClaims(legacyParser.parseSignedClaims(token).getPayload());
             }
             throw e;
         }
+    }
+    private static Claims requiredClaims(Claims claims) {
+        if (claims.getExpiration() == null || claims.getSubject() == null || claims.getSubject().isBlank()) {
+            throw new UnsupportedJwtException("JWT requires expiration and a nonblank subject");
+        }
+        return claims;
     }
 }
