@@ -17,6 +17,9 @@ class ProductionSettingsTest {
                 .withProperty("app.auth.mfa.encryption-key", "+5w4SOzUyS26oJh28MKasrE5rYZaq8IBE7pCrJVXLBE=")
                 .withProperty("app.workspace.invitation.accept-url", "https://app.example.com/invitations")
                 .withProperty("app.jwt.secret", "p3LqS6vH9zB2nK5wR8tY1cX4mJ7dG0aQ")
+                .withProperty("app.jwt.private-key", "test-placeholder-private")
+                .withProperty("app.jwt.public-key", "test-placeholder-public")
+                .withProperty("app.jwt.key-id", "test-key-id")
                 .withProperty("app.auth.refresh-cookie-secure", "true")
                 .withProperty("app.internal.callback-token", "Zr8wQ2nV5kT1xL7cH4bM9pS3dF6gJ0aY");
     }
@@ -27,10 +30,15 @@ class ProductionSettingsTest {
     }
 
     @Test
+    void acceptsRsaWithoutLegacySecret() {
+        assertDoesNotThrow(() -> new ProductionSettings(valid().withProperty("app.jwt.secret", "")));
+    }
+
+    @Test
     void rejectsEachMissingRequiredSetting() {
         for (String key : new String[] {"spring.mail.host", "spring.mail.port", "spring.mail.username",
                 "spring.mail.password", "app.auth.email-verification.from", "app.auth.mfa.encryption-key",
-                "app.workspace.invitation.accept-url", "app.jwt.secret", "app.auth.refresh-cookie-secure",
+                "app.workspace.invitation.accept-url", "app.jwt.private-key", "app.jwt.public-key", "app.jwt.key-id", "app.auth.refresh-cookie-secure",
                 "app.internal.callback-token"}) {
             MockEnvironment environment = valid();
             environment.setProperty(key, "");
