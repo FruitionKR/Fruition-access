@@ -1,6 +1,7 @@
 package fruition.access.user.service;
 
 import fruition.access.user.domain.User;
+import fruition.access.analytics.AnalyticsEvent;
 import fruition.access.user.dto.EmailAvailabilityRequest;
 import fruition.access.user.dto.EmailAvailabilityResponse;
 import fruition.access.user.dto.SignupRequest;
@@ -13,10 +14,13 @@ import fruition.access.workspace.service.WorkspaceService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.time.Instant;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -30,15 +34,17 @@ public class UserService {
     private final WorkspaceService workspaceService;
     private final EmailVerificationService emailVerificationService;
     private final UserConsentService userConsentService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder,
                        WorkspaceService workspaceService, EmailVerificationService emailVerificationService,
-                       UserConsentService userConsentService) {
+                       UserConsentService userConsentService, ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.workspaceService = workspaceService;
         this.emailVerificationService = emailVerificationService;
         this.userConsentService = userConsentService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -89,6 +95,8 @@ public class UserService {
         workspaceService.createDefault(user.getId(), user.getDisplayName());
         log.info("[회원가입 성공] userId={} email={} displayNameSource={}", user.getId(), user.getEmail(), displayNameSource);
 
+        eventPublisher.publishEvent(new AnalyticsEvent("user_signed_up", user.getId(), user.getId(), null,
+                Instant.now(), Map.of("method", "email")));
         return new SignupResponse(user.getId(), user.getEmail(), user.getDisplayName(), user.getCreatedAt());
     }
 }

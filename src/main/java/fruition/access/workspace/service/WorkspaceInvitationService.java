@@ -1,6 +1,7 @@
 package fruition.access.workspace.service;
 
 import fruition.access.security.OpaqueTokens;
+import fruition.access.analytics.AnalyticsEvent;
 import fruition.access.user.domain.User;
 import fruition.access.user.exception.UserNotFoundException;
 import fruition.access.user.mail.WorkspaceInvitationSender;
@@ -29,11 +30,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.Map;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -50,6 +54,7 @@ public class WorkspaceInvitationService {
     private final TransactionTemplate transactionTemplate;
     private final long ttlSeconds;
     private final String acceptUrlBase;
+    private final ApplicationEventPublisher eventPublisher;
 
     public WorkspaceInvitationService(
             WorkspaceInvitationRepository invitationRepository,
@@ -60,7 +65,8 @@ public class WorkspaceInvitationService {
             AuthzProjectionStore authzProjectionStore,
             TransactionTemplate transactionTemplate,
             @Value("${app.workspace.invitation.ttl-seconds}") long ttlSeconds,
-            @Value("${app.workspace.invitation.accept-url}") String acceptUrlBase) {
+            @Value("${app.workspace.invitation.accept-url}") String acceptUrlBase,
+            ApplicationEventPublisher eventPublisher) {
         this.invitationRepository = invitationRepository;
         this.workspaceMemberRepository = workspaceMemberRepository;
         this.workspaceRepository = workspaceRepository;
@@ -70,6 +76,7 @@ public class WorkspaceInvitationService {
         this.transactionTemplate = transactionTemplate;
         this.ttlSeconds = ttlSeconds;
         this.acceptUrlBase = acceptUrlBase;
+        this.eventPublisher = eventPublisher;
     }
 
     public WorkspaceInvitationResponse invite(
@@ -101,10 +108,16 @@ public class WorkspaceInvitationService {
                                 pending.reissue(OpaqueTokens.sha256(token), expiresAt, request.role(), actorId);
                                 return pending;
                             })
-                            .orElseGet(() -> invitationRepository.save(new WorkspaceInvitation(
-                                    "inv_" + UUID.randomUUID().toString().replace("-", ""),
-                                    workspaceId, email, request.role(),
-                                    OpaqueTokens.sha256(token), expiresAt, actorId))));
+                            .orElseGet(() -> {
+                                WorkspaceInvitation created = invitationRepository.save(new WorkspaceInvitation(
+                                        "inv_" + UUID.randomUUID().toString().replace("-", ""),
+                                        workspaceId, email, request.role(),
+                                        OpaqueTokens.sha256(token), expiresAt, actorId));
+                                eventPublisher.publishEvent(new AnalyticsEvent("member_invited", created.getId(),
+                                        actorId, workspaceId, created.getCreatedAt(), Map.of(
+                                        "invitation_id", created.getId(), "role", request.role().name().toLowerCase(Locale.ROOT))));
+                                return created;
+                            }));
         } catch (DataIntegrityViolationException e) {
             // 같은 주소로 동시에 초대가 들어오면 대기 중 초대 partial unique 제약에 걸린다.
             // 먼저 들어온 요청이 이미 메일을 보냈으므로 500이 아니라 409로 알린다.
@@ -163,7 +176,7 @@ public class WorkspaceInvitationService {
 
     @Transactional
     public InvitationAcceptResponse accept(String userId, String token) {
-        WorkspaceInvitation invitation = invitationRepository.findByTokenHash(OpaqueTokens.sha256(token))
+        WorkspaceInvitation invitation = invitationRepository.findForAcceptance(OpaqueTokens.sha256(token))
                 .filter(found -> !found.isRevoked())
                 .orElseThrow(InvitationNotFoundException::new);
 
@@ -195,6 +208,9 @@ public class WorkspaceInvitationService {
         }
         if (!invitation.isAccepted()) {
             invitation.accept(userId);
+            eventPublisher.publishEvent(new AnalyticsEvent("member_joined", invitation.getId(), userId,
+                    invitation.getWorkspaceId(), invitation.getAcceptedAt(), Map.of(
+                    "invitation_id", invitation.getId(), "role", invitation.getRole().name().toLowerCase(Locale.ROOT))));
         }
         log.info("[초대 수락] invitationId={} workspaceId={} userId={}",
                 invitation.getId(), workspace.getId(), userId);

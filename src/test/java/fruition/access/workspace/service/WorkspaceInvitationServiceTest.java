@@ -66,11 +66,13 @@ class WorkspaceInvitationServiceTest {
 
     WorkspaceInvitationService service;
 
+    @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     @BeforeEach
     void setUp() {
         service = new WorkspaceInvitationService(
                 invitationRepository, workspaceMemberRepository, workspaceRepository, userRepository,
-                sender, authzProjectionStore, transactionTemplate, TTL_SECONDS, ACCEPT_URL);
+                sender, authzProjectionStore, transactionTemplate, TTL_SECONDS, ACCEPT_URL, eventPublisher);
         lenient().when(transactionTemplate.execute(any()))
                 .thenAnswer(invocation -> invocation
                         .<org.springframework.transaction.support.TransactionCallback<?>>getArgument(0)
@@ -120,6 +122,15 @@ class WorkspaceInvitationServiceTest {
         verify(invitationRepository).save(saved.capture());
         assertThat(saved.getValue().getEmail()).isEqualTo(INVITEE_EMAIL);
         assertThat(token).isNotBlank();
+        var event = ArgumentCaptor.forClass(fruition.access.analytics.AnalyticsEvent.class);
+        verify(eventPublisher).publishEvent(event.capture());
+        assertThat(event.getValue().event()).isEqualTo("member_invited");
+        assertThat(event.getValue().actorId()).isEqualTo(OWNER_ID);
+        assertThat(event.getValue().workspaceId()).isEqualTo(WORKSPACE_ID);
+        assertThat(event.getValue().logicalKey()).isEqualTo(saved.getValue().getId());
+        assertThat(event.getValue().occurredAt()).isEqualTo(saved.getValue().getCreatedAt());
+        assertThat(event.getValue().properties()).containsExactlyInAnyOrderEntriesOf(java.util.Map.of(
+                "invitation_id", saved.getValue().getId(), "role", "member"));
     }
 
     @Test
@@ -162,6 +173,7 @@ class WorkspaceInvitationServiceTest {
         verify(sender).send(eq(INVITEE_EMAIL), any(), any(), url.capture());
         String reissued = url.getValue().substring(ACCEPT_URL.length() + 1);
         assertThat(pending.getTokenHash()).isEqualTo(OpaqueTokens.sha256(reissued));
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -242,7 +254,7 @@ class WorkspaceInvitationServiceTest {
     @Test
     void accept_joinsWorkspaceAndEvictsProjection() {
         WorkspaceInvitation pending = invitation("tok", Instant.now().plusSeconds(3600));
-        when(invitationRepository.findByTokenHash(OpaqueTokens.sha256("tok"))).thenReturn(Optional.of(pending));
+        when(invitationRepository.findForAcceptance(OpaqueTokens.sha256("tok"))).thenReturn(Optional.of(pending));
         when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(user(INVITEE_ID, INVITEE_EMAIL)));
         when(workspaceRepository.findById(WORKSPACE_ID)).thenReturn(Optional.of(workspace()));
         when(workspaceMemberRepository.findActiveRole(WORKSPACE_ID, INVITEE_ID)).thenReturn(Optional.empty());
@@ -255,11 +267,19 @@ class WorkspaceInvitationServiceTest {
         verify(workspaceMemberRepository).save(any(WorkspaceMember.class));
         verify(authzProjectionStore).evict(WORKSPACE_ID, INVITEE_ID);
         assertThat(pending.isAccepted()).isTrue();
+        var event = ArgumentCaptor.forClass(fruition.access.analytics.AnalyticsEvent.class);
+        verify(eventPublisher).publishEvent(event.capture());
+        assertThat(event.getValue().event()).isEqualTo("member_joined");
+        assertThat(event.getValue().actorId()).isEqualTo(INVITEE_ID);
+        assertThat(event.getValue().workspaceId()).isEqualTo(WORKSPACE_ID);
+        assertThat(event.getValue().occurredAt()).isEqualTo(pending.getAcceptedAt());
+        assertThat(event.getValue().properties()).containsExactlyInAnyOrderEntriesOf(java.util.Map.of(
+                "invitation_id", pending.getId(), "role", "member"));
     }
 
     @Test
     void accept_differentEmailGets403() {
-        when(invitationRepository.findByTokenHash(OpaqueTokens.sha256("tok")))
+        when(invitationRepository.findForAcceptance(OpaqueTokens.sha256("tok")))
                 .thenReturn(Optional.of(invitation("tok", Instant.now().plusSeconds(3600))));
         when(userRepository.findById("user_other")).thenReturn(Optional.of(user("user_other", "other@example.com")));
 
@@ -271,7 +291,7 @@ class WorkspaceInvitationServiceTest {
 
     @Test
     void accept_expiredGets410() {
-        when(invitationRepository.findByTokenHash(OpaqueTokens.sha256("tok")))
+        when(invitationRepository.findForAcceptance(OpaqueTokens.sha256("tok")))
                 .thenReturn(Optional.of(invitation("tok", Instant.now().minusSeconds(1))));
         when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(user(INVITEE_ID, INVITEE_EMAIL)));
         when(workspaceRepository.findById(WORKSPACE_ID)).thenReturn(Optional.of(workspace()));
@@ -286,7 +306,7 @@ class WorkspaceInvitationServiceTest {
     void accept_alreadyAcceptedByOtherRunGets409() {
         WorkspaceInvitation accepted = invitation("tok", Instant.now().plusSeconds(3600));
         accepted.accept("user_someone_else");
-        when(invitationRepository.findByTokenHash(OpaqueTokens.sha256("tok"))).thenReturn(Optional.of(accepted));
+        when(invitationRepository.findForAcceptance(OpaqueTokens.sha256("tok"))).thenReturn(Optional.of(accepted));
         when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(user(INVITEE_ID, INVITEE_EMAIL)));
         when(workspaceRepository.findById(WORKSPACE_ID)).thenReturn(Optional.of(workspace()));
         when(workspaceMemberRepository.findActiveRole(WORKSPACE_ID, INVITEE_ID)).thenReturn(Optional.empty());
@@ -299,7 +319,7 @@ class WorkspaceInvitationServiceTest {
     void accept_secondClickBySameUserIsIdempotent() {
         WorkspaceInvitation accepted = invitation("tok", Instant.now().plusSeconds(3600));
         accepted.accept(INVITEE_ID);
-        when(invitationRepository.findByTokenHash(OpaqueTokens.sha256("tok"))).thenReturn(Optional.of(accepted));
+        when(invitationRepository.findForAcceptance(OpaqueTokens.sha256("tok"))).thenReturn(Optional.of(accepted));
         when(userRepository.findById(INVITEE_ID)).thenReturn(Optional.of(user(INVITEE_ID, INVITEE_EMAIL)));
         when(workspaceRepository.findById(WORKSPACE_ID)).thenReturn(Optional.of(workspace()));
         when(workspaceMemberRepository.findActiveRole(WORKSPACE_ID, INVITEE_ID))
@@ -310,6 +330,7 @@ class WorkspaceInvitationServiceTest {
         assertThat(response.workspaceId()).isEqualTo(WORKSPACE_ID);
         verify(workspaceMemberRepository, never()).save(any());
         verifyNoInteractions(authzProjectionStore);
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
