@@ -96,4 +96,34 @@ class JwtTokenProviderTest {
                 .signWith(current.getPrivate(), Jwts.SIG.RS384).compact();
         assertFalse(verifier(current, null, "", "").isValid(wrongAlgorithm));
     }
+    private JwtTokenProvider signingMode(KeyPair pair, String secret, String deadline, String mode) {
+        return new JwtTokenProvider(secret, 900, "fruition-access", "fruition-api",
+                pem("PUBLIC KEY", pair.getPublic().getEncoded()), "current", "", "", "production",
+                deadline, pem("PRIVATE KEY", pair.getPrivate().getEncoded()), mode);
+    }
+    @Test void legacySigningPhaseStillVerifiesRsaAndTransitionsAtDeadline() throws Exception {
+        var current = pair();
+        var deadline = Instant.now().plusSeconds(2);
+        var dual = signingMode(current, LEGACY, deadline.toString(), "legacy");
+        var old = new JwtTokenProvider(LEGACY, 900, "fruition-access", "fruition-api");
+        var rsa = verifier(current, null, "", "");
+        String legacyToken = dual.generateAccessToken("user", "test@example.invalid");
+        assertTrue(old.isValid(legacyToken));
+        assertFalse(rsa.isValid(legacyToken));
+        assertTrue(dual.isValid(rsa.generateAccessToken("user", "test@example.invalid")));
+        Thread.sleep(Math.max(0, java.time.Duration.between(Instant.now(), deadline).toMillis()) + 100);
+        String rsaToken = dual.generateAccessToken("user", "test@example.invalid");
+        assertTrue(rsa.isValid(rsaToken));
+        assertFalse(old.isValid(rsaToken));
+        assertFalse(dual.isValid(legacyToken));
+    }
+    @Test void legacySigningRequiresExplicitBoundedFutureDeadlineAndSecret() throws Exception {
+        var current = pair();
+        String future = Instant.now().plusSeconds(60).toString();
+        assertThrows(IllegalArgumentException.class, () -> signingMode(current, "", future, "legacy"));
+        assertThrows(IllegalArgumentException.class, () -> signingMode(current, LEGACY, "", "legacy"));
+        assertThrows(IllegalArgumentException.class, () -> signingMode(current, LEGACY, Instant.now().minusSeconds(1).toString(), "legacy"));
+        assertThrows(IllegalArgumentException.class, () -> signingMode(current, LEGACY, Instant.now().plusSeconds(172800).toString(), "legacy"));
+        assertThrows(IllegalArgumentException.class, () -> signingMode(current, "", "", "typo"));
+    }
 }

@@ -29,6 +29,8 @@ import java.util.Optional;
 public class JwtTokenProvider {
 
     private final SecretKey key;
+    private final SecretKey legacySigningKey;
+    private final boolean legacySigning;
     private final PrivateKey signingKey;
     private final JwtParser rsaParser;
     private final JwtParser legacyParser;
@@ -43,6 +45,13 @@ public class JwtTokenProvider {
         this(secret, ttl, issuer, audience, "", "", "", "", "", "", "");
     }
 
+    public JwtTokenProvider(String secret, long ttl, String issuer, String audience,
+                            String publicPem, String keyId, String previousPem, String previousKeyId,
+                            String profiles, String legacyUntil, String privatePem) {
+        this(secret, ttl, issuer, audience, publicPem, keyId, previousPem, previousKeyId,
+                profiles, legacyUntil, privatePem, "rsa");
+    }
+
     @Autowired
     public JwtTokenProvider(@Value("${app.jwt.secret:}") String secret,
                             @Value("${app.jwt.access-token-expiration-seconds}") long accessTokenExpirationSeconds,
@@ -54,16 +63,22 @@ public class JwtTokenProvider {
                             @Value("${app.jwt.previous-key-id:}") String previousKeyId,
                             @Value("${spring.profiles.active:}") String profiles,
                             @Value("${app.jwt.legacy-until:}") String legacyUntil,
-                            @Value("${app.jwt.private-key:}") String privatePem) {
+                            @Value("${app.jwt.private-key:}") String privatePem,
+                            @Value("${app.jwt.signing-mode:rsa}") String signingMode) {
         this.accessTokenExpirationSeconds = accessTokenExpirationSeconds;
         this.issuer = issuer;
         this.audience = audience;
         this.keyId = keyId;
+        if (!java.util.Set.of("rsa", "legacy").contains(signingMode)) {
+            throw new IllegalArgumentException("JWT signing mode must be rsa or legacy");
+        }
+        this.legacySigning = "legacy".equals(signingMode);
         boolean production = Arrays.stream(profiles.split(",")).anyMatch(p -> p.trim().equals("production"));
         if (publicPem.isBlank()) {
-            if (production) {
+            if (production || legacySigning) {
                 throw new IllegalArgumentException("Production JWT requires RSA verification keys");
             }
+            this.legacySigningKey = null;
             this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
             this.signingKey = null;
             this.rsaParser = null;
@@ -97,11 +112,17 @@ public class JwtTokenProvider {
                 if (this.legacyUntil.isAfter(Instant.now().plus(Duration.ofHours(24)))) {
                     throw new IllegalArgumentException("Legacy JWT transition cannot exceed 24 hours");
                 }
-                this.legacyParser = legacyParser(Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8)), issuer, audience);
+                this.legacySigningKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+                this.legacyParser = legacyParser(legacySigningKey, issuer, audience);
             } else {
                 this.legacyUntil = null;
                 this.legacyParser = null;
+                this.legacySigningKey = null;
             }
+        }
+        if (legacySigning && (legacySigningKey == null || legacyUntil.isBlank()
+                || !this.legacyUntil.isAfter(Instant.now()))) {
+            throw new IllegalArgumentException("Legacy signing requires a secret and a future transition deadline");
         }
     }
 
@@ -162,6 +183,11 @@ public class JwtTokenProvider {
         builder
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(accessTokenExpirationSeconds)));
+        // Every upgraded replica verifies RSA before any replica starts issuing RSA tokens.
+        // Expiry automatically ends legacy issuance even if deployment configuration is left unchanged.
+        if (legacySigning && now.isBefore(legacyUntil)) {
+            return builder.signWith(legacySigningKey).compact();
+        }
         return signingKey == null ? builder.signWith(key).compact()
                 : builder.header().keyId(keyId).and().signWith(signingKey, Jwts.SIG.RS256).compact();
     }
