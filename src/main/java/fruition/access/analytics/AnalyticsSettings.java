@@ -33,12 +33,12 @@ public record AnalyticsSettings(boolean enabled, String token, String host, Stri
             return uri.getHost() != null && uri.getUserInfo() == null && uri.getQuery() == null
                     && uri.getFragment() == null && ("https".equals(uri.getScheme())
                     || ("http".equals(uri.getScheme())
-                    && Set.of("127.0.0.1", "localhost", "[::1]").contains(uri.getHost())));
+                    && Set.of("127.0.0.1", "localhost", "[::1]", "host.docker.internal").contains(uri.getHost())));
         } catch (IllegalArgumentException invalid) { return false; }
     }
 
     @Override public String toString() { return "AnalyticsSettings[enabled=" + enabled + "]"; }
 
     // Never send a personal API key (phx_) or an arbitrary credential to the ingestion endpoint.
-    public boolean relayEnabled() { return enabled && token.matches("phc_[A-Za-z0-9]+"); }
+    public boolean relayEnabled() { return enabled && token.matches("phc_[A-Za-z0-9_-]+"); }
 }
