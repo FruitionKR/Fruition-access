@@ -122,4 +122,18 @@ class JwtTokenProviderTest {
         assertThrows(IllegalArgumentException.class, () -> signingMode(current, LEGACY, Instant.now().plusSeconds(172800).toString(), "legacy"));
         assertThrows(IllegalArgumentException.class, () -> signingMode(current, "", "", "typo"));
     }
+    @Test void requiresExpiryAndNonblankSubjectForRsaAndLegacy() throws Exception {
+        var current = pair();
+        var provider = verifier(current, null, LEGACY, Instant.now().plusSeconds(60).toString());
+        for (boolean rsa : new boolean[] {true, false}) {
+            for (String subject : new String[] {null, "", "   ", "user"}) {
+                var builder = Jwts.builder().issuer("fruition-access").audience().add("fruition-api").and();
+                if (subject != null) builder.subject(subject);
+                if (!"user".equals(subject)) builder.expiration(Date.from(Instant.now().plusSeconds(60)));
+                String invalid = rsa ? builder.header().keyId("current").and().signWith(current.getPrivate(), Jwts.SIG.RS256).compact()
+                        : builder.signWith(Keys.hmacShaKeyFor(LEGACY.getBytes(java.nio.charset.StandardCharsets.UTF_8))).compact();
+                assertFalse(provider.isValid(invalid));
+            }
+        }
+    }
 }
