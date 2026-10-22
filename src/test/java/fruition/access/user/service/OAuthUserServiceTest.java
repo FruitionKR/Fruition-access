@@ -44,10 +44,12 @@ class OAuthUserServiceTest {
 
     OAuthUserService oAuthUserService;
 
+    @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     @BeforeEach
     void setUp() {
         oAuthUserService = new OAuthUserService(userRepository, oauthAccountRepository, workspaceService,
-                codeStore, clientRegistrationRepository, userConsentService);
+                codeStore, clientRegistrationRepository, userConsentService, eventPublisher);
     }
 
     private GoogleOAuth2UserInfo googleUserInfo(String sub, String email, String name) {
@@ -69,6 +71,7 @@ class OAuthUserServiceTest {
 
         assertThat(user).get().extracting(User::getId).isEqualTo("user_1f9a74af");
         verify(userRepository, never()).save(any());
+        org.mockito.Mockito.verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -149,6 +152,11 @@ class OAuthUserServiceTest {
         verify(workspaceService).createDefault(user.getId(), user.getDisplayName());
         verify(oauthAccountRepository).save(any());
         verify(userConsentService).record(user.getId(), true);
+        var event = org.mockito.ArgumentCaptor.forClass(fruition.access.analytics.AnalyticsEvent.class);
+        verify(eventPublisher).publishEvent(event.capture());
+        assertThat(event.getValue().event()).isEqualTo("user_signed_up");
+        assertThat(event.getValue().actorId()).isEqualTo(user.getId());
+        assertThat(event.getValue().properties()).containsExactlyEntriesOf(Map.of("method", "google"));
     }
 
     @Test
@@ -160,6 +168,19 @@ class OAuthUserServiceTest {
                 new OAuthSignupConsentRequest("signup-token", false, "2026-10-01", false, null)))
                 .isInstanceOf(fruition.access.user.exception.InvalidConsentException.class);
         verify(codeStore, never()).consumeSignupToken(any(), any());
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void completeSignup_existingAccountRetryDoesNotEmitSignup() {
+        when(codeStore.consumeSignupToken("signup-token", null)).thenReturn(Optional.of(
+                new OAuthExchangeCodeStore.PendingSignup("google", "google-sub-1", "existing@example.test", "Name", null)));
+        when(oauthAccountRepository.findByProviderAndProviderUserId("google", "google-sub-1"))
+                .thenReturn(Optional.of(new UserOAuthAccount("user_existing", "google", "google-sub-1")));
+        when(userRepository.findById("user_existing"))
+                .thenReturn(Optional.of(new User("user_existing", "existing@example.test", "google", "Name", null)));
+        oAuthUserService.completeSignup(new OAuthSignupConsentRequest("signup-token", true, "2026-10-01", false, null));
+        org.mockito.Mockito.verifyNoInteractions(eventPublisher);
         verify(userRepository, never()).save(any());
     }
 

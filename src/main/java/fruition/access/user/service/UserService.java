@@ -1,6 +1,7 @@
 package fruition.access.user.service;
 
 import fruition.access.user.domain.User;
+import fruition.access.analytics.AnalyticsEvent;
 import fruition.access.user.dto.EmailAvailabilityRequest;
 import fruition.access.user.dto.EmailAvailabilityResponse;
 import fruition.access.user.dto.SignupRequest;
@@ -13,10 +14,14 @@ import fruition.access.workspace.service.WorkspaceService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.time.Instant;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -29,20 +34,22 @@ public class UserService {
     private final WorkspaceService workspaceService;
     private final EmailVerificationService emailVerificationService;
     private final UserConsentService userConsentService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder,
                        WorkspaceService workspaceService, EmailVerificationService emailVerificationService,
-                       UserConsentService userConsentService) {
+                       UserConsentService userConsentService, ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.workspaceService = workspaceService;
         this.emailVerificationService = emailVerificationService;
         this.userConsentService = userConsentService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional(readOnly = true)
     public EmailAvailabilityResponse checkEmailAvailability(EmailAvailabilityRequest request) {
-        String email = request.email().trim().toLowerCase();
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
         List<User> accounts = userRepository.findAllByEmail(email);
         // 같은 이메일의 계정이 하나라도 있으면(local이든 소셜이든) 신규 가입할 수 없다.
         // 소셜 계정의 provider는 "그 계정으로 로그인 후 설정에서 연동" 안내용으로 알린다.
@@ -57,7 +64,7 @@ public class UserService {
 
     @Transactional
     public SignupResponse signup(SignupRequest request) {
-        String email = request.email().trim().toLowerCase();
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
         log.info("[회원가입 요청] email={}", email);
 
         // 유효 토큰 낭비를 막기 위해 중복 검사를 토큰 소비보다 먼저 수행한다.
@@ -88,6 +95,8 @@ public class UserService {
         workspaceService.createDefault(user.getId(), user.getDisplayName());
         log.info("[회원가입 성공] userId={} email={} displayNameSource={}", user.getId(), user.getEmail(), displayNameSource);
 
+        eventPublisher.publishEvent(new AnalyticsEvent("user_signed_up", user.getId(), user.getId(), null,
+                Instant.now(), Map.of("method", "email")));
         return new SignupResponse(user.getId(), user.getEmail(), user.getDisplayName(), user.getCreatedAt());
     }
 }

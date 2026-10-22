@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -30,6 +31,7 @@ import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -62,7 +64,7 @@ class EmailVerificationServiceTest {
         }).when(transactionTemplate).executeWithoutResult(any());
         service = new EmailVerificationService(
                 verificationRepository, userRepository, sender, transactionTemplate,
-                300, 600, 60, 5, 5, "");
+                300, 600, 60, 5, 5);
     }
 
     private static String sha256(String value) {
@@ -99,6 +101,26 @@ class EmailVerificationServiceTest {
                         assertThat(e.getOauthProviders()).containsExactly("google", "kakao"));
         verify(sender, org.mockito.Mockito.never()).send(any(), any(), any());
         verify(verificationRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void request_emailChangeToAddressInUse_rejectsBeforeSendingMail() {
+        // 이메일 변경은 provider와 상관없이 다른 계정이 쓰는 주소로 바꿀 수 없으므로 인증번호를 보내지 않는다.
+        when(userRepository.existsByEmail("taken@example.com")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.request(new EmailVerificationRequest("taken@example.com", "email_change")))
+                .isInstanceOf(DuplicateEmailException.class);
+        verify(sender, org.mockito.Mockito.never()).send(any(), any(), any());
+        verify(verificationRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void request_emailChangeToUnusedAddress_sendsCode() {
+        when(userRepository.existsByEmail("free@example.com")).thenReturn(false);
+
+        service.request(new EmailVerificationRequest("free@example.com", "email_change"));
+
+        verify(sender).send(eq("free@example.com"), eq("email_change"), anyString());
     }
 
     @Test
@@ -159,10 +181,23 @@ class EmailVerificationServiceTest {
     }
 
     @Test
-    void request_withDevFixedCode_sendsFixedCode() {
-        service = new EmailVerificationService(
-                verificationRepository, userRepository, sender, transactionTemplate,
-                300, 600, 60, 5, 5, "9700");
+    void request_normalizesEmailIndependentOfDefaultLocale() {
+        // 터키어 로케일에서는 기본 toLowerCase가 'I'를 점 없는 'ı'로 바꿔 발급·소비 이메일이 어긋난다.
+        Locale original = Locale.getDefault();
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        try {
+            service.request(new EmailVerificationRequest(" INFO@EXAMPLE.COM ", "password_reset"));
+            service.requestForPasswordChange("ADMIN@EXAMPLE.COM");
+        } finally {
+            Locale.setDefault(original);
+        }
+
+        verify(sender).send(eq("info@example.com"), eq("password_reset"), anyString());
+        verify(sender).send(eq("admin@example.com"), eq("password_change"), anyString());
+    }
+
+    @Test
+    void request_alwaysSendsRandomSixDigitCode_andRejects9700() {
         when(verificationRepository.findTopByEmailAndPurposeOrderByCreatedAtDesc(anyString(), anyString()))
                 .thenReturn(Optional.empty());
         when(verificationRepository.countByEmailAndPurposeAndCreatedAtAfter(anyString(), anyString(), any()))
@@ -172,7 +207,18 @@ class EmailVerificationServiceTest {
 
         service.request(new EmailVerificationRequest("test@example.com", "password_reset"));
 
-        verify(sender).send("test@example.com", "password_reset", "9700");
+        ArgumentCaptor<String> code = ArgumentCaptor.forClass(String.class);
+        verify(sender).send(eq("test@example.com"), eq("password_reset"), code.capture());
+        assertThat(code.getValue()).matches("[0-9]{6}").isNotEqualTo("9700");
+        ArgumentCaptor<EmailVerification> saved = ArgumentCaptor.forClass(EmailVerification.class);
+        verify(verificationRepository).save(saved.capture());
+        EmailVerification verification = saved.getValue();
+        assertThat(verification.getCodeHash()).isEqualTo(sha256(code.getValue()));
+        when(verificationRepository.findById(verification.getId())).thenReturn(Optional.of(verification));
+        assertThatThrownBy(() -> service.confirm(verification.getId(), new VerificationConfirmRequest("9700")))
+                .isInstanceOf(InvalidVerificationCodeException.class);
+        assertThat(service.confirm(verification.getId(), new VerificationConfirmRequest(code.getValue()))
+                .verificationToken()).isNotBlank();
     }
 
     // ----- confirm -----

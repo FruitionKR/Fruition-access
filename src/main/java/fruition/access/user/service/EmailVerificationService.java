@@ -29,6 +29,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -38,6 +39,8 @@ public class EmailVerificationService {
     private static final String PURPOSE_SIGNUP = "signup";
     private static final String PURPOSE_PASSWORD_RESET = "password_reset";
     private static final String PURPOSE_EMAIL_CHANGE = "email_change";
+    // 로그인 상태의 비밀번호 변경 전용. 공개 발급 API(purpose 패턴)로는 받을 수 없고 세션 사용자 이메일로만 발급한다.
+    private static final String PURPOSE_PASSWORD_CHANGE = "password_change";
 
     private final EmailVerificationRepository verificationRepository;
     private final UserRepository userRepository;
@@ -50,7 +53,6 @@ public class EmailVerificationService {
     private final long resendCooldownSeconds;
     private final long dailyLimit;
     private final int maxAttempts;
-    private final String devFixedCode;
 
     public EmailVerificationService(
             EmailVerificationRepository verificationRepository,
@@ -61,8 +63,7 @@ public class EmailVerificationService {
             @Value("${app.auth.email-verification.token-ttl-seconds}") long tokenTtlSeconds,
             @Value("${app.auth.email-verification.resend-cooldown-seconds}") long resendCooldownSeconds,
             @Value("${app.auth.email-verification.daily-limit}") long dailyLimit,
-            @Value("${app.auth.email-verification.max-attempts}") int maxAttempts,
-            @Value("${app.auth.email-verification.dev-fixed-code:}") String devFixedCode) {
+            @Value("${app.auth.email-verification.max-attempts}") int maxAttempts) {
         this.verificationRepository = verificationRepository;
         this.userRepository = userRepository;
         this.sender = sender;
@@ -72,17 +73,21 @@ public class EmailVerificationService {
         this.resendCooldownSeconds = resendCooldownSeconds;
         this.dailyLimit = dailyLimit;
         this.maxAttempts = maxAttempts;
-        this.devFixedCode = devFixedCode;
     }
 
     public EmailVerificationResponse request(EmailVerificationRequest request) {
-        String email = request.email().trim().toLowerCase();
+        String email = normalizeEmail(request.email());
         String purpose = request.purpose();
+        return issue(email, purpose, () -> rejectUnusableEmail(email, purpose));
+    }
 
-        // 존재 노출(signup 409)도 throttle 대상이 되도록 rate limit을 먼저 적용한다.
-        // 단 per-(email, purpose) 범위라 서로 다른 이메일 대량 열거는 못 막으며, 그건 IP/전역 제한 영역이다.
-        enforceRateLimit(email, purpose);
+    /** 로그인한 사용자의 계정 이메일로 비밀번호 변경용 인증번호를 보낸다. */
+    public EmailVerificationResponse requestForPasswordChange(String accountEmail) {
+        String email = normalizeEmail(accountEmail);
+        return issue(email, PURPOSE_PASSWORD_CHANGE, () -> {});
+    }
 
+    private void rejectUnusableEmail(String email, String purpose) {
         // 회원가입은 의도적으로 존재 여부를 노출한다. 비밀번호 재설정은 노출하지 않는다.
         if (PURPOSE_SIGNUP.equals(purpose)) {
             if (userRepository.existsByEmailAndProvider(email, User.PROVIDER_LOCAL)) {
@@ -97,15 +102,33 @@ public class EmailVerificationService {
             }
         }
 
-        String code = devFixedCode.isBlank() ? generateCode() : devFixedCode;
+        // 이메일 변경은 다른 계정(소셜 가입 포함)이 쓰는 주소로 바꿀 수 없으므로 쓸 수 없는 주소로 메일을 보내지 않는다.
+        // 존재 여부는 signup 거절과 같은 범위로만 드러난다. 거절은 롤백돼 발급 기록이 남지 않으므로 아래 쿨다운·일일 한도에는
+        // 걸리지 않고, 반복 조회는 컨트롤러의 IP별·이메일별 요청 제한(EmailAvailabilityRateLimiter)이 막는다.
+        // 인증 없이 부르는 API라 현재 본인 주소도 함께 거절된다(본인 주소로의 변경은 아무것도 바꾸지 않는다).
+        if (PURPOSE_EMAIL_CHANGE.equals(purpose) && userRepository.existsByEmail(email)) {
+            log.warn("[인증 요청 거부] reason=email_in_use purpose={} email={}", purpose, email);
+            throw new DuplicateEmailException(email);
+        }
+    }
+
+    private EmailVerificationResponse issue(String email, String purpose, Runnable eligibilityCheck) {
+        String code = generateCode();
         String id = "ev_" + UUID.randomUUID().toString().replace("-", "");
 
         // DB 쓰기만 트랜잭션으로 처리하고 커밋한다. SMTP 발송을 트랜잭션 안에서 하면
         // 외부 메일 서버 왕복 동안 DB 커넥션을 붙잡으므로, 발송은 커밋 후 트랜잭션 밖에서 한다.
         transactionTemplate.executeWithoutResult(status -> {
-            // 새 코드 발급 전 같은 (email, purpose)의 미소비 코드를 폐기한다.
+            // 같은 (email, purpose)의 발급을 커밋까지 직렬화해, 동시 요청이 쿨다운·일일 한도를 함께 통과하지 못하게 한다.
+            verificationRepository.lockIssuance(purpose + ":" + email);
+            // 쿨다운·일일 한도는 발급된 레코드로 센다. 직전 발급이 있으면 거절(409) 검사보다 먼저 429로 끝나지만,
+            // 거절된 요청은 롤백돼 레코드를 남기지 않으므로 거절만 반복하는 요청은 여기서 세지 않는다.
+            // 그 반복과 서로 다른 이메일 대량 열거는 컨트롤러의 IP별·이메일별 요청 제한이 막는다.
+            enforceRateLimit(email, purpose);
+            eligibilityCheck.run();
+            // 새 코드 발급 전 같은 (email, purpose)의 미소비 코드와 이미 받은 토큰을 폐기한다.
             for (EmailVerification previous : verificationRepository.findByEmailAndPurposeAndConsumedAtIsNull(email, purpose)) {
-                previous.expireCode();
+                previous.invalidate();
             }
             verificationRepository.save(new EmailVerification(
                     id, email, purpose, OpaqueTokens.sha256(code), Instant.now().plusSeconds(codeTtlSeconds)));
@@ -161,7 +184,17 @@ public class EmailVerificationService {
         consumeToken(email, token, PURPOSE_EMAIL_CHANGE);
     }
 
-    private void consumeToken(String email, String token, String purpose) {
+    @Transactional
+    public void consumeForPasswordChange(String email, String token) {
+        consumeToken(email, token, PURPOSE_PASSWORD_CHANGE);
+    }
+
+    /**
+     * 발급은 정규화한 이메일로 저장하므로 소비도 같은 정규화를 거쳐 비교한다.
+     * 계정 이메일을 그대로 넘기는 호출(비밀번호 변경)에서 대문자가 섞인 예전 데이터도 같은 주소로 맞춘다.
+     */
+    private void consumeToken(String rawEmail, String token, String purpose) {
+        String email = normalizeEmail(rawEmail);
         EmailVerification verification = verificationRepository.findByTokenHash(OpaqueTokens.sha256(token))
                 .orElseThrow(InvalidVerificationTokenException::new);
 
@@ -195,6 +228,10 @@ public class EmailVerificationService {
                     .orElse(resendCooldownSeconds);
             throw new VerificationRateLimitedException(retryAfter);
         }
+    }
+
+    private static String normalizeEmail(String email) {
+        return email.trim().toLowerCase(Locale.ROOT);
     }
 
     private String generateCode() {
