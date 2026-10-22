@@ -29,7 +29,7 @@ public class ProductionSettings {
     public ProductionSettings(Environment environment) {
         for (String key : new String[] {"spring.mail.host", "spring.mail.username", "spring.mail.password",
                 "app.auth.email-verification.from", "app.auth.mfa.encryption-key",
-                "app.workspace.invitation.accept-url", "app.jwt.secret",
+                "app.workspace.invitation.accept-url", "app.jwt.private-key", "app.jwt.public-key", "app.jwt.key-id",
                 "app.auth.refresh-cookie-secure", "app.internal.callback-token"}) {
             String value = environment.getProperty(key);
             if (value == null || value.isBlank() || value.contains("REPLACE_ME")) {
@@ -55,11 +55,11 @@ public class ProductionSettings {
                 || invitation.getHost().equals("localhost") || invitation.getHost().equals("127.0.0.1")) {
             throw new IllegalArgumentException("초대 URL은 공개 HTTPS 주소여야 합니다.");
         }
-        // JWT_SECRET이 주입되지 않으면 git 이력에 공개된 개발 기본값으로 서명하게 된다.
-        // issuer·audience도 커밋된 기본값이라 그 순간 access token은 누구나 위조할 수 있다.
-        String jwtSecret = environment.getRequiredProperty("app.jwt.secret");
-        if (COMMITTED_DEV_JWT_SECRET.equals(jwtSecret)
-                || jwtSecret.getBytes(StandardCharsets.UTF_8).length < 32) {
+        // 전환 기간에만 사용하는 기존 HMAC 키도 공개된 개발 기본값이면 거부한다.
+        String jwtSecret = environment.getProperty("app.jwt.secret", "");
+        if (!jwtSecret.isBlank() && (jwtSecret.contains(INSECURE_MARKER) || jwtSecret.contains("REPLACE_ME")
+                || COMMITTED_DEV_JWT_SECRET.equals(jwtSecret)
+                || jwtSecret.getBytes(StandardCharsets.UTF_8).length < 32)) {
             throw new IllegalArgumentException("JWT 서명 키는 커밋된 개발 기본값이 아닌 32바이트 이상이어야 합니다.");
         }
         // refresh 쿠키가 Secure 없이 나가면 14일짜리 refresh token이 평문 HTTP로 노출된다.

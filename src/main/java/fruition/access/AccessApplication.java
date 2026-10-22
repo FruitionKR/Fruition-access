@@ -31,7 +31,8 @@ public class AccessApplication {
             Flyway.configure()
                     .dataSource("jdbc:postgresql://" + requiredEnv("POSTGRES_HOST") + ":"
                                     + requiredEnv("POSTGRES_PORT") + "/" + requiredEnv("ACCESS_DB_NAME")
-                                    + "?sslmode=" + System.getenv().getOrDefault("PGSSLMODE", "prefer"),
+                                    + "?sslmode=" + System.getenv().getOrDefault("PGSSLMODE", "prefer")
+                                    + "&sslrootcert=" + System.getenv().getOrDefault("PGSSLROOTCERT", ""),
                             requiredEnv("ACCESS_DB_MIGRATION_USER"), requiredEnv("ACCESS_DB_MIGRATION_PASSWORD"))
                     .locations("classpath:db/migration")
                     .load().migrate();
