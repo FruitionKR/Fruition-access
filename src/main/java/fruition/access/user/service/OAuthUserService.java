@@ -3,6 +3,7 @@ package fruition.access.user.service;
 import fruition.access.security.oauth.OAuthExchangeCodeStore;
 import fruition.access.security.oauth.domain.OAuth2UserInfo;
 import fruition.access.user.domain.User;
+import fruition.access.analytics.AnalyticsEvent;
 import fruition.access.user.domain.UserOAuthAccount;
 import fruition.access.user.dto.OAuthSignupConsentRequest;
 import fruition.access.user.exception.InvalidOAuthLinkCodeException;
@@ -22,12 +23,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
+import java.util.Map;
+import java.time.Instant;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -41,19 +45,21 @@ public class OAuthUserService {
     private final OAuthExchangeCodeStore codeStore;
     private final ClientRegistrationRepository clientRegistrationRepository;
     private final UserConsentService userConsentService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public OAuthUserService(UserRepository userRepository,
                             UserOAuthAccountRepository oauthAccountRepository,
                             WorkspaceService workspaceService,
                             OAuthExchangeCodeStore codeStore,
                             ClientRegistrationRepository clientRegistrationRepository,
-                            UserConsentService userConsentService) {
+                            UserConsentService userConsentService, ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.oauthAccountRepository = oauthAccountRepository;
         this.workspaceService = workspaceService;
         this.codeStore = codeStore;
         this.clientRegistrationRepository = clientRegistrationRepository;
         this.userConsentService = userConsentService;
+        this.eventPublisher = eventPublisher;
     }
 
     /** 이 소셜 계정에 연결된 사용자. 없으면 신규 가입이므로 {@link #startSignup}으로 동의를 받는다. */
@@ -120,6 +126,8 @@ public class OAuthUserService {
         User user = createUser(pending.provider(), pending.email(), pending.name());
         oauthAccountRepository.save(new UserOAuthAccount(user.getId(), pending.provider(), pending.providerUserId()));
         userConsentService.record(user.getId(), Boolean.TRUE.equals(request.marketingOptIn()));
+        eventPublisher.publishEvent(new AnalyticsEvent("user_signed_up", user.getId(), user.getId(), null,
+                Instant.now(), Map.of("method", pending.provider())));
         log.info("[OAuth 계정 연결] provider={} userId={}", pending.provider(), user.getId());
         return user;
     }

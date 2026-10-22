@@ -32,10 +32,12 @@ class UserServiceTest {
     PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     UserService userService;
 
+    @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     @BeforeEach
     void setUp() {
         userService = new UserService(userRepository, passwordEncoder, workspaceService, emailVerificationService,
-                userConsentService);
+                userConsentService, eventPublisher);
     }
 
     @Test
@@ -150,5 +152,18 @@ class UserServiceTest {
                 .isInstanceOf(fruition.access.user.exception.InvalidConsentException.class);
         org.mockito.Mockito.verifyNoInteractions(emailVerificationService);
         org.mockito.Mockito.verify(userRepository, org.mockito.Mockito.never()).saveAndFlush(org.mockito.ArgumentMatchers.any());
+    }
+    @Test
+    void signup_recordsEmailMethodAndInternalActorOnly() {
+        SignupResponse response = userService.signup(new SignupRequest("private@example.test", "password123"));
+        var captured = org.mockito.ArgumentCaptor.forClass(fruition.access.analytics.AnalyticsEvent.class);
+        verify(eventPublisher).publishEvent(captured.capture());
+        var event = captured.getValue();
+        assertThat(event.event()).isEqualTo("user_signed_up");
+        assertThat(event.actorId()).isEqualTo(response.id());
+        assertThat(event.logicalKey()).isEqualTo(response.id());
+        assertThat(event.workspaceId()).isNull();
+        assertThat(event.properties()).containsExactlyEntriesOf(java.util.Map.of("method", "email"));
+        assertThat(event.occurredAt()).isNotNull();
     }
 }
