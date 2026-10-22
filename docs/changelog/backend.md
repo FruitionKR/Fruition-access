@@ -2,6 +2,10 @@
 
 ## 2026-10-22
 
+- 컨테이너 mock 기본 주소 `http://host.docker.internal:18080`에서 Access 분석 relay가 비활성화되던 문제를 수정했습니다. HTTP 허용 목록에는 해당 gateway literal만 추가하며 사용자 정보·query·fragment와 임의 HTTP 호스트는 계속 거부합니다.
+- 공개 프로젝트 토큰 검증을 공통 계약 `phc_[A-Za-z0-9_-]+`로 맞췄습니다. 빈 토큰·개인 `phx_` 토큰·기본 비활성 설정은 계속 전송을 차단합니다.
+- 실제 Compose 기본 주소, 토큰 허용 문자, 유사 호스트 및 URL 우회 거부 회귀 테스트를 추가했습니다. JDK 21 설정 테스트 5개 및 전체 575개(실패·오류·스킵 0), `bootJar` 통과. 수정 전 신규 테스트 2개 실패를 재현했으며 전체 테스트는 Colima Docker socket을 명시해 실행했습니다.
+
 - 알파 분석 `user_signed_up`(email/google/naver/kakao), `member_invited`, `member_joined`를 같은 제품 트랜잭션의 analytics outbox에 기록합니다. actor·workspace·UTC 발생 시각과 UUIDv5를 보존하며 초대 재발송·중복/동시 수락·기존 OAuth 계정 반환은 중복 집계하지 않습니다.
 - JDBC savepoint로 분석 INSERT 오류를 격리하고 lifecycle 전용 relay에서 커밋된 이벤트만 전송합니다. 개인정보 없는 속성 allowlist, 독립 전송 timeout, SKIP LOCKED, 재시도·dead 처리와 7일 발송 이력 정리를 추가했습니다.
 - PostgreSQL/loopback HTTP 통합 테스트에서 제품 롤백·SQL 실패 격리·전송 timeout/연결 실패·동시 relay·재시도 envelope·초대 동시 수락을 검증했습니다. 최종 전체 테스트 572개(실패·오류·스킵 0)와 bootJar가 통과했고, 수정하지 않은 origin/dev 전체 테스트 558개도 통과했습니다.
