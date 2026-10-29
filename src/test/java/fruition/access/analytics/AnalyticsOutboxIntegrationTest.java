@@ -251,6 +251,35 @@ class AnalyticsOutboxIntegrationTest {
         assertThat(properties.toString()).doesNotContain("Private", "@example", token);
     }
 
+    @Test void rejectedInvitationAcceptRecordsOneFailureWithoutProductChanges() throws Exception {
+        String owner = "user_" + UUID.randomUUID().toString().replace("-", "");
+        String invitee = "user_" + UUID.randomUUID().toString().replace("-", "");
+        String stranger = "user_" + UUID.randomUUID().toString().replace("-", "");
+        tx.executeWithoutResult(status -> {
+            users.saveAndFlush(new User(owner, owner + "@example.test", "local", "Private Owner", null));
+            users.saveAndFlush(new User(invitee, invitee + "@example.test", "local", "Private Invitee", null));
+            users.saveAndFlush(new User(stranger, stranger + "@example.test", "local", "Private Stranger", null));
+        });
+        String workspace = workspaces.createDefault(owner, "Private Workspace").getId();
+        var created = invitations.invite(owner, workspace, new fruition.access.workspace.dto.WorkspaceInvitationCreateRequest(
+                invitee + "@example.test", fruition.access.workspace.domain.WorkspaceRole.MEMBER));
+        var url = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(invitationSender).send(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), url.capture());
+        String token = url.getValue().substring(url.getValue().lastIndexOf('/') + 1);
+        for (int i = 0; i < 2; i++)
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> invitations.accept(stranger, token))
+                    .isInstanceOf(fruition.access.workspace.exception.InvitationEmailMismatchException.class);
+        jdbc.update("UPDATE workspace_invitations SET expires_at = now() - interval '1 minute' WHERE id = ?", created.invitationId());
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> invitations.accept(invitee, token))
+                .isInstanceOf(fruition.access.workspace.exception.InvitationExpiredException.class);
+        var failures = jdbc.queryForList("SELECT distinct_id, properties->>'reason' AS reason, properties::text AS properties FROM analytics_outbox WHERE event = 'member_join_failed'");
+        assertThat(failures).extracting(row -> row.get("distinct_id") + ":" + row.get("reason"))
+                .containsExactlyInAnyOrder(stranger + ":email_mismatch", invitee + ":expired");
+        assertThat(failures.toString()).contains(created.invitationId()).doesNotContain("Private", "@example", token);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM workspace_members WHERE workspace_id = ?", Integer.class, workspace)).isOne();
+        assertThat(jdbc.queryForObject("SELECT accepted_at IS NULL FROM workspace_invitations WHERE id = ?", Boolean.class, created.invitationId())).isTrue();
+    }
     @Test void uuidMatchesSharedPythonUuid5Vector() {
         assertThat(AnalyticsRecorder.eventId("user_signed_up", "user_one").toString())
                 .isEqualTo("b3d5fb6e-d5c6-573b-a0c8-0427f63f34dc");

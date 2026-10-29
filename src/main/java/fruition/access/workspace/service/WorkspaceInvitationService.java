@@ -174,7 +174,9 @@ public class WorkspaceInvitationService {
         );
     }
 
-    @Transactional
+    /** 실패 사유 예외는 아무것도 쓰기 전에 던지므로 롤백하지 않고 member_join_failed만 남긴다. */
+    @Transactional(noRollbackFor = {InvitationEmailMismatchException.class,
+            InvitationAlreadyAcceptedException.class, InvitationExpiredException.class})
     public InvitationAcceptResponse accept(String userId, String token) {
         WorkspaceInvitation invitation = invitationRepository.findForAcceptance(OpaqueTokens.sha256(token))
                 .filter(found -> !found.isRevoked())
@@ -184,6 +186,7 @@ public class WorkspaceInvitationService {
                 .orElseThrow(() -> new UserNotFoundException(userId));
         // 이 검증이 수락 계정을 확정한다. 링크가 유출돼도 초대받은 주소의 계정만 들어올 수 있다.
         if (!user.getEmail().equalsIgnoreCase(invitation.getEmail())) {
+            joinFailed(invitation, userId, "email_mismatch");
             throw new InvitationEmailMismatchException(invitation.getEmail());
         }
 
@@ -194,9 +197,11 @@ public class WorkspaceInvitationService {
 
         // 링크를 두 번 눌러도 같은 결과가 되도록, 이미 멤버면 성공으로 돌려준다.
         if (invitation.isAccepted() && !alreadyMember) {
+            joinFailed(invitation, userId, "already_accepted");
             throw new InvitationAlreadyAcceptedException();
         }
         if (invitation.isExpired() && !alreadyMember) {
+            joinFailed(invitation, userId, "expired");
             throw new InvitationExpiredException();
         }
 
@@ -217,6 +222,13 @@ public class WorkspaceInvitationService {
 
         return new InvitationAcceptResponse(
                 workspace.getId(), workspace.getName(), invitation.getRole().name());
+    }
+
+    /** 같은 초대·사유는 한 건이다. 실패 사유 예외는 롤백하지 않아 이 기록이 커밋된다. */
+    private void joinFailed(WorkspaceInvitation invitation, String userId, String reason) {
+        eventPublisher.publishEvent(new AnalyticsEvent("member_join_failed", invitation.getId() + "_" + reason,
+                userId, invitation.getWorkspaceId(), Instant.now(),
+                Map.of("invitation_id", invitation.getId(), "reason", reason)));
     }
 
     private WorkspaceInvitation pendingByToken(String token) {
