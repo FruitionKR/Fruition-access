@@ -1,8 +1,10 @@
 # Access 알파 분석 이벤트
 
-`user_signed_up`, `member_invited`, `member_joined`를 제품 트랜잭션의 `analytics_outbox`에 기록합니다. 원문 계약의 이벤트명을 사용하며 `workspace_member_*` 별칭은 보내지 않습니다. 이메일 가입은 `method=email`, 소셜 신규 가입은 `google`/`naver`/`kakao`입니다. 로그인·계정 연결·기존 계정 반환에는 가입 이벤트가 없습니다.
+`user_signed_up`, `member_invited`, `member_joined`, `member_join_failed`를 제품 트랜잭션의 `analytics_outbox`에 기록합니다. 원문 계약의 이벤트명을 사용하며 `workspace_member_*` 별칭은 보내지 않습니다. 이메일 가입은 `method=email`, 소셜 신규 가입은 `google`/`naver`/`kakao`입니다. 로그인·계정 연결·기존 계정 반환에는 가입 이벤트가 없습니다.
 
 초대자는 `member_invited.distinct_id`, 수락자는 `member_joined.distinct_id`이며 `workspace_id`와 `$groups.workspace`는 해당 초대의 workspace입니다. `invitation_id`와 `role=owner|member`만 추가합니다. 재발송은 기존 초대 행을 사용하므로 이벤트를 만들지 않고, 중복 수락은 행 잠금과 accepted 상태로 막습니다. 초대 발송 메일 실패 전에 이미 생성이 커밋됐다면 초대 생성 이벤트는 남습니다.
+
+초대 수락이 거부되면 `member_join_failed`를 남깁니다. `distinct_id`는 수락을 시도한 사용자이고 `invitation_id`와 `reason=email_mismatch|already_accepted|expired`만 추가합니다. 거부 예외는 쓰기 전에 나므로 수락 트랜잭션을 롤백하지 않고 이 기록만 커밋합니다. 같은 초대·사유는 한 건이며, 없는 토큰·취소된 초대는 초대를 특정할 수 없어 남기지 않습니다.
 
 | 설정 | 기본값 | 동작 |
 |---|---|---|

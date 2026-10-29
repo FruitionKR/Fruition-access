@@ -125,6 +125,12 @@ public class AnalyticsRecorder {
                     || !Set.of("owner", "member").contains(event.properties().get("role"))) {
                 throw new IllegalArgumentException("invalid_membership");
             }
+        } else if (event.event().equals("member_join_failed")) {
+            if (!identifier(event.workspaceId()) || !event.properties().keySet().equals(Set.of("invitation_id", "reason"))
+                    || !identifier(event.properties().get("invitation_id"))
+                    || !Set.of("email_mismatch", "already_accepted", "expired").contains(event.properties().get("reason"))) {
+                throw new IllegalArgumentException("invalid_membership_failure");
+            }
         } else throw new IllegalArgumentException("unknown_event");
     }
 
