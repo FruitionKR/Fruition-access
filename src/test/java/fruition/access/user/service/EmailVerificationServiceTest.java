@@ -214,7 +214,7 @@ class EmailVerificationServiceTest {
         verify(verificationRepository).save(saved.capture());
         EmailVerification verification = saved.getValue();
         assertThat(verification.getCodeHash()).isEqualTo(sha256(code.getValue()));
-        when(verificationRepository.findById(verification.getId())).thenReturn(Optional.of(verification));
+        when(verificationRepository.findByIdForUpdate(verification.getId())).thenReturn(Optional.of(verification));
         assertThatThrownBy(() -> service.confirm(verification.getId(), new VerificationConfirmRequest("9700")))
                 .isInstanceOf(InvalidVerificationCodeException.class);
         assertThat(service.confirm(verification.getId(), new VerificationConfirmRequest(code.getValue()))
