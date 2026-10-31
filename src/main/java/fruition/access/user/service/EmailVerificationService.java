@@ -144,7 +144,7 @@ public class EmailVerificationService {
     // 코드 오입력 시 attempt_count 증가를 유지하기 위해 InvalidVerificationCodeException은 롤백하지 않는다.
     @Transactional(noRollbackFor = InvalidVerificationCodeException.class)
     public VerificationConfirmResponse confirm(String verificationId, VerificationConfirmRequest request) {
-        EmailVerification verification = verificationRepository.findById(verificationId)
+        EmailVerification verification = verificationRepository.findByIdForUpdate(verificationId)
                 .orElseThrow(EmailVerificationNotFoundException::new);
 
         if (verification.isConsumed()) {
