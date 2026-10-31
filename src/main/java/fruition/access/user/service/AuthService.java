@@ -135,7 +135,12 @@ public class AuthService {
 
     @Transactional
     public LoginResponse refresh(RefreshRequest request) {
-        UserRefreshToken tokenRow = refreshTokenRepository.findByTokenHash(sha256(request.refreshToken()))
+        String tokenHash = sha256(request.refreshToken());
+        // 세션 폐기와 직렬화한다. 폐기가 먼저 커밋되면 아래 조회가 폐기된 토큰을 보고 거절한다.
+        String ownerId = refreshTokenRepository.findUserIdByTokenHash(tokenHash)
+                .orElseThrow(InvalidRefreshTokenException::new);
+        refreshTokenRepository.lockUserSessions(ownerId);
+        UserRefreshToken tokenRow = refreshTokenRepository.findByTokenHash(tokenHash)
                 .orElseThrow(InvalidRefreshTokenException::new);
 
         if (!tokenRow.isValid()) {
@@ -146,13 +151,18 @@ public class AuthService {
         User user = userRepository.findById(tokenRow.getUserId())
                 .orElseThrow(InvalidRefreshTokenException::new);
 
-        return issueTokenPair(user, null);
+        return issueTokenPair(user, null, tokenRow);
     }
 
+    /** 이 기기의 세션을 끝낸다. 동시에 회전된 쿠키가 들어와도 같은 계보의 후속 토큰까지 폐기한다. */
     @Transactional
     public void logout(RefreshRequest request) {
-        refreshTokenRepository.findByTokenHash(sha256(request.refreshToken()))
-                .ifPresent(UserRefreshToken::revoke);
+        String tokenHash = sha256(request.refreshToken());
+        refreshTokenRepository.findUserIdByTokenHash(tokenHash).ifPresent(ownerId -> {
+            refreshTokenRepository.lockUserSessions(ownerId);
+            refreshTokenRepository.findByTokenHash(tokenHash)
+                    .ifPresent(token -> revokeFamily(token.getFamilyId()));
+        });
     }
 
     @Transactional
@@ -341,6 +351,8 @@ public class AuthService {
      */
     private int revokeOtherSessions(String userId, String currentRefreshToken) {
         String keepTokenHash = currentRefreshToken == null ? null : sha256(currentRefreshToken);
+        // 진행 중인 회전이 끝난 뒤 목록을 읽어야 방금 발급된 후속 토큰도 폐기 대상에 들어간다.
+        refreshTokenRepository.lockUserSessions(userId);
         int revoked = 0;
         for (UserRefreshToken token : refreshTokenRepository.findAllByUserIdAndRevokedAtIsNull(userId)) {
             if (token.getTokenHash().equals(keepTokenHash)) {
@@ -379,6 +391,7 @@ public class AuthService {
         user.changePassword(passwordEncoder.encode(request.newPassword()));
 
         // 비밀번호 변경 시 기존 세션(refresh token)을 모두 폐기한다.
+        refreshTokenRepository.lockUserSessions(user.getId());
         for (UserRefreshToken token : refreshTokenRepository.findAllByUserIdAndRevokedAtIsNull(user.getId())) {
             token.revoke();
         }
@@ -399,16 +412,31 @@ public class AuthService {
                         .toList());
     }
 
-    /** 특정 기기 로그아웃. 현재 세션을 지정하면 스스로 로그아웃하는 것이라 허용한다. */
+    /**
+     * 특정 기기 로그아웃. 현재 세션을 지정하면 스스로 로그아웃하는 것이라 허용한다.
+     *
+     * <p>목록을 받은 뒤 그 기기가 refresh로 토큰을 회전했으면 지정한 행은 이미 폐기돼 있고 후속 토큰이 살아 있다.
+     * 그래서 행 하나가 아니라 같은 계보의 살아 있는 토큰을 모두 폐기한다.
+     */
     @Transactional
     public void revokeSession(String userId, Long sessionId) {
+        refreshTokenRepository.lockUserSessions(userId);
         UserRefreshToken token = refreshTokenRepository.findById(sessionId)
                 // 남의 세션도 존재를 드러내지 않도록 404로 통일한다.
                 .filter(found -> found.getUserId().equals(userId))
-                .filter(found -> found.getRevokedAt() == null)
                 .orElseThrow(() -> new SessionNotFoundException(sessionId));
-        token.revoke();
-        log.info("[세션 폐기] userId={} sessionId={}", userId, sessionId);
+        int revoked = revokeFamily(token.getFamilyId());
+        if (revoked == 0) {
+            throw new SessionNotFoundException(sessionId);
+        }
+        log.info("[세션 폐기] userId={} sessionId={} revokedTokens={}", userId, sessionId, revoked);
+    }
+
+    /** 호출 전에 {@link UserRefreshTokenRepository#lockUserSessions}로 사용자 잠금을 잡아야 후속 토큰을 놓치지 않는다. */
+    private int revokeFamily(String familyId) {
+        List<UserRefreshToken> live = refreshTokenRepository.findAllByFamilyIdAndRevokedAtIsNull(familyId);
+        live.forEach(UserRefreshToken::revoke);
+        return live.size();
     }
 
     /**
@@ -471,14 +499,22 @@ public class AuthService {
         return response;
     }
 
-    /** {@code authTime}은 직접 로그인했을 때만 넘긴다. refresh로 이어 받은 토큰은 최근 인증으로 보지 않는다. */
     private LoginResponse issueTokenPair(User user, Instant authTime) {
+        return issueTokenPair(user, authTime, null);
+    }
+
+    /**
+     * {@code authTime}은 직접 로그인했을 때만 넘긴다. refresh로 이어 받은 토큰은 최근 인증으로 보지 않는다.
+     * {@code rotated}는 refresh로 회전한 이전 토큰이다. 있으면 같은 계보를 잇고, 없으면 새 세션을 연다.
+     */
+    private LoginResponse issueTokenPair(User user, Instant authTime, UserRefreshToken rotated) {
         String accessToken = jwtTokenProvider.generateAccessToken(user.getId(), user.getEmail(), authTime);
 
         String refreshTokenValue = generateOpaqueToken();
         Instant expiresAt = Instant.now().plusSeconds(refreshTokenExpirationSeconds);
-        refreshTokenRepository.save(new UserRefreshToken(
-                user.getId(), sha256(refreshTokenValue), expiresAt, currentUserAgent()));
+        refreshTokenRepository.save(rotated == null
+                ? new UserRefreshToken(user.getId(), sha256(refreshTokenValue), expiresAt, currentUserAgent())
+                : rotated.successor(sha256(refreshTokenValue), expiresAt, currentUserAgent()));
 
         return LoginResponse.tokens(accessToken, refreshTokenValue, jwtTokenProvider.getAccessTokenExpirationSeconds(),
                 userConsentService.consentRequired(user.getId()));
