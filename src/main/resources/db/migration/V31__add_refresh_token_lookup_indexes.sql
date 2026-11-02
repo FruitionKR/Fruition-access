@@ -7,7 +7,10 @@
 -- 운영 중 쓰기를 막지 않도록 CONCURRENTLY로 만든다. 트랜잭션 안에서는 실행할 수 없어
 -- V31__add_refresh_token_lookup_indexes.sql.conf에서 executeInTransaction=false로 둔다.
 -- 실패하면 INVALID 인덱스가 남으므로 DROP INDEX CONCURRENTLY로 지운 뒤 flyway repair 후 다시 실행한다.
-SET lock_timeout = '5s';
+-- CONCURRENTLY는 SHARE UPDATE EXCLUSIVE만 잡아 읽기·쓰기를 막지 않지만, 시작 전 열린 트랜잭션이 끝나기를
+-- 기다린다(virtualxid lock, lock_timeout 적용). 너무 짧으면 운영 Job이 실패하고 INVALID 인덱스만 남으므로
+-- 무한 대기만 막을 만큼 넉넉히 둔다.
+SET lock_timeout = '120s';
 
 CREATE UNIQUE INDEX CONCURRENTLY idx_user_refresh_tokens_token_hash
     ON user_refresh_tokens (token_hash);
