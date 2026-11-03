@@ -146,7 +146,7 @@ class WorkspaceServiceTest {
         when(workspaceMemberRepository.findOwnedWorkspaceIncludingDeleted(
                 "ws_aaa11111", "user_1f9a74af", WorkspaceRole.OWNER)).thenReturn(Optional.of(workspace));
 
-        WorkspaceResponse response = workspaceService.rename("user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest("새 이름", null));
+        WorkspaceResponse response = workspaceService.rename("user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest("새 이름", null, null));
 
         assertThat(response.name()).isEqualTo("새 이름");
     }
@@ -158,15 +158,30 @@ class WorkspaceServiceTest {
                 "ws_aaa11111", "user_1f9a74af", WorkspaceRole.OWNER)).thenReturn(Optional.of(workspace));
 
         WorkspaceResponse response = workspaceService.rename(
-                "user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest(null, true));
+                "user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest(null, true, null));
 
         assertThat(response.name()).isEqualTo("이전 이름");
         assertThat(response.autoIngestOnUpload()).isTrue();
     }
 
     @Test
+    void update_onlyDescribePdfFigures_keepsOtherSettings() {
+        Workspace workspace = new Workspace("ws_aaa11111", "이전 이름");
+        workspace.changeAutoIngestOnUpload(true);
+        when(workspaceMemberRepository.findOwnedWorkspaceIncludingDeleted(
+                "ws_aaa11111", "user_1f9a74af", WorkspaceRole.OWNER)).thenReturn(Optional.of(workspace));
+
+        WorkspaceResponse response = workspaceService.rename(
+                "user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest(null, null, true));
+
+        assertThat(response.describePdfFigures()).isTrue();
+        assertThat(response.autoIngestOnUpload()).isTrue();
+        assertThat(response.name()).isEqualTo("이전 이름");
+    }
+
+    @Test
     void rename_notOwnedWorkspace_throwsNotFound() {
-        assertThatThrownBy(() -> workspaceService.rename("user_other", "ws_aaa11111", new WorkspaceRenameRequest("새 이름", null)))
+        assertThatThrownBy(() -> workspaceService.rename("user_other", "ws_aaa11111", new WorkspaceRenameRequest("새 이름", null, null)))
                 .isInstanceOf(WorkspaceNotFoundException.class);
     }
 

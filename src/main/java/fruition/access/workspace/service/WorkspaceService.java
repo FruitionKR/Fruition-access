@@ -120,6 +120,9 @@ public class WorkspaceService {
         if (request.autoIngestOnUpload() != null) {
             workspace.changeAutoIngestOnUpload(request.autoIngestOnUpload());
         }
+        if (request.describePdfFigures() != null) {
+            workspace.changeDescribePdfFigures(request.describePdfFigures());
+        }
         return toResponse(workspace);
     }
 

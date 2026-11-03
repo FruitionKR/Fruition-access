@@ -27,6 +27,11 @@ public record WorkspaceResponse(
         @Schema(description = "업로드 시 자동으로 ingest할지 여부", example = "false")
         boolean autoIngestOnUpload,
 
+        @JsonProperty("describe_pdf_figures")
+        @Schema(description = "PDF 변환 때 그림을 외부 AI(워크스페이스 AI 모델)로 보내 설명을 붙일지 여부. 기본은 꺼짐이다.",
+                example = "false")
+        boolean describePdfFigures,
+
         @JsonProperty("created_at")
         @Schema(description = "생성 시각(ISO-8601 UTC)", example = "2026-08-13T04:25:24.371948Z")
         Instant createdAt,
@@ -42,6 +47,7 @@ public record WorkspaceResponse(
                 workspace.getIconEmoji(),
                 workspace.hasIconImage() ? "/api/workspaces/" + workspace.getId() + "/icon/image" : null,
                 workspace.isAutoIngestOnUpload(),
+                workspace.isDescribePdfFigures(),
                 workspace.getCreatedAt(),
                 workspace.getUpdatedAt());
     }

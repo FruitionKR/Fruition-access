@@ -14,7 +14,12 @@ public record WorkspaceRenameRequest(
 
         @JsonProperty("auto_ingest_on_upload")
         @Schema(description = "업로드 시 자동으로 ingest할지 여부. 생략하면 바꾸지 않는다.", example = "false", nullable = true)
-        Boolean autoIngestOnUpload
+        Boolean autoIngestOnUpload,
+
+        @JsonProperty("describe_pdf_figures")
+        @Schema(description = "PDF 변환 때 그림을 외부 AI로 보내 설명을 붙일지 여부. 생략하면 바꾸지 않는다.",
+                example = "false", nullable = true)
+        Boolean describePdfFigures
 ) {
     @JsonIgnore
     @Schema(hidden = true)
@@ -25,8 +30,8 @@ public record WorkspaceRenameRequest(
 
     @JsonIgnore
     @Schema(hidden = true)
-    @AssertTrue(message = "name 또는 auto_ingest_on_upload 중 하나는 필수입니다.")
+    @AssertTrue(message = "name, auto_ingest_on_upload, describe_pdf_figures 중 하나는 필수입니다.")
     public boolean isNotEmpty() {
-        return name != null || autoIngestOnUpload != null;
+        return name != null || autoIngestOnUpload != null || describePdfFigures != null;
     }
 }
