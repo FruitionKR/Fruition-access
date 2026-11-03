@@ -30,7 +30,8 @@ class RefreshTokenIndexesMigrationTest {
         MigrateResult second = flyway.migrate();
 
         assertThat(first.success).isTrue();
-        assertThat(first.targetSchemaVersion).isEqualTo("31");
+        // 뒤 버전이 늘어도 V31이 적용됐는지만 본다.
+        assertThat(Integer.parseInt(first.targetSchemaVersion)).isGreaterThanOrEqualTo(31);
         assertThat(second.migrationsExecuted).isZero();
 
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
