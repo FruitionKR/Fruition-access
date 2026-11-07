@@ -132,6 +132,7 @@ class AuthServiceTest {
     @Test
     void refresh_validToken_rotatesAndIssuesNewTokens() {
         UserRefreshToken existing = new UserRefreshToken("user_1f9a74af", "any-hash", Instant.now().plusSeconds(3600));
+        when(refreshTokenRepository.findUserIdByTokenHash(any())).thenReturn(Optional.of("user_1f9a74af"));
         when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(existing));
         when(userRepository.findById("user_1f9a74af")).thenReturn(Optional.of(newUser("password123")));
 
@@ -139,6 +140,22 @@ class AuthServiceTest {
 
         assertThat(response.accessToken()).isNotBlank();
         assertThat(existing.getRevokedAt()).isNotNull();
+        // 세션 폐기와 직렬화하고, 회전한 토큰은 같은 계보를 잇는다.
+        verify(refreshTokenRepository).lockUserSessions("user_1f9a74af");
+        verify(refreshTokenRepository).save(org.mockito.ArgumentMatchers.<UserRefreshToken>argThat(saved ->
+                saved.getFamilyId().equals(existing.getFamilyId()) && !saved.getTokenHash().equals("any-hash")));
+    }
+
+    @Test
+    void login_startsNewSessionFamily() {
+        UserRefreshToken previous = new UserRefreshToken("user_1f9a74af", "any-hash", Instant.now().plusSeconds(3600));
+        when(userRepository.findByEmailAndProvider("test@example.com", User.PROVIDER_LOCAL))
+                .thenReturn(Optional.of(newUser("password123")));
+
+        authService.login(new LoginRequest("test@example.com", "password123"));
+
+        verify(refreshTokenRepository).save(org.mockito.ArgumentMatchers.<UserRefreshToken>argThat(saved ->
+                saved.getFamilyId() != null && !saved.getFamilyId().equals(previous.getFamilyId())));
     }
 
     @Test
@@ -207,6 +224,7 @@ class AuthServiceTest {
     @Test
     void refresh_expiredToken_throwsInvalidRefreshToken() {
         UserRefreshToken expired = new UserRefreshToken("user_1f9a74af", "any-hash", Instant.now().minusSeconds(1));
+        when(refreshTokenRepository.findUserIdByTokenHash(any())).thenReturn(Optional.of("user_1f9a74af"));
         when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(expired));
 
         assertThatThrownBy(() -> authService.refresh(new RefreshRequest("expired-token")))
@@ -215,7 +233,7 @@ class AuthServiceTest {
 
     @Test
     void refresh_unknownToken_throwsInvalidRefreshToken() {
-        when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.empty());
+        when(refreshTokenRepository.findUserIdByTokenHash(any())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.refresh(new RefreshRequest("unknown-token")))
                 .isInstanceOf(InvalidRefreshTokenException.class);
@@ -224,16 +242,36 @@ class AuthServiceTest {
     @Test
     void logout_validToken_revokesToken() {
         UserRefreshToken existing = new UserRefreshToken("user_1f9a74af", "any-hash", Instant.now().plusSeconds(3600));
+        when(refreshTokenRepository.findUserIdByTokenHash(any())).thenReturn(Optional.of("user_1f9a74af"));
         when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(existing));
+        when(refreshTokenRepository.findAllByFamilyIdAndRevokedAtIsNull(existing.getFamilyId()))
+                .thenReturn(List.of(existing));
 
         authService.logout(new RefreshRequest("some-refresh-token"));
 
         assertThat(existing.getRevokedAt()).isNotNull();
+        verify(refreshTokenRepository).lockUserSessions("user_1f9a74af");
+    }
+
+    /** 다른 탭이 먼저 회전해 쿠키가 한 단계 늦어도 같은 계보의 후속 토큰까지 끊는다. */
+    @Test
+    void logout_rotatedToken_revokesSuccessorInSameFamily() {
+        UserRefreshToken rotated = new UserRefreshToken("user_1f9a74af", "old-hash", Instant.now().plusSeconds(3600));
+        rotated.revoke();
+        UserRefreshToken successor = rotated.successor("new-hash", Instant.now().plusSeconds(3600), null);
+        when(refreshTokenRepository.findUserIdByTokenHash(any())).thenReturn(Optional.of("user_1f9a74af"));
+        when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(rotated));
+        when(refreshTokenRepository.findAllByFamilyIdAndRevokedAtIsNull(rotated.getFamilyId()))
+                .thenReturn(List.of(successor));
+
+        authService.logout(new RefreshRequest("stale-refresh-token"));
+
+        assertThat(successor.getRevokedAt()).isNotNull();
     }
 
     @Test
     void logout_unknownToken_isIdempotent() {
-        when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.empty());
+        when(refreshTokenRepository.findUserIdByTokenHash(any())).thenReturn(Optional.empty());
 
         authService.logout(new RefreshRequest("unknown-token"));
     }
@@ -491,10 +529,28 @@ class AuthServiceTest {
     void revokeSession_revokesOwnSession() {
         UserRefreshToken token = session("some-refresh", "UA");
         when(refreshTokenRepository.findById(7L)).thenReturn(Optional.of(token));
+        when(refreshTokenRepository.findAllByFamilyIdAndRevokedAtIsNull(token.getFamilyId()))
+                .thenReturn(List.of(token));
 
         authService.revokeSession("user_1", 7L);
 
         assertThat(token.getRevokedAt()).isNotNull();
+        verify(refreshTokenRepository).lockUserSessions("user_1");
+    }
+
+    /** 목록을 받은 뒤 그 기기가 회전했으면 지정한 행 대신 살아 있는 후속 토큰을 폐기한다. */
+    @Test
+    void revokeSession_rotatedSession_revokesLiveSuccessor() {
+        UserRefreshToken listed = session("old-refresh", "UA");
+        listed.revoke();
+        UserRefreshToken successor = listed.successor(sha256("new-refresh"), Instant.now().plusSeconds(3600), "UA");
+        when(refreshTokenRepository.findById(7L)).thenReturn(Optional.of(listed));
+        when(refreshTokenRepository.findAllByFamilyIdAndRevokedAtIsNull(listed.getFamilyId()))
+                .thenReturn(List.of(successor));
+
+        authService.revokeSession("user_1", 7L);
+
+        assertThat(successor.getRevokedAt()).isNotNull();
     }
 
     @Test

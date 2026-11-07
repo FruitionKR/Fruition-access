@@ -1,5 +1,6 @@
 package fruition.access.workspace;
 
+import fruition.access.AccessApplication;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -12,7 +13,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** V30이 옛 auto_ingest_on_upload를 PDF 변환 설정으로 옮기고 Markdown 업로드는 모두 켜는지 실제 Flyway 실행으로 확인한다. */
+/** V33이 옛 auto_ingest_on_upload를 PDF 변환 설정으로 옮기고 Markdown 업로드는 모두 켜는지 실제 Flyway 실행으로 확인한다. */
 @Testcontainers
 class SplitAutoIngestSettingsMigrationTest {
     @Container
@@ -22,12 +23,12 @@ class SplitAutoIngestSettingsMigrationTest {
     void copiesLegacyValueToPdfAndEnablesMarkdownForAll() {
         DriverManagerDataSource dataSource = new DriverManagerDataSource(
                 postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
-        flyway(dataSource, "29").migrate();
+        flyway(dataSource, "32").migrate();
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         insert(jdbc, "ws_on", true);
         insert(jdbc, "ws_off", false);
 
-        flyway(dataSource, "30").migrate();
+        flyway(dataSource, "33").migrate();
 
         assertThat(settings(jdbc, "ws_on")).containsEntry("auto_ingest_markdown_on_upload", true)
                 .containsEntry("auto_ingest_pdf_on_convert", true)
@@ -44,8 +45,8 @@ class SplitAutoIngestSettingsMigrationTest {
     }
 
     private static Flyway flyway(DriverManagerDataSource dataSource, String target) {
-        return Flyway.configure().dataSource(dataSource)
-                .locations("classpath:db/migration").target(target).load();
+        // V31의 CREATE INDEX CONCURRENTLY가 Flyway 트랜잭션 lock을 기다리지 않도록 운영 migration과 같은 설정을 쓴다.
+        return AccessApplication.migrationFlyway().dataSource(dataSource).target(target).load();
     }
 
     private static void insert(JdbcTemplate jdbc, String id, boolean autoIngestOnUpload) {

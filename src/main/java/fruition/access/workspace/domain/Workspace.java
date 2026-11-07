@@ -60,6 +60,10 @@ public class Workspace {
     @Column(name = "auto_ingest_pdf_on_convert", nullable = false)
     private boolean autoIngestPdfOnConvert;
 
+    /** PDF 변환 때 그림을 외부 AI로 보내 설명을 붙일지 여부. 외부 전송·비용이 생기므로 기본은 끈다. */
+    @Column(name = "describe_pdf_figures", nullable = false)
+    private boolean describePdfFigures;
+
     protected Workspace() {}
 
     public Workspace(String id, String name) {
@@ -84,6 +88,11 @@ public class Workspace {
     public void changeAutoIngestPdfOnConvert(boolean autoIngestPdfOnConvert) {
         this.autoIngestPdfOnConvert = autoIngestPdfOnConvert;
         this.autoIngestOnUpload = autoIngestPdfOnConvert;
+        this.updatedAt = Instant.now();
+    }
+
+    public void changeDescribePdfFigures(boolean describePdfFigures) {
+        this.describePdfFigures = describePdfFigures;
         this.updatedAt = Instant.now();
     }
 
@@ -142,4 +151,6 @@ public class Workspace {
     public String getIngestLintModel() { return ingestLintModel; }
     public boolean isAutoIngestMarkdownOnUpload() { return autoIngestMarkdownOnUpload; }
     public boolean isAutoIngestPdfOnConvert() { return autoIngestPdfOnConvert; }
+
+    public boolean isDescribePdfFigures() { return describePdfFigures; }
 }

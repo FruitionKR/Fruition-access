@@ -145,6 +145,23 @@ class InternalAuthzControllerTest {
     }
 
     @Test
+    @DisplayName("워크스페이스 설정은 describe_pdf_figures를 돌려주고 기본은 꺼짐이다")
+    void settings_returnsDescribePdfFigures() throws Exception {
+        Workspace off = new Workspace("ws_1", "ws");
+        when(workspaceRepository.findById("ws_1")).thenReturn(Optional.of(off));
+        mockMvc.perform(get(SETTINGS_URL).header("X-Internal-Token", internalToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.describe_pdf_figures").value(false));
+
+        Workspace on = new Workspace("ws_1", "ws");
+        on.changeDescribePdfFigures(true);
+        when(workspaceRepository.findById("ws_1")).thenReturn(Optional.of(on));
+        mockMvc.perform(get(SETTINGS_URL).header("X-Internal-Token", internalToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.describe_pdf_figures").value(true));
+    }
+
+    @Test
     @DisplayName("없거나 삭제된 워크스페이스 설정은 404다")
     void settings_missingOrDeleted_returns404() throws Exception {
         Workspace deleted = new Workspace("ws_1", "ws");

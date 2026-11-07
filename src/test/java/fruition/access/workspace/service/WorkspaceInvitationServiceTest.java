@@ -337,7 +337,7 @@ class WorkspaceInvitationServiceTest {
     void revoke_pendingInvitationIsRevoked() {
         ownerActor();
         WorkspaceInvitation pending = invitation("tok", Instant.now().plusSeconds(3600));
-        when(invitationRepository.findById("inv_1")).thenReturn(Optional.of(pending));
+        when(invitationRepository.findByIdForUpdate("inv_1")).thenReturn(Optional.of(pending));
 
         service.revoke(OWNER_ID, WORKSPACE_ID, "inv_1");
 
@@ -347,7 +347,7 @@ class WorkspaceInvitationServiceTest {
     @Test
     void revoke_otherWorkspaceInvitationGets404() {
         ownerActor();
-        when(invitationRepository.findById("inv_1"))
+        when(invitationRepository.findByIdForUpdate("inv_1"))
                 .thenReturn(Optional.of(new WorkspaceInvitation("inv_1", "ws_other", INVITEE_EMAIL,
                         WorkspaceRole.MEMBER, "hash", Instant.now().plusSeconds(3600), OWNER_ID)));
 
