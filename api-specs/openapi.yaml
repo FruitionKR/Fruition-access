@@ -1238,7 +1238,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-          description: name·auto_ingest_markdown_on_upload·auto_ingest_pdf_on_convert·auto_ingest_on_upload가 모두 없거나 name이 공백이거나 255자 초과
+          description: name·auto_ingest_markdown_on_upload·auto_ingest_pdf_on_convert·auto_ingest_on_upload·describe_pdf_figures가 모두 없거나 name이 공백이거나 255자 초과
         "404":
           content:
             '*/*':
@@ -2715,6 +2715,10 @@ components:
           type: boolean
           description: PDF 변환이 끝난 뒤 자동으로 위키에 편입할지 여부. 생략하면 바꾸지 않는다.
           example: false
+        describe_pdf_figures:
+          type: boolean
+          description: PDF 변환 때 그림을 외부 AI로 보내 설명을 붙일지 여부. 생략하면 바꾸지 않는다.
+          example: false
         name:
           type: string
           description: "새 워크스페이스 이름(255자 이하, 공백만으로는 불가). 생략하면 바꾸지 않는다."
@@ -2742,6 +2746,10 @@ components:
           format: date-time
           description: 생성 시각(ISO-8601 UTC)
           example: 2026-08-13T04:25:24.371948Z
+        describe_pdf_figures:
+          type: boolean
+          description: PDF 변환 때 그림을 외부 AI(워크스페이스 AI 모델)로 보내 설명을 붙일지 여부. 기본은 꺼짐이다.
+          example: false
         icon_emoji:
           type: string
           description: 아이콘 이모지. 설정하지 않았으면 null이다.

@@ -33,6 +33,7 @@ import fruition.access.user.dto.OAuthSignupConsentRequest;
 import fruition.access.user.exception.EmailAvailabilityRateLimitedException;
 import fruition.access.user.exception.LoginRateLimitedException;
 import fruition.access.user.exception.PasswordChangeRateLimitedException;
+import fruition.access.user.exception.ReauthenticationRequiredException;
 import fruition.access.user.exception.InvalidCredentialsException;
 import fruition.access.user.exception.InvalidOAuthCodeException;
 import fruition.access.user.exception.InvalidRefreshTokenException;
@@ -612,6 +613,72 @@ class AuthControllerTest {
                                 new EmailChangeRequest("taken@example.com", "verification-token"))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("DUPLICATE_EMAIL"));
+    }
+
+    /** 소셜 전용 계정의 본인 확인은 access token의 auth_time으로 한다. 서비스에 그대로 넘겨야 한다. */
+    @Test
+    void changeEmail_forwardsAuthTimeFromAccessToken() throws Exception {
+        Instant authTime = Instant.ofEpochSecond(Instant.now().getEpochSecond());
+        String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com", authTime);
+        when(authService.changeEmail(eq("user_1f9a74af"), any(), any(), eq(authTime))).thenReturn(
+                new MeResponse("user_1f9a74af", "new@example.com", "이름", null, Instant.now(), java.util.List.of(), false));
+
+        mockMvc.perform(put("/api/auth/me/email")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"new_email\":\"new@example.com\",\"verification_token\":\"t\"}"))
+                .andExpect(status().isOk());
+
+        verify(passwordChangeAttemptLimiter).recordSuccess(eq("user_1f9a74af"), any());
+    }
+
+    @Test
+    void changeEmail_wrongCurrentPassword_returns401AndRecordsFailure() throws Exception {
+        String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
+        when(authService.changeEmail(eq("user_1f9a74af"), any(), any(), any()))
+                .thenThrow(new InvalidCredentialsException());
+
+        mockMvc.perform(put("/api/auth/me/email")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"new_email\":\"new@example.com\",\"verification_token\":\"t\","
+                                + "\"current_password\":\"wrong\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("INVALID_CREDENTIALS"));
+
+        verify(passwordChangeAttemptLimiter).recordFailure(eq("user_1f9a74af"), any());
+    }
+
+    @Test
+    void changeEmail_withoutRecentLogin_returnsReauthenticationRequired() throws Exception {
+        String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
+        when(authService.changeEmail(eq("user_1f9a74af"), any(), any(), any()))
+                .thenThrow(new ReauthenticationRequiredException());
+
+        mockMvc.perform(put("/api/auth/me/email")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new EmailChangeRequest("new@example.com", "verification-token"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("REAUTHENTICATION_REQUIRED"));
+    }
+
+    /** 현재 비밀번호 대입을 비밀번호 변경과 같은 예산으로 막는다. 제한은 검증 전에 건다. */
+    @Test
+    void changeEmail_rateLimited_returns429BeforeCheckingPassword() throws Exception {
+        doThrow(new PasswordChangeRateLimitedException(300))
+                .when(passwordChangeAttemptLimiter).check(any(), any());
+        String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
+
+        mockMvc.perform(put("/api/auth/me/email")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new EmailChangeRequest("new@example.com", "verification-token"))))
+                .andExpect(status().isTooManyRequests());
+
+        verify(authService, org.mockito.Mockito.never()).changeEmail(any(), any(), any(), any());
     }
 
     @Test

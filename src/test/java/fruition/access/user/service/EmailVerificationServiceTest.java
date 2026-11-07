@@ -214,7 +214,7 @@ class EmailVerificationServiceTest {
         verify(verificationRepository).save(saved.capture());
         EmailVerification verification = saved.getValue();
         assertThat(verification.getCodeHash()).isEqualTo(sha256(code.getValue()));
-        when(verificationRepository.findById(verification.getId())).thenReturn(Optional.of(verification));
+        when(verificationRepository.findByIdForUpdate(verification.getId())).thenReturn(Optional.of(verification));
         assertThatThrownBy(() -> service.confirm(verification.getId(), new VerificationConfirmRequest("9700")))
                 .isInstanceOf(InvalidVerificationCodeException.class);
         assertThat(service.confirm(verification.getId(), new VerificationConfirmRequest(code.getValue()))
@@ -225,7 +225,7 @@ class EmailVerificationServiceTest {
 
     @Test
     void confirm_notFound_throws() {
-        when(verificationRepository.findById("ev_x")).thenReturn(Optional.empty());
+        when(verificationRepository.findByIdForUpdate("ev_x")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.confirm("ev_x", new VerificationConfirmRequest("123456")))
                 .isInstanceOf(EmailVerificationNotFoundException.class);
@@ -235,7 +235,7 @@ class EmailVerificationServiceTest {
     void confirm_expired_throws() {
         EmailVerification expired = verification("test@example.com", "signup", "123456",
                 Instant.now().minusSeconds(10));
-        when(verificationRepository.findById("ev_1")).thenReturn(Optional.of(expired));
+        when(verificationRepository.findByIdForUpdate("ev_1")).thenReturn(Optional.of(expired));
 
         assertThatThrownBy(() -> service.confirm("ev_1", new VerificationConfirmRequest("123456")))
                 .isInstanceOf(VerificationCodeExpiredException.class);
@@ -245,7 +245,7 @@ class EmailVerificationServiceTest {
     void confirm_wrongCode_incrementsAttemptAndThrows() {
         EmailVerification v = verification("test@example.com", "signup", "123456",
                 Instant.now().plusSeconds(300));
-        when(verificationRepository.findById("ev_1")).thenReturn(Optional.of(v));
+        when(verificationRepository.findByIdForUpdate("ev_1")).thenReturn(Optional.of(v));
 
         assertThatThrownBy(() -> service.confirm("ev_1", new VerificationConfirmRequest("000000")))
                 .isInstanceOf(InvalidVerificationCodeException.class);
@@ -259,7 +259,7 @@ class EmailVerificationServiceTest {
         for (int i = 0; i < 5; i++) {
             v.increaseAttempt();
         }
-        when(verificationRepository.findById("ev_1")).thenReturn(Optional.of(v));
+        when(verificationRepository.findByIdForUpdate("ev_1")).thenReturn(Optional.of(v));
 
         assertThatThrownBy(() -> service.confirm("ev_1", new VerificationConfirmRequest("123456")))
                 .isInstanceOf(VerificationCodeAttemptsExceededException.class);
@@ -269,7 +269,7 @@ class EmailVerificationServiceTest {
     void confirm_correctCode_issuesToken() {
         EmailVerification v = verification("test@example.com", "signup", "123456",
                 Instant.now().plusSeconds(300));
-        when(verificationRepository.findById("ev_1")).thenReturn(Optional.of(v));
+        when(verificationRepository.findByIdForUpdate("ev_1")).thenReturn(Optional.of(v));
 
         VerificationConfirmResponse response = service.confirm("ev_1", new VerificationConfirmRequest("123456"));
 

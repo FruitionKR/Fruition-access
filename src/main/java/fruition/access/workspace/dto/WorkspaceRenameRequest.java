@@ -25,7 +25,12 @@ public record WorkspaceRenameRequest(
         @JsonProperty("auto_ingest_pdf_on_convert")
         @Schema(description = "PDF 변환이 끝난 뒤 자동으로 위키에 편입할지 여부. 생략하면 바꾸지 않는다.",
                 example = "false", nullable = true)
-        Boolean autoIngestPdfOnConvert
+        Boolean autoIngestPdfOnConvert,
+
+        @JsonProperty("describe_pdf_figures")
+        @Schema(description = "PDF 변환 때 그림을 외부 AI로 보내 설명을 붙일지 여부. 생략하면 바꾸지 않는다.",
+                example = "false", nullable = true)
+        Boolean describePdfFigures
 ) {
     @JsonIgnore
     @Schema(hidden = true)
@@ -36,9 +41,10 @@ public record WorkspaceRenameRequest(
 
     @JsonIgnore
     @Schema(hidden = true)
-    @AssertTrue(message = "name, auto_ingest_markdown_on_upload, auto_ingest_pdf_on_convert, auto_ingest_on_upload 중 하나는 필수입니다.")
+    @AssertTrue(message = "name, auto_ingest_markdown_on_upload, auto_ingest_pdf_on_convert, auto_ingest_on_upload, describe_pdf_figures 중 하나는 필수입니다.")
     public boolean isNotEmpty() {
         return name != null || autoIngestOnUpload != null
-                || autoIngestMarkdownOnUpload != null || autoIngestPdfOnConvert != null;
+                || autoIngestMarkdownOnUpload != null || autoIngestPdfOnConvert != null
+                || describePdfFigures != null;
     }
 }

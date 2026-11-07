@@ -147,7 +147,7 @@ public class WorkspaceInvitationService {
     public void revoke(String actorId, String workspaceId, String invitationId) {
         requireOwner(workspaceId, actorId);
 
-        WorkspaceInvitation invitation = invitationRepository.findById(invitationId)
+        WorkspaceInvitation invitation = invitationRepository.findByIdForUpdate(invitationId)
                 .filter(found -> found.getWorkspaceId().equals(workspaceId))
                 .filter(found -> !found.isAccepted() && !found.isRevoked())
                 .orElseThrow(InvitationNotFoundException::new);

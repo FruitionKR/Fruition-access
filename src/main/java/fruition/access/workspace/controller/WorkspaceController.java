@@ -72,7 +72,7 @@ public class WorkspaceController {
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "변경 성공",
             content = @Content(schema = @Schema(implementation = WorkspaceResponse.class))),
-        @ApiResponse(responseCode = "400", description = "name·auto_ingest_markdown_on_upload·auto_ingest_pdf_on_convert·auto_ingest_on_upload가 모두 없거나 name이 공백이거나 255자 초과",
+        @ApiResponse(responseCode = "400", description = "name·auto_ingest_markdown_on_upload·auto_ingest_pdf_on_convert·auto_ingest_on_upload·describe_pdf_figures가 모두 없거나 name이 공백이거나 255자 초과",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(responseCode = "404", description = "워크스페이스를 찾을 수 없음",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
