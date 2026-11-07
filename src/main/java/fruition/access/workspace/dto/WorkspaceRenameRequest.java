@@ -7,7 +7,7 @@ import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Size;
 
 public record WorkspaceRenameRequest(
-        @Size(max = 255, message = "name은 255자 이하여야 합니다.")
+        @Size(max = 255, message = "{validation.name.max255}")
         @Schema(description = "새 워크스페이스 이름(255자 이하, 공백만으로는 불가). 생략하면 바꾸지 않는다.",
                 example = "이름 바꾼 워크스페이스", nullable = true)
         String name,
@@ -34,14 +34,14 @@ public record WorkspaceRenameRequest(
 ) {
     @JsonIgnore
     @Schema(hidden = true)
-    @AssertTrue(message = "name은 필수입니다.")
+    @AssertTrue(message = "{validation.name.required}")
     public boolean isNameNotBlank() {
         return name == null || !name.isBlank();
     }
 
     @JsonIgnore
     @Schema(hidden = true)
-    @AssertTrue(message = "name, auto_ingest_markdown_on_upload, auto_ingest_pdf_on_convert, auto_ingest_on_upload, describe_pdf_figures 중 하나는 필수입니다.")
+    @AssertTrue(message = "{validation.workspace_settings.required}")
     public boolean isNotEmpty() {
         return name != null || autoIngestOnUpload != null
                 || autoIngestMarkdownOnUpload != null || autoIngestPdfOnConvert != null

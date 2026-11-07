@@ -16,6 +16,7 @@ import fruition.access.user.exception.VerificationCodeAttemptsExceededException;
 import fruition.access.user.exception.VerificationCodeExpiredException;
 import fruition.access.user.exception.VerificationRateLimitedException;
 import fruition.access.user.mail.EmailVerificationSender;
+import fruition.access.user.mail.MailLocaleResolver;
 import fruition.access.user.repository.EmailVerificationRepository;
 import fruition.access.user.repository.UserRepository;
 import org.slf4j.Logger;
@@ -45,6 +46,7 @@ public class EmailVerificationService {
     private final EmailVerificationRepository verificationRepository;
     private final UserRepository userRepository;
     private final EmailVerificationSender sender;
+    private final MailLocaleResolver mailLocaleResolver;
     private final TransactionTemplate transactionTemplate;
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -58,6 +60,7 @@ public class EmailVerificationService {
             EmailVerificationRepository verificationRepository,
             UserRepository userRepository,
             EmailVerificationSender sender,
+            MailLocaleResolver mailLocaleResolver,
             TransactionTemplate transactionTemplate,
             @Value("${app.auth.email-verification.code-ttl-seconds}") long codeTtlSeconds,
             @Value("${app.auth.email-verification.token-ttl-seconds}") long tokenTtlSeconds,
@@ -67,6 +70,7 @@ public class EmailVerificationService {
         this.verificationRepository = verificationRepository;
         this.userRepository = userRepository;
         this.sender = sender;
+        this.mailLocaleResolver = mailLocaleResolver;
         this.transactionTemplate = transactionTemplate;
         this.codeTtlSeconds = codeTtlSeconds;
         this.tokenTtlSeconds = tokenTtlSeconds;
@@ -135,7 +139,8 @@ public class EmailVerificationService {
         });
 
         // 발송 실패 시 예외를 전파한다(레코드는 남지만 재요청 시 폐기되고 TTL로 만료된다).
-        sender.send(email, purpose, code);
+        // 메일 언어는 이 주소 계정의 저장 언어, 없으면(가입 전·새 주소) 요청 언어다.
+        sender.send(email, purpose, code, mailLocaleResolver.forEmail(email));
         log.info("[인증 요청] verificationId={} email={} purpose={}", id, email, purpose);
 
         return new EmailVerificationResponse(id, codeTtlSeconds, resendCooldownSeconds);

@@ -51,7 +51,7 @@ class EmailVerificationConfirmIntegrationTest {
                 .request(new EmailVerificationRequest("reset@example.com", "password_reset"))
                 .verificationId();
         ArgumentCaptor<String> code = ArgumentCaptor.forClass(String.class);
-        verify(sender).send(eq("reset@example.com"), eq("password_reset"), code.capture());
+        verify(sender).send(eq("reset@example.com"), eq("password_reset"), code.capture(), org.mockito.ArgumentMatchers.any());
         String wrongCode = "000000".equals(code.getValue()) ? "000001" : "000000";
 
         // 오입력 1회 → 예외를 던지지만 attempt_count는 커밋되어야 한다(noRollbackFor).

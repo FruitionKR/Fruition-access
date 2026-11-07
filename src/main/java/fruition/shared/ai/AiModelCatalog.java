@@ -45,13 +45,13 @@ public class AiModelCatalog {
         String resolvedProvider = provider == null ? DEFAULT_PROVIDER : provider.trim().toLowerCase();
         String resolvedModel = model == null ? DEFAULT_MODEL : model.trim();
         if ((provider == null) != (model == null)) {
-            throw new InvalidAiModelException("provider와 model은 함께 전달해야 합니다.");
+            throw new InvalidAiModelException("error.INVALID_AI_MODEL.provider_model_pair", "provider와 model은 함께 전달해야 합니다.");
         }
         return enabledModels().stream()
                 .filter(candidate -> candidate.provider().equals(resolvedProvider)
                         && candidate.model().equals(resolvedModel))
                 .findFirst()
-                .orElseThrow(() -> new InvalidAiModelException("선택할 수 없는 AI 모델입니다."));
+                .orElseThrow(() -> new InvalidAiModelException("error.INVALID_AI_MODEL.unavailable", "선택할 수 없는 AI 모델입니다."));
     }
 
     public record AiModel(String provider, String model, String displayName) {}

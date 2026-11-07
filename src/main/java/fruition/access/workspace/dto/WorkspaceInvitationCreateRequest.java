@@ -8,13 +8,13 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 public record WorkspaceInvitationCreateRequest(
-        @NotBlank(message = "email은 필수입니다.")
-        @Email(message = "email 형식이 올바르지 않습니다.")
-        @Size(max = 255, message = "email은 255자 이하여야 합니다.")
+        @NotBlank(message = "{validation.email.required}")
+        @Email(message = "{validation.email.format.invitation}")
+        @Size(max = 255, message = "{validation.email.max255}")
         @Schema(description = "초대할 이메일 주소", example = "member@example.com")
         String email,
 
-        @NotNull(message = "role은 필수입니다.")
+        @NotNull(message = "{validation.role.required}")
         @Schema(description = "수락 시 부여할 역할", example = "MEMBER", allowableValues = {"OWNER", "MEMBER"})
         WorkspaceRole role
 ) {}
