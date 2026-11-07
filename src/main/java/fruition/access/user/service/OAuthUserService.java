@@ -75,7 +75,7 @@ public class OAuthUserService {
         User user = userRepository.findById(existingLink.get().getUserId())
                 .orElseThrow(() -> new IllegalStateException(
                         "연결된 사용자를 찾을 수 없습니다: userId=" + existingLink.get().getUserId()));
-        log.info("[OAuth 로그인 성공] provider={} userId={} link=existing_provider", provider, user.getId());
+        fruition.shared.logging.CommittedLog.info(log, "[OAuth 로그인 성공] operation=oauth_login stage=provider_verified provider={} userId={} link=existing_provider", provider, user.getId());
         return Optional.of(user);
     }
 
@@ -87,7 +87,7 @@ public class OAuthUserService {
     public String startSignup(String provider, OAuth2UserInfo userInfo, String codeChallenge) {
         String email = userInfo.getEmail();
         if (email == null || email.isBlank()) {
-            log.warn("[OAuth 로그인 실패] provider={} reason=email_not_provided", provider);
+            log.warn("[OAuth 로그인 실패] operation=oauth_login stage=provider provider={} reason=email_not_provided", provider);
             throw new OAuthEmailNotProvidedException(provider);
         }
         String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
@@ -101,7 +101,7 @@ public class OAuthUserService {
     private void rejectIfEmailRegistered(String provider, String email) {
         List<String> providers = userRepository.findProvidersByEmail(email);
         if (!providers.isEmpty()) {
-            log.warn("[OAuth 신규 가입 거부] provider={} reason=email_registered providers={}", provider, providers);
+            log.warn("[OAuth 신규 가입 거부] operation=oauth_signup stage=validation provider={} reason=email_registered providers={}", provider, providers);
             throw new OAuthEmailRegisteredException(provider, providers);
         }
     }
@@ -128,7 +128,7 @@ public class OAuthUserService {
         userConsentService.record(user.getId(), Boolean.TRUE.equals(request.marketingOptIn()));
         eventPublisher.publishEvent(new AnalyticsEvent("user_signed_up", user.getId(), user.getId(), null,
                 Instant.now(), Map.of("method", pending.provider())));
-        log.info("[OAuth 계정 연결] provider={} userId={}", pending.provider(), user.getId());
+        fruition.shared.logging.CommittedLog.info(log, "[OAuth 계정 연결] operation=oauth_link stage=completed provider={} userId={}", pending.provider(), user.getId());
         return user;
     }
 
@@ -146,7 +146,7 @@ public class OAuthUserService {
         var pending = codeStore.consumeLinkCode(linkCode)
                 .filter(link -> link.userId().equals(userId))
                 .orElseThrow(() -> {
-                    log.warn("[OAuth 연동 확정 거부] userId={} reason=invalid_or_foreign_code", userId);
+                    log.warn("[OAuth 연동 확정 거부] operation=oauth_link stage=validation userId={} reason=invalid_or_foreign_code", userId);
                     return new InvalidOAuthLinkCodeException();
                 });
         link(userId, pending.provider(), pending.providerUserId());
@@ -166,21 +166,21 @@ public class OAuthUserService {
                 log.info("[OAuth 연동] provider={} userId={} result=already_mine", provider, userId);
                 return;
             }
-            log.warn("[OAuth 연동 거부] provider={} userId={} reason=linked_to_other_user", provider, userId);
+            log.warn("[OAuth 연동 거부] operation=oauth_link stage=validation provider={} userId={} reason=linked_to_other_user", provider, userId);
             throw new OAuthAccountAlreadyLinkedException(provider);
         }
         if (findLink(userId, provider).isPresent()) {
-            log.warn("[OAuth 연동 거부] provider={} userId={} reason=provider_already_linked", provider, userId);
+            log.warn("[OAuth 연동 거부] operation=oauth_link stage=validation provider={} userId={} reason=provider_already_linked", provider, userId);
             throw new OAuthAccountAlreadyLinkedException(provider);
         }
         try {
             oauthAccountRepository.saveAndFlush(new UserOAuthAccount(userId, provider, providerUserId));
         } catch (DataIntegrityViolationException e) {
             // 다른 사용자가 같은 소셜 계정을 동시에 연동했다. 사용자 행 잠금은 서로 달라 여기서 갈린다.
-            log.warn("[OAuth 연동 거부] provider={} userId={} reason=concurrent_link", provider, userId);
+            log.warn("[OAuth 연동 거부] operation=oauth_link stage=validation provider={} userId={} reason=concurrent_link", provider, userId);
             throw new OAuthAccountAlreadyLinkedException(provider);
         }
-        log.info("[OAuth 연동 성공] provider={} userId={}", provider, userId);
+        fruition.shared.logging.CommittedLog.info(log, "[OAuth 연동 성공] operation=oauth_link stage=completed provider={} userId={}", provider, userId);
     }
 
     /** 연결을 해제한다. 가입할 때 쓴 provider는 해제할 수 없다(소셜 전용 계정의 마지막 로그인 수단도 지켜진다). */
@@ -190,11 +190,11 @@ public class OAuthUserService {
         UserOAuthAccount target = findLink(userId, provider)
                 .orElseThrow(() -> new OAuthAccountNotFoundException(provider));
         if (provider.equals(user.getProvider())) {
-            log.warn("[OAuth 연동 해제 거부] provider={} userId={} reason=signup_provider", provider, userId);
+            log.warn("[OAuth 연동 해제 거부] operation=oauth_unlink stage=validation provider={} userId={} reason=signup_provider", provider, userId);
             throw new OAuthUnlinkNotAllowedException(provider);
         }
         oauthAccountRepository.delete(target);
-        log.info("[OAuth 연동 해제] provider={} userId={}", provider, userId);
+        fruition.shared.logging.CommittedLog.info(log, "[OAuth 연동 해제] operation=oauth_unlink stage=completed provider={} userId={}", provider, userId);
     }
 
     private Optional<UserOAuthAccount> findLink(String userId, String provider) {
@@ -210,7 +210,7 @@ public class OAuthUserService {
         User user = new User(userId, email, provider, displayName, null);
         userRepository.save(user);
         workspaceService.createDefault(user.getId(), user.getDisplayName());
-        log.info("[OAuth 신규 사용자 생성] provider={} userId={} displayNameSource={}",
+        fruition.shared.logging.CommittedLog.info(log, "[OAuth 신규 사용자 생성] operation=oauth_signup stage=completed provider={} userId={} displayNameSource={}",
                 provider,
                 user.getId(),
                 displayNameSource);

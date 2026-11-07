@@ -20,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
  */
 @Service
 public class WorkspaceIconService {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(WorkspaceIconService.class);
 
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final WorkspaceIconRepository workspaceIconRepository;
@@ -42,6 +43,7 @@ public class WorkspaceIconService {
         if (hadImage) {
             workspaceIconRepository.deleteById(workspaceId);
         }
+        fruition.shared.logging.CommittedLog.info(log, "[워크스페이스 아이콘 변경 완료] operation=workspace_icon_update stage=completed workspaceId={} userId={} type=emoji", workspaceId, userId);
         return WorkspaceResponse.from(workspace);
     }
 
@@ -55,6 +57,7 @@ public class WorkspaceIconService {
                         existing -> existing.replace(icon.bytes()),
                         () -> workspaceIconRepository.save(new WorkspaceIcon(workspaceId, icon.bytes())));
         workspace.changeIconImage(icon.contentType(), icon.hash());
+        fruition.shared.logging.CommittedLog.info(log, "[워크스페이스 아이콘 변경 완료] operation=workspace_icon_update stage=completed workspaceId={} userId={} type=image", workspaceId, userId);
         return WorkspaceResponse.from(workspace);
     }
 

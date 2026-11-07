@@ -38,7 +38,7 @@ public class SmtpEmailVerificationSender implements EmailVerificationSender {
             mailSender.send(message);
             log.info("[인증번호 발송 완료] purpose={}", purpose);
         } catch (MailException e) {
-            log.warn("[인증번호 발송 실패] purpose={} error={}", purpose, e.getMessage());
+            log.warn("[인증번호 발송 실패] operation=email_verification stage=mail_send purpose={} error={}", purpose, e.getMessage());
             throw new EmailVerificationSendException("인증번호 메일 발송에 실패했습니다.", e);
         }
     }

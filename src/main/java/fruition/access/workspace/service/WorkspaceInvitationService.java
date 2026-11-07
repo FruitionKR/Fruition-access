@@ -126,7 +126,7 @@ public class WorkspaceInvitationService {
 
         // 발송 실패 시 예외를 전파한다. 초대 행은 남지만 재초대로 덮어쓰이고 만료로 정리된다.
         sender.send(email, workspace.getName(), inviterName, acceptUrlBase + "/" + token);
-        log.info("[초대 발송] invitationId={} workspaceId={} role={}",
+        fruition.shared.logging.CommittedLog.info(log, "[초대 발송] operation=workspace_invitation stage=sent invitationId={} workspaceId={} role={}",
                 invitation.getId(), workspaceId, request.role());
 
         return WorkspaceInvitationResponse.from(invitation);
@@ -153,7 +153,7 @@ public class WorkspaceInvitationService {
                 .orElseThrow(InvitationNotFoundException::new);
 
         invitation.revoke();
-        log.info("[초대 취소] invitationId={} workspaceId={}", invitationId, workspaceId);
+        fruition.shared.logging.CommittedLog.info(log, "[초대 취소] operation=workspace_invitation stage=revoked invitationId={} workspaceId={}", invitationId, workspaceId);
     }
 
     /** 로그인 전 초대 링크 화면이 부르는 미리보기. 토큰을 가진 사람만 도달한다. */
@@ -217,7 +217,7 @@ public class WorkspaceInvitationService {
                     invitation.getWorkspaceId(), invitation.getAcceptedAt(), Map.of(
                     "invitation_id", invitation.getId(), "role", invitation.getRole().name().toLowerCase(Locale.ROOT))));
         }
-        log.info("[초대 수락] invitationId={} workspaceId={} userId={}",
+        fruition.shared.logging.CommittedLog.info(log, "[초대 수락] operation=workspace_invitation stage=completed invitationId={} workspaceId={} userId={}",
                 invitation.getId(), workspace.getId(), userId);
 
         return new InvitationAcceptResponse(

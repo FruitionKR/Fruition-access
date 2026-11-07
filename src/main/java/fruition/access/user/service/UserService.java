@@ -69,13 +69,13 @@ public class UserService {
 
         // 유효 토큰 낭비를 막기 위해 중복 검사를 토큰 소비보다 먼저 수행한다.
         if (userRepository.existsByEmailAndProvider(email, User.PROVIDER_LOCAL)) {
-            log.warn("[회원가입 실패] reason=duplicate_email email={}", email);
+            log.warn("[회원가입 실패] operation=signup stage=validation reason=duplicate_email email={}", email);
             throw new DuplicateEmailException(email);
         }
         // 같은 이메일의 소셜 계정이 있으면 두 번째 계정을 만들지 않는다. 인증번호 발급에서 걸러지지만 API 직접 호출도 막는다.
         List<String> oauthProviders = userRepository.findProvidersByEmail(email);
         if (!oauthProviders.isEmpty()) {
-            log.warn("[회원가입 실패] reason=email_registered_with_oauth email={} providers={}", email, oauthProviders);
+            log.warn("[회원가입 실패] operation=signup stage=validation reason=email_registered_with_oauth email={} providers={}", email, oauthProviders);
             throw new EmailRegisteredWithOAuthException(email, oauthProviders);
         }
 
@@ -93,7 +93,7 @@ public class UserService {
         userConsentService.record(user.getId(), Boolean.TRUE.equals(request.marketingOptIn()));
 
         workspaceService.createDefault(user.getId(), user.getDisplayName());
-        log.info("[회원가입 성공] userId={} email={} displayNameSource={}", user.getId(), user.getEmail(), displayNameSource);
+        fruition.shared.logging.CommittedLog.info(log, "[회원가입 성공] operation=signup stage=completed userId={} email={} displayNameSource={}", user.getId(), user.getEmail(), displayNameSource);
 
         eventPublisher.publishEvent(new AnalyticsEvent("user_signed_up", user.getId(), user.getId(), null,
                 Instant.now(), Map.of("method", "email")));

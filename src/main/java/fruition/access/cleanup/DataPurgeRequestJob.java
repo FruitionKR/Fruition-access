@@ -78,7 +78,7 @@ public class DataPurgeRequestJob {
         jdbc.update("DELETE FROM data_purge_requests WHERE kind = ? AND target_id = ?",
                 request.kind(), request.targetId());
         failures.recovered(request.kind() + ":" + request.targetId());
-        log.info("[데이터 파기 완료] kind={} targetId={}", request.kind(), request.targetId());
+        log.info("[데이터 파기 완료] operation=data_purge stage=completed kind={} targetId={}", request.kind(), request.targetId());
     }
 
     /** 다음 시도는 1분에서 시작해 실패할 때마다 두 배로 늘리고 6시간에서 멈춘다. */
