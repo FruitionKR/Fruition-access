@@ -74,7 +74,7 @@ public class DocumentInternalClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (Exception e) {
-            log.warn("초기 노트 생성 요청 실패로 건너뜁니다. workspaceId={}", workspaceId, e);
+            log.warn("[초기 노트 생성 요청 실패] operation=workspace_initial_note stage=document_call retryable=false workspaceId={} 원인=문서 서비스 호출에 실패해 초기 노트 없이 진행합니다.", workspaceId, e);
         }
     }
 

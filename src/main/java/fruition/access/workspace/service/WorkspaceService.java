@@ -29,6 +29,7 @@ import java.util.stream.Collectors;
 
 @Service
 public class WorkspaceService {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(WorkspaceService.class);
 
     private static final String DEFAULT_NAME = "새 워크스페이스";
     /** WorkspaceCreateRequest·WorkspaceRenameRequest의 @Size(max = 255). UTF-16 단위로 센다. */
@@ -61,13 +62,16 @@ public class WorkspaceService {
 
     @Transactional
     public Workspace createDefault(String userId, String displayName) {
-        return createWorkspace(userId, displayName + "의 워크스페이스");
+        Workspace workspace = createWorkspace(userId, displayName + "의 워크스페이스");
+        fruition.shared.logging.CommittedLog.info(log, "[워크스페이스 생성 완료] operation=workspace_create stage=completed workspaceId={} userId={} origin=default", workspace.getId(), userId);
+        return workspace;
     }
 
     @Transactional
     public WorkspaceResponse create(String userId, WorkspaceCreateRequest request) {
         String requested = request.name() == null ? "" : request.name().trim();
         Workspace workspace = createWorkspace(userId, availableName(userId, requested.isEmpty() ? DEFAULT_NAME : requested));
+        fruition.shared.logging.CommittedLog.info(log, "[워크스페이스 생성 완료] operation=workspace_create stage=completed workspaceId={} userId={} origin=manual", workspace.getId(), userId);
         return toResponse(workspace);
     }
 
@@ -120,6 +124,7 @@ public class WorkspaceService {
         if (request.autoIngestOnUpload() != null) {
             workspace.changeAutoIngestOnUpload(request.autoIngestOnUpload());
         }
+        fruition.shared.logging.CommittedLog.info(log, "[워크스페이스 설정 변경 완료] operation=workspace_update stage=completed workspaceId={} userId={}", workspaceId, userId);
         return toResponse(workspace);
     }
 
@@ -143,6 +148,7 @@ public class WorkspaceService {
                     workspace.softDelete(userId, deletedAt);
                     // 삭제된 워크스페이스는 멤버 전원이 NONE 판정이 되도록 projection을 무효화한다.
                     authzProjectionStore.evictWorkspace(workspaceId);
+                    fruition.shared.logging.CommittedLog.info(log, "[워크스페이스 휴지통 이동 완료] operation=workspace_delete stage=completed workspaceId={} userId={}", workspaceId, userId);
                     return new WorkspaceLifecycleResponse(workspaceId, true, deletedAt);
                 });
     }
@@ -170,6 +176,7 @@ public class WorkspaceService {
                     workspace.restore(Instant.now());
                     // 복구 즉시 캐시된 NONE 판정이 남지 않도록 projection을 무효화한다.
                     authzProjectionStore.evictWorkspace(workspaceId);
+                    fruition.shared.logging.CommittedLog.info(log, "[워크스페이스 복구 완료] operation=workspace_restore stage=completed workspaceId={} userId={}", workspaceId, userId);
                     return new WorkspaceLifecycleResponse(workspaceId, false, null);
                 });
     }

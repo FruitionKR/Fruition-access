@@ -53,7 +53,7 @@ public class AccountDeletionService {
                 .map(m -> new AccountDeletionBlockedException.Workspace(m.workspaceId(), m.name()))
                 .toList();
         if (!blocked.isEmpty()) {
-            log.warn("[회원 탈퇴 거부] reason=sole_owner userId={} workspaces={}", userId, blocked.size());
+            log.warn("[회원 탈퇴 거부] operation=account_delete stage=validation reason=sole_owner userId={} workspaces={}", userId, blocked.size());
             throw new AccountDeletionBlockedException(blocked);
         }
         List<String> purgedWorkspaces = memberships.stream()
@@ -71,7 +71,7 @@ public class AccountDeletionService {
         // refresh token에는 FK가 없어 CASCADE로 지워지지 않는다.
         jdbc.update("DELETE FROM user_refresh_tokens WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM users WHERE id = ?", userId);
-        log.info("[회원 탈퇴] userId={} workspaces={} purgedWorkspaces={}",
+        fruition.shared.logging.CommittedLog.info(log, "[회원 탈퇴] operation=account_delete stage=completed userId={} workspaces={} purgedWorkspaces={}",
                 userId, memberships.size(), purgedWorkspaces.size());
     }
 

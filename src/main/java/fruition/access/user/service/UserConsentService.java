@@ -19,6 +19,7 @@ import java.util.List;
  */
 @Service
 public class UserConsentService {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(UserConsentService.class);
 
     private final JdbcTemplate jdbc;
     private final String termsVersion;
@@ -57,6 +58,8 @@ public class UserConsentService {
                 INSERT INTO user_consents(user_id, terms_version, privacy_version, age_confirmed, marketing_opt_in)
                 VALUES (?, ?, ?, true, ?)
                 """, userId, termsVersion, privacyVersion, marketingOptIn);
+        fruition.shared.logging.CommittedLog.info(log, "[약관 동의 기록] operation=user_consent stage=completed userId={} termsVersion={} privacyVersion={} marketingOptIn={}",
+                userId, termsVersion, privacyVersion, marketingOptIn);
     }
 
     /**
