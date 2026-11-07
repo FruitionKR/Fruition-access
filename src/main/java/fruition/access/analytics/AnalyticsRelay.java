@@ -1,5 +1,6 @@
 package fruition.access.analytics;
 
+import fruition.shared.logging.RepeatedFailureLogger;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class AnalyticsRelay implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(AnalyticsRelay.class);
+    private final RepeatedFailureLogger failures = new RepeatedFailureLogger(log);
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final AnalyticsSettings settings;
@@ -71,9 +73,10 @@ public class AnalyticsRelay implements SmartLifecycle {
         if (!settings.relayEnabled()) return;
         try {
             transaction.executeWithoutResult(status -> dispatch(now));
+            failures.recovered("analytics-storage");
         } catch (Exception failure) {
             // A failed ACK update rolls back: the same UUID and envelope are retried.
-            log.warn("analytics_relay_failed code=storage_error");
+            failures.warn("analytics-storage", "analytics_relay_failed code=storage_error type=" + failure.getClass().getSimpleName(), null);
         }
     }
 

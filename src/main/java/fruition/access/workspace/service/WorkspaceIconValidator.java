@@ -22,7 +22,7 @@ public class WorkspaceIconValidator {
 
     public ValidatedIcon validate(MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            throw new UnsupportedWorkspaceIconException("아이콘 이미지 파일이 필요합니다.");
+            throw new UnsupportedWorkspaceIconException("error.UNSUPPORTED_WORKSPACE_ICON.missing_file", "아이콘 이미지 파일이 필요합니다.");
         }
         if (file.getSize() > MAX_BYTES) {
             throw new WorkspaceIconTooLargeException(MAX_BYTES);
@@ -31,7 +31,7 @@ public class WorkspaceIconValidator {
         try {
             bytes = file.getBytes();
         } catch (IOException exception) {
-            throw new UnsupportedWorkspaceIconException("아이콘 이미지를 읽지 못했습니다.");
+            throw new UnsupportedWorkspaceIconException("error.UNSUPPORTED_WORKSPACE_ICON.unreadable", "아이콘 이미지를 읽지 못했습니다.");
         }
         // getSize()는 헤더 값이라 실제 바이트로 한 번 더 확인한다.
         if (bytes.length > MAX_BYTES) {
@@ -42,7 +42,7 @@ public class WorkspaceIconValidator {
 
     private String detectContentType(byte[] bytes) {
         return ImageSignature.detectContentType(bytes)
-                .orElseThrow(() -> new UnsupportedWorkspaceIconException("PNG, JPEG, WebP, GIF 이미지만 아이콘으로 쓸 수 있습니다."));
+                .orElseThrow(() -> new UnsupportedWorkspaceIconException("error.UNSUPPORTED_WORKSPACE_ICON.unsupported_type", "PNG, JPEG, WebP, GIF 이미지만 아이콘으로 쓸 수 있습니다."));
     }
 
     public record ValidatedIcon(byte[] bytes, String contentType, String hash) {}

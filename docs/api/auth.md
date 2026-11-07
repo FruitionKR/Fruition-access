@@ -4,9 +4,10 @@
 
 가입·이메일 인증·로그인·토큰 API다.
 
-- API 수: 30
+- API 수: 31
 - 호출 연결: [access-svc 호출 연결 요약](README.md#호출-연결-요약) 참고
 - 약관 동의 단계: [약관 동의 플래그](#약관-동의-플래그-applegalconsent-required) 참고
+- 응답 언어: [오류 문구와 메일 언어](README.md#오류-문구와-메일-언어) 참고
 
 ## 약관 동의 플래그 (`app.legal.consent-required`)
 
@@ -36,6 +37,7 @@
 | [`POST /api/auth/logout`](#summary-post-api-auth-logout) | HttpOnly refresh 쿠키를 폐기하고 제거합니다. |
 | [`GET /api/auth/me`](#summary-get-api-auth-me) | access token으로 인증된 사용자의 프로필을 반환합니다. |
 | [`PATCH /api/auth/me`](#summary-patch-api-auth-me) | 인증된 사용자의 표시 이름을 변경합니다. |
+| [`PATCH /api/auth/me/locale`](#summary-patch-api-auth-me-locale) | 인증된 사용자의 화면 언어(ko·en)를 저장합니다. 이 사용자에게 가는 메일도 이 언어를 따릅니다. |
 | [`DELETE /api/auth/me`](#summary-delete-api-auth-me) | 본인을 다시 확인한 뒤 계정을 지우고 데이터 파기를 요청합니다(회원 탈퇴). |
 | [`PUT /api/auth/me/avatar`](#summary-put-api-auth-me-avatar) | 인증된 사용자의 프로필 사진을 올리거나 바꿉니다. PNG·JPEG·WebP·GIF, 1MB 이하. |
 | [`DELETE /api/auth/me/avatar`](#summary-delete-api-auth-me-avatar) | 인증된 사용자의 프로필 사진을 지웁니다. |
@@ -639,14 +641,19 @@ access token으로 인증된 사용자의 프로필을 반환합니다.
 - Content-Type: `*/*` (`MeResponse`)
 - `oauth_providers`: 로그인 수단으로 연결된 소셜 provider 목록(provider 이름순). OAuth로 가입한 provider도 포함하며, 연결이 없으면 빈 배열이다. `PATCH /api/auth/me`, `PUT /api/auth/me/email`, `PUT /api/auth/me/avatar`, `DELETE /api/auth/me/avatar`의 응답도 같은 `MeResponse`다.
 - `avatar_url`: 프로필 사진 조회 경로(`GET /api/users/{user_id}/avatar`). 사진이 없으면 `null`이라 프론트는 이니셜 상자를 보여 준다. 사진의 SHA-256이 `?v=`로 붙어 사진을 바꾸면 URL도 바뀌므로, 예전 이미지가 브라우저 캐시에서 보이지 않는다.
+- `has_password`: 로컬 비밀번호가 설정돼 있는지. 이메일로 가입한 계정은 `true`, 소셜로 가입한 계정은 `false`다(provider별 계정 분리, ADR 0017). 프론트는 이 값으로 비밀번호 변경·현재 비밀번호 입력 화면을 보여 줄지 정한다.
+- `locale`: 사용자가 저장한 화면 언어 `"ko"` 또는 `"en"`. 저장한 적 없으면 `null`이다. [`PATCH /api/auth/me/locale`](#summary-patch-api-auth-me-locale)로 바꾼다.
 
 ```json
 {
   "avatar_url": "/api/users/user_3f1c8a6b52d7411e9c04ab5d2e7f6081/avatar?v=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  "consent_required": false,
   "created_at": "2026-08-13T04:25:24.371948Z",
   "display_name": "표시 이름",
   "email": "user@example.com",
+  "has_password": false,
   "id": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081",
+  "locale": null,
   "oauth_providers": [
     "google"
   ]
@@ -680,10 +687,13 @@ curl -X GET "$ACCESS/api/auth/me" \
 ```json
 {
   "avatar_url": "/api/users/user_3f1c8a6b52d7411e9c04ab5d2e7f6081/avatar?v=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  "consent_required": false,
   "created_at": "2026-08-13T04:25:24.371948Z",
   "display_name": "표시 이름",
   "email": "user@example.com",
+  "has_password": false,
   "id": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081",
+  "locale": null,
   "oauth_providers": [
     "google"
   ]
@@ -789,6 +799,100 @@ curl -X PATCH "$ACCESS/api/auth/me" \
 - 하위 호출: 없음
 
 [↑ 요약으로 돌아가기](#summary-patch-api-auth-me)
+
+</details>
+
+<a id="summary-patch-api-auth-me-locale"></a>
+### `PATCH /api/auth/me/locale`
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 인증된 사용자의 화면 언어(ko·en)를 저장합니다. |
+| 입력 | **Body** — `LocaleUpdateRequest` |
+| 출력 | `200` 저장 성공 — `MeResponse` |
+| 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다. |
+| 주요 오류 | `400` `locale`이 없거나 ko·en이 아님(`INVALID_REQUEST`) — `ErrorResponse`<br>`401` 인증되지 않음 |
+
+<details>
+<summary>상세 계약 보기</summary>
+
+#### 1. Method + Path
+
+`PATCH /api/auth/me/locale`
+
+#### 2. 목적
+
+인증된 사용자의 화면 언어를 저장한다. 저장한 값은 `MeResponse.locale`로 돌아오고, 이후 이 사용자에게 가는 메일
+(인증번호·워크스페이스 초대·이메일 변경 알림)도 이 언어로 간다. 오류 응답 문구는 저장한 값이 아니라 요청마다
+`Accept-Language`로 정한다([오류 문구와 메일 언어](README.md#오류-문구와-메일-언어)).
+
+#### 3. Auth 필요 여부
+
+- 필요
+- `Authorization: Bearer <access_token>`을 검증한다.
+
+#### 4. Request body
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+|---|---|---|---|---|
+| body | `locale` | `string` | 예 | `"ko"` 또는 `"en"` |
+
+```json
+{
+  "locale": "en"
+}
+```
+
+#### 5. Response body
+
+- HTTP `200`: 저장 성공 — `MeResponse`(갱신된 `locale` 포함)
+
+```json
+{
+  "avatar_url": null,
+  "consent_required": false,
+  "created_at": "2026-08-13T04:25:24.371948Z",
+  "display_name": "표시 이름",
+  "email": "user@example.com",
+  "has_password": true,
+  "id": "user_3f1c8a6b52d7411e9c04ab5d2e7f6081",
+  "locale": "en",
+  "oauth_providers": []
+}
+```
+
+#### 6. Error response
+
+| HTTP 상태 | 설명 | 코드 |
+|---|---|---|
+| `400` | `locale`이 없거나 `ko`·`en`이 아님. `details[0].field`는 `locale` | `INVALID_REQUEST` |
+| `401` | access token이 없거나 유효하지 않음(본문 없음) | — |
+
+#### 7. Pagination / filtering
+
+- 지원하지 않음
+
+#### 8. 권한 규칙
+
+- 토큰의 사용자 본인만 대상이다.
+
+#### 9. 예시 요청/응답
+
+```bash
+curl -X PATCH "$ACCESS/api/auth/me/locale" \
+  -H 'Authorization: Bearer <access_token>' \
+  -H 'Content-Type: application/json' \
+  --data '{"locale":"en"}'
+```
+
+#### 10. 구현 파일
+
+- 진입점: `src/main/java/fruition/access/user/controller/AuthController.java`
+- 기계 판독 계약: `api-specs/openapi.yaml` (`operationId: updateLocale`)
+- 호출자: Fruition-frontend 디스플레이 설정 언어 선택(구현 중)
+- 하위 호출: 없음
+
+[↑ 요약으로 돌아가기](#summary-patch-api-auth-me-locale)
 
 </details>
 

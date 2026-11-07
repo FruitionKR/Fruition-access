@@ -12,6 +12,8 @@ import fruition.access.user.dto.LoginResponse;
 import fruition.access.user.dto.MeResponse;
 import fruition.access.user.dto.OAuthExchangeRequest;
 import fruition.access.user.dto.DisplayNameUpdateRequest;
+import fruition.access.user.dto.LocaleUpdateRequest;
+import fruition.shared.i18n.SupportedLocale;
 import fruition.access.user.dto.EmailChangeRequest;
 import fruition.access.user.dto.EmailVerificationResponse;
 import fruition.access.user.dto.PasswordChangeRequest;
@@ -199,7 +201,7 @@ public class AuthService {
                 .map(UserOAuthAccount::getProvider)
                 .toList();
         return new MeResponse(user.getId(), user.getEmail(), user.getDisplayName(), user.avatarUrl(), user.getCreatedAt(),
-                providers, userConsentService.consentRequired(user.getId()));
+                providers, userConsentService.consentRequired(user.getId()), user.hasPassword(), user.getLocale());
     }
 
     @Transactional
@@ -208,6 +210,17 @@ public class AuthService {
                 .orElseThrow(() -> new UserNotFoundException(userId));
         user.changeDisplayName(request.displayName().trim());
         log.info("[표시 이름 변경] userId={}", userId);
+        return toMe(user);
+    }
+
+    /** 화면 언어를 저장한다. 이후 이 사용자에게 가는 메일도 이 언어를 따른다. 값 검증은 요청 DTO가 한다. */
+    @Transactional
+    public MeResponse updateLocale(String userId, LocaleUpdateRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException(userId));
+        SupportedLocale locale = SupportedLocale.fromCode(request.locale()).orElseThrow();
+        user.changeLocale(locale);
+        log.info("[화면 언어 변경] userId={} locale={}", userId, locale.code());
         return toMe(user);
     }
 

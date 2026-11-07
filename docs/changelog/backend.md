@@ -1,5 +1,17 @@
 # Backend 변경 이력
 
+## 2026-11-07
+
+- 다국어(ko·en)와 계정 정보를 추가했습니다. `GET /api/auth/me`(MeResponse)에 `has_password`(로컬 비밀번호 여부, 소셜 가입 계정은 false)와 `locale`(저장한 화면 언어, 없으면 null)을 더했고, `PATCH /api/auth/me/locale` `{ "locale": "ko" | "en" }`로 저장합니다(그 밖의 값은 400 `INVALID_REQUEST`). V34에서 `users.locale`과 `email_change_notifications.locale`을 추가합니다.
+- 오류 응답 `message`와 검증 실패 `reason`을 `Accept-Language`(ko·en, 그 외와 없음은 ko)에 맞춰 내려줍니다. 사용자에게 보이던 한국어 문구를 모두 `i18n/messages*.properties`로 옮겼고, 헤더가 없으면 예전과 같은 한국어 문구입니다. `code`는 그대로입니다.
+- 인증번호·초대·이메일 변경 알림 메일을 수신자 저장 언어 → 요청 언어 → 한국어 순으로 보냅니다(`i18n/mail*.properties`, ADR-0020).
+- 검증: V34 Flyway 마이그레이션 포함 전체 테스트 634개(실패·오류·스킵 0).
+
+- 자동 편입 설정을 경로별로 나눴습니다. `auto_ingest_markdown_on_upload`(Markdown·txt 업로드 직후, 기본 켬)와 `auto_ingest_pdf_on_convert`(PDF 변환 뒤, 기본 끔)를 V33에서 추가하고, 기존 워크스페이스는 Markdown을 모두 켜고 PDF는 기존 `auto_ingest_on_upload` 값을 이어받습니다.
+- 워크스페이스 응답과 내부 settings 응답에 두 필드를 추가했습니다. 하위호환 `auto_ingest_on_upload`는 `auto_ingest_pdf_on_convert`와 같은 값입니다. `PATCH /api/workspaces/{ws}`는 두 필드를 부분 갱신으로 받고, 옛 필드만 오면 두 설정을 모두 바꿉니다.
+- 검증: V33 Flyway 마이그레이션 테스트 포함 전체 테스트 589개(실패·오류·스킵 0), bootJar 통과.
+- main(V30 refresh 계보·V31 refresh 조회 인덱스·V32 `describe_pdf_figures`)과 번호가 겹치지 않도록 자동 편입 분리 마이그레이션을 V30에서 V33으로 옮겼습니다. 내용은 같습니다. 워크스페이스 응답·내부 settings·PATCH는 자동 편입 두 필드와 `describe_pdf_figures`를 함께 다룹니다. 검증: 전체 테스트 610개(실패·오류·스킵 0), bootJar 통과.
+
 ## 2026-10-22
 
 - 컨테이너 mock 기본 주소 `http://host.docker.internal:18080`에서 Access 분석 relay가 비활성화되던 문제를 수정했습니다. HTTP 허용 목록에는 해당 gateway literal만 추가하며 사용자 정보·query·fragment와 임의 HTTP 호스트는 계속 거부합니다.

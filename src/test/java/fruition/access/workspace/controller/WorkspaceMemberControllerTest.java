@@ -168,7 +168,7 @@ class WorkspaceMemberControllerTest {
     @Test
     void changeRole_nonOwner_returns403() throws Exception {
         when(workspaceMemberService.changeRole(eq(USER_ID), eq(WORKSPACE_ID), eq(TARGET_ID), any()))
-                .thenThrow(new WorkspaceAccessDeniedException("멤버 역할을 변경하려면 OWNER 권한이 필요합니다."));
+                .thenThrow(new WorkspaceAccessDeniedException("error.WORKSPACE_ACCESS_DENIED.change_role", "멤버 역할을 변경하려면 OWNER 권한이 필요합니다."));
 
         mockMvc.perform(patch("/api/workspaces/" + WORKSPACE_ID + "/members/" + TARGET_ID)
                         .header("Authorization", bearerToken())

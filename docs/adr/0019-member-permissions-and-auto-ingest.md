@@ -1,7 +1,7 @@
 # ADR-0019: 멤버별 권한 항목과 업로드 자동 ingest 설정
 
 - 상태: 적용됨
-- 관련: Fruition-ai ADR 0033(워크스페이스 공유 wiki), V25 `add_member_permissions_and_auto_ingest`, [workspaces API](../api/workspaces.md), [data-model](../data-model.md)
+- 관련: Fruition-ai ADR 0033(워크스페이스 공유 wiki), V25 `add_member_permissions_and_auto_ingest`, V33 `split_auto_ingest_settings`, [workspaces API](../api/workspaces.md), [data-model](../data-model.md)
 
 ## 맥락
 
@@ -24,6 +24,7 @@ Fruition-ai ADR 0033으로 wiki는 개인 자산이 아니라 워크스페이스
    새 멤버(초대 수락, OWNER 초대, 워크스페이스 생성자)는 저장된 권한 없이 시작한다.
 4. `workspaces.auto_ingest_on_upload boolean NOT NULL DEFAULT false`를 추가하고 기존
    `PATCH /api/workspaces/{ws}`가 `{name?, auto_ingest_on_upload?}`를 받는다. 비용이 드는 동작이라 기본은 끈다.
+   (V33에서 경로별 두 설정으로 나눴다. 아래 "갱신: 자동 편입 설정 분리" 참고.)
 5. document용 내부 계약: 인가 조회는 `{"role", "permissions"}`를 돌려주고(`role`은 그대로, NONE은 `[]`,
    OWNER는 전부), `GET /internal/workspaces/{ws}/settings`가 `{"auto_ingest_on_upload"}`를 돌려준다
    (없거나 삭제되면 404). document는 역할만 담던 `authz:role:{ws}:{uid}` 대신 새 키 `authz:role:v2:{ws}:{uid}`에 역할과 권한을 JSON으로 캐시한다(값 형식은 document 소유). 키 이름이 달라 새 버전과 옛 버전 pod가 섞여 떠도 옛 pod가 JSON을 역할로 잘못 읽지 않고, 기존 Redis ACL 패턴 `authz:role:*` 안에 있다. access는 무효화할 때 두 키를 모두 지운다.
@@ -59,3 +60,22 @@ access는 항목을 저장하고 내려줄 뿐이며 판정은 document가 한�
 - document는 `permissions`로 ingest를 인가하고 `auto_ingest_on_upload`로 자동 수집을 결정한다(호출자 구현은 별도).
   document가 캐시한 값은 access의 evict 또는 TTL로 갱신된다.
 - `LAST_OWNER` 규칙은 그대로다. OWNER를 강등하면 부여받은 권한 항목이 없는 한 편입할 수 없으므로, 필요하면 OWNER가 따로 부여한다.
+
+## 갱신: 자동 편입 설정 분리 (V33)
+
+`auto_ingest_on_upload` 하나가 Markdown·txt 업로드 직후 편입과 PDF 변환 뒤 편입을 함께 켰다. 제품 요구는 "Markdown 업로드는
+기본으로 바로 편입하고, PDF 변환본은 사용자가 열었을 때 편입할지 묻는다"여서 두 경로를 따로 정할 수 있어야 한다.
+
+1. `workspaces`에 `auto_ingest_markdown_on_upload boolean NOT NULL DEFAULT true`와
+   `auto_ingest_pdf_on_convert boolean NOT NULL DEFAULT false`를 추가한다. 기존 워크스페이스는 Markdown을 모두 켜고,
+   PDF는 기존 `auto_ingest_on_upload` 값을 이어받는다.
+2. `auto_ingest_on_upload` 컬럼은 남긴다. 배포 중 옛 pod가 이 컬럼을 읽고 쓰므로 새 코드는 PDF 값과 같게 유지한다.
+   옛 pod가 모두 내려간 뒤 별도 migration으로 지울 수 있다.
+3. 워크스페이스 응답과 `GET /internal/workspaces/{ws}/settings`가 두 필드를 내려주고, 하위호환 `auto_ingest_on_upload`는
+   `auto_ingest_pdf_on_convert`와 같은 값으로 둔다.
+4. `PATCH /api/workspaces/{ws}`는 두 필드를 각각 부분 갱신으로 받는다. 옛 필드 `auto_ingest_on_upload`는 두 설정을 모두
+   그 값으로 바꾼다(옛 클라이언트의 의미 유지). 새 필드와 함께 오면 새 필드가 우선한다. OWNER만 바꿀 수 있다.
+5. document는 업로드 직후 편입에 `auto_ingest_markdown_on_upload`, 변환 뒤 편입에 `auto_ingest_pdf_on_convert`를 보고,
+   새 필드가 없는 옛 access 응답이면 `auto_ingest_on_upload`로 대신한다. `wiki.ingest` 조건은 그대로다.
+
+- 기각: 컬럼 이름을 `auto_ingest_pdf_on_convert`로 바꾸기. 값 이관은 간단하지만 배포 중 옛 pod가 사라진 컬럼을 읽다가 실패한다.

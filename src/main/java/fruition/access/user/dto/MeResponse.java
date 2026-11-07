@@ -34,5 +34,13 @@ public record MeResponse(
         @JsonProperty("consent_required")
         @Schema(description = "true면 이용약관이 바뀌어 다시 동의받아야 한다. POST /api/auth/me/consents로 받는다.",
                 example = "false")
-        boolean consentRequired
+        boolean consentRequired,
+
+        @JsonProperty("has_password")
+        @Schema(description = "로컬 비밀번호가 설정돼 있는지. 소셜 가입 계정은 false다.", example = "true")
+        boolean hasPassword,
+
+        @Schema(description = "사용자가 저장한 화면 언어. 저장한 적 없으면 null이다. PATCH /api/auth/me/locale로 바꾼다.",
+                example = "ko", allowableValues = {"ko", "en"}, nullable = true)
+        String locale
 ) {}

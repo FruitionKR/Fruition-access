@@ -18,18 +18,18 @@ public record WorkspaceMemberRoleUpdateRequest(
         @Schema(description = "MEMBER의 권한 항목 전체(교체). 값: wiki.ingest, wiki.lint, skill.author, wiki.restore, document.convert. 생략하면 바꾸지 않는다."
                 + " 결과 역할이 OWNER이면 보낼 수 없다(400 OWNER_PERMISSIONS_FIXED).",
                 example = "[\"skill.author\", \"wiki.ingest\"]", nullable = true)
-        List<@NotNull(message = "permissions에 null을 넣을 수 없습니다.") WorkspacePermission> permissions
+        List<@NotNull(message = "{validation.permissions.no_null}") WorkspacePermission> permissions
 ) {
     @JsonIgnore
     @Schema(hidden = true)
-    @AssertTrue(message = "role 또는 permissions 중 하나는 필수입니다.")
+    @AssertTrue(message = "{validation.role_or_permissions.required}")
     public boolean isNotEmpty() {
         return role != null || permissions != null;
     }
 
     @JsonIgnore
     @Schema(hidden = true)
-    @AssertTrue(message = "permissions에 중복 항목이 있습니다.")
+    @AssertTrue(message = "{validation.permissions.no_duplicates}")
     public boolean isPermissionsDistinct() {
         return permissions == null || new HashSet<>(permissions).size() == permissions.size();
     }

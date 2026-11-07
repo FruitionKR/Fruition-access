@@ -33,7 +33,8 @@ public class WorkspaceAiModelService {
         AiModelCatalog.AiModel selected = catalog.resolve(
                 request.ingestLint().provider(), request.ingestLint().model());
         if (!INGEST_LINT_PROVIDERS.contains(selected.provider())) {
-            throw new InvalidAiModelException("Claude 모델은 채팅에서 직접 선택할 때만 사용할 수 있습니다. 워크스페이스 설정에는 OpenAI 또는 Gemini 모델을 선택하세요.");
+            throw new InvalidAiModelException("error.INVALID_AI_MODEL.claude_not_allowed",
+                    "Claude 모델은 채팅에서 직접 선택할 때만 사용할 수 있습니다. 워크스페이스 설정에는 OpenAI 또는 Gemini 모델을 선택하세요.");
         }
         workspace.changeIngestLintModel(selected.provider(), selected.model());
         return WorkspaceAiModelResponse.from(workspace);

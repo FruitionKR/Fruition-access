@@ -7,14 +7,25 @@ import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Size;
 
 public record WorkspaceRenameRequest(
-        @Size(max = 255, message = "name은 255자 이하여야 합니다.")
+        @Size(max = 255, message = "{validation.name.max255}")
         @Schema(description = "새 워크스페이스 이름(255자 이하, 공백만으로는 불가). 생략하면 바꾸지 않는다.",
                 example = "이름 바꾼 워크스페이스", nullable = true)
         String name,
 
         @JsonProperty("auto_ingest_on_upload")
-        @Schema(description = "업로드 시 자동으로 ingest할지 여부. 생략하면 바꾸지 않는다.", example = "false", nullable = true)
+        @Schema(description = "하위호환용 옛 필드. 보내면 auto_ingest_markdown_on_upload와 auto_ingest_pdf_on_convert를 모두 이 값으로 바꾼다. "
+                + "새 필드와 함께 오면 새 필드가 우선한다. 생략하면 바꾸지 않는다.", example = "false", nullable = true)
         Boolean autoIngestOnUpload,
+
+        @JsonProperty("auto_ingest_markdown_on_upload")
+        @Schema(description = "Markdown·txt 업로드 직후 자동으로 위키에 편입할지 여부. 생략하면 바꾸지 않는다.",
+                example = "true", nullable = true)
+        Boolean autoIngestMarkdownOnUpload,
+
+        @JsonProperty("auto_ingest_pdf_on_convert")
+        @Schema(description = "PDF 변환이 끝난 뒤 자동으로 위키에 편입할지 여부. 생략하면 바꾸지 않는다.",
+                example = "false", nullable = true)
+        Boolean autoIngestPdfOnConvert,
 
         @JsonProperty("describe_pdf_figures")
         @Schema(description = "PDF 변환 때 그림을 외부 AI로 보내 설명을 붙일지 여부. 생략하면 바꾸지 않는다.",
@@ -23,15 +34,17 @@ public record WorkspaceRenameRequest(
 ) {
     @JsonIgnore
     @Schema(hidden = true)
-    @AssertTrue(message = "name은 필수입니다.")
+    @AssertTrue(message = "{validation.name.required}")
     public boolean isNameNotBlank() {
         return name == null || !name.isBlank();
     }
 
     @JsonIgnore
     @Schema(hidden = true)
-    @AssertTrue(message = "name, auto_ingest_on_upload, describe_pdf_figures 중 하나는 필수입니다.")
+    @AssertTrue(message = "{validation.workspace_settings.required}")
     public boolean isNotEmpty() {
-        return name != null || autoIngestOnUpload != null || describePdfFigures != null;
+        return name != null || autoIngestOnUpload != null
+                || autoIngestMarkdownOnUpload != null || autoIngestPdfOnConvert != null
+                || describePdfFigures != null;
     }
 }

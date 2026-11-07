@@ -1,6 +1,8 @@
 package fruition.shared.util;
 
 import fruition.shared.ai.InvalidAiModelException;
+import fruition.shared.i18n.Localizable;
+import fruition.shared.i18n.RequestLocale;
 import fruition.shared.idempotency.IdempotencyConflictException;
 import fruition.shared.idempotency.IdempotencyInProgressException;
 import fruition.shared.idempotency.InvalidIdempotencyKeyException;
@@ -8,6 +10,8 @@ import fruition.shared.logging.LoggableUri;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSource;
+import org.springframework.context.MessageSourceAware;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -25,10 +29,42 @@ import java.util.List;
 /**
  * 양쪽 앱(access-svc·document-svc)이 공유하는 공통 예외 매핑.
  * 각 앱의 {@code @RestControllerAdvice}가 이 클래스를 상속해 앱별 예외 매핑을 더한다.
+ *
+ * <p>응답 문구({@code message}·검증 실패 {@code reason})는 요청의 {@code Accept-Language}에 맞춰 메시지 번들에서 고른다.
+ * 분기 기준인 {@code code}는 언어와 상관없이 같다.
  */
-public abstract class BaseExceptionHandler {
+public abstract class BaseExceptionHandler implements MessageSourceAware {
 
     private static final Logger log = LoggerFactory.getLogger(BaseExceptionHandler.class);
+
+    private MessageSource messageSource;
+
+    @Override
+    public void setMessageSource(MessageSource messageSource) {
+        this.messageSource = messageSource;
+    }
+
+    /** 요청 언어로 고른 문구. */
+    protected String message(String key, Object... args) {
+        return messageSource.getMessage(key, args, RequestLocale.current().toLocale());
+    }
+
+    /**
+     * 예외에 맞는 오류 응답. 문구는 {@code error.<code>} 키(예외가 {@link Localizable}이면 그 키와 인자)로 고른다.
+     * 번들에 키가 없으면 예외의 한국어 메시지를 그대로 쓴다 — 번역 누락이 500이 되지 않게 하기 위해서다.
+     */
+    protected ErrorResponse error(String code, Exception e) {
+        String key = "error." + code;
+        Object[] args = null;
+        if (e instanceof Localizable localizable) {
+            if (localizable.messageKey() != null) {
+                key = localizable.messageKey();
+            }
+            args = localizable.messageArgs();
+        }
+        String message = messageSource.getMessage(key, args, e.getMessage(), RequestLocale.current().toLocale());
+        return ErrorResponse.of(code, message);
+    }
 
     /**
      * 처리된 예외를 한 줄로 남긴다. 4xx는 warn, 5xx는 error(스택트레이스 포함)로 나눈다.
@@ -64,7 +100,7 @@ public abstract class BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_REQUEST, "INVALID_REQUEST");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("INVALID_REQUEST", "요청 형식이 올바르지 않습니다."));
+                .body(ErrorResponse.of("INVALID_REQUEST", message("error.INVALID_REQUEST")));
     }
 
     /**
@@ -76,10 +112,10 @@ public abstract class BaseExceptionHandler {
     public ResponseEntity<ErrorResponse> handleArgumentTypeMismatch(MethodArgumentTypeMismatchException e) {
         logHandled(e, HttpStatus.BAD_REQUEST, "INVALID_REQUEST");
         List<ErrorResponse.ErrorDetail.FieldError> details = List.of(
-                new ErrorResponse.ErrorDetail.FieldError(e.getName(), "값의 형식이 올바르지 않습니다."));
+                new ErrorResponse.ErrorDetail.FieldError(e.getName(), message("error.INVALID_REQUEST.invalid_value")));
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.ofValidation(details));
+                .body(ErrorResponse.ofValidation(message("error.INVALID_REQUEST"), details));
     }
 
     @ExceptionHandler(MultipartException.class)
@@ -87,7 +123,7 @@ public abstract class BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_REQUEST, "INVALID_REQUEST");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("INVALID_REQUEST", "파일이 없거나 비어 있습니다."));
+                .body(ErrorResponse.of("INVALID_REQUEST", message("error.INVALID_REQUEST.missing_file")));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -98,7 +134,7 @@ public abstract class BaseExceptionHandler {
                 .toList();
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.ofValidation(details));
+                .body(ErrorResponse.ofValidation(message("error.INVALID_REQUEST"), details));
     }
 
     @ExceptionHandler(InvalidIdempotencyKeyException.class)
@@ -106,7 +142,7 @@ public abstract class BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_REQUEST, "INVALID_IDEMPOTENCY_KEY");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("INVALID_IDEMPOTENCY_KEY", e.getMessage()));
+                .body(error("INVALID_IDEMPOTENCY_KEY", e));
     }
 
     @ExceptionHandler(IdempotencyConflictException.class)
@@ -114,7 +150,7 @@ public abstract class BaseExceptionHandler {
         logHandled(e, HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT");
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
-                .body(ErrorResponse.of("IDEMPOTENCY_CONFLICT", e.getMessage()));
+                .body(error("IDEMPOTENCY_CONFLICT", e));
     }
 
     @ExceptionHandler(IdempotencyInProgressException.class)
@@ -122,7 +158,7 @@ public abstract class BaseExceptionHandler {
         logHandled(e, HttpStatus.CONFLICT, "IDEMPOTENCY_IN_PROGRESS");
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
-                .body(ErrorResponse.of("IDEMPOTENCY_IN_PROGRESS", e.getMessage()));
+                .body(error("IDEMPOTENCY_IN_PROGRESS", e));
     }
 
     @ExceptionHandler(InvalidAiModelException.class)
@@ -130,7 +166,7 @@ public abstract class BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_REQUEST, "INVALID_AI_MODEL");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("INVALID_AI_MODEL", e.getMessage()));
+                .body(error("INVALID_AI_MODEL", e));
     }
 
     /**
@@ -139,7 +175,7 @@ public abstract class BaseExceptionHandler {
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ErrorResponse> handleResponseStatus(ResponseStatusException e) {
         int status = e.getStatusCode().value();
-        String message = e.getReason() != null ? e.getReason() : "요청을 처리할 수 없습니다.";
+        String message = e.getReason() != null ? e.getReason() : message("error.REQUEST_FAILED");
         logHandled(e, status, "REQUEST_FAILED");
         return ResponseEntity
                 .status(status)
@@ -155,22 +191,22 @@ public abstract class BaseExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception e) {
-        String duplicateNameMessage = DuplicateResourceName.message(e);
-        if (duplicateNameMessage != null) {
+        String duplicateNameKey = DuplicateResourceName.messageKey(e);
+        if (duplicateNameKey != null) {
             logHandled(e, HttpStatus.CONFLICT, "DUPLICATE_NAME");
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(ErrorResponse.of("DUPLICATE_NAME", duplicateNameMessage));
+                    .body(ErrorResponse.of("DUPLICATE_NAME", message(duplicateNameKey)));
         }
         if (e instanceof org.springframework.web.ErrorResponse springError) {
             int status = springError.getStatusCode().value();
             logHandled(e, status, "REQUEST_FAILED");
             return ResponseEntity
                     .status(status)
-                    .body(ErrorResponse.of("REQUEST_FAILED", "요청을 처리할 수 없습니다."));
+                    .body(ErrorResponse.of("REQUEST_FAILED", message("error.REQUEST_FAILED")));
         }
         logHandled(e, HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR");
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ErrorResponse.of("INTERNAL_ERROR", "서버 오류가 발생했습니다."));
+                .body(ErrorResponse.of("INTERNAL_ERROR", message("error.INTERNAL_ERROR")));
     }
 }
