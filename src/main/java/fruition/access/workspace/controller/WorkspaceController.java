@@ -68,11 +68,11 @@ public class WorkspaceController {
     }
 
     @Operation(summary = "워크스페이스 설정 변경",
-            description = "로그인한 사용자가 소유한 워크스페이스의 이름(name)과 업로드 시 자동 ingest 여부(auto_ingest_on_upload)를 변경합니다. 둘 다 선택이지만 하나는 필요합니다.")
+            description = "로그인한 사용자가 소유한 워크스페이스의 이름(name)과 자동 편입 설정(auto_ingest_markdown_on_upload: Markdown·txt 업로드 직후, auto_ingest_pdf_on_convert: PDF 변환 뒤)을 부분 변경합니다. 하위호환 필드 auto_ingest_on_upload만 보내면 두 설정을 모두 그 값으로 바꾸고, 새 필드와 함께 오면 새 필드가 우선합니다. 모두 선택이지만 하나는 필요합니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "변경 성공",
             content = @Content(schema = @Schema(implementation = WorkspaceResponse.class))),
-        @ApiResponse(responseCode = "400", description = "name·auto_ingest_on_upload가 모두 없거나 name이 공백이거나 255자 초과",
+        @ApiResponse(responseCode = "400", description = "name·auto_ingest_markdown_on_upload·auto_ingest_pdf_on_convert·auto_ingest_on_upload가 모두 없거나 name이 공백이거나 255자 초과",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(responseCode = "404", description = "워크스페이스를 찾을 수 없음",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))

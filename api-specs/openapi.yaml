@@ -1209,7 +1209,7 @@ paths:
       tags:
       - Workspaces
     patch:
-      description: 로그인한 사용자가 소유한 워크스페이스의 이름(name)과 업로드 시 자동 ingest 여부(auto_ingest_on_upload)를 변경합니다. 둘 다 선택이지만 하나는 필요합니다.
+      description: "로그인한 사용자가 소유한 워크스페이스의 이름(name)과 자동 편입 설정(auto_ingest_markdown_on_upload: Markdown·txt 업로드 직후, auto_ingest_pdf_on_convert: PDF 변환 뒤)을 부분 변경합니다. 하위호환 필드 auto_ingest_on_upload만 보내면 두 설정을 모두 그 값으로 바꾸고, 새 필드와 함께 오면 새 필드가 우선합니다. 모두 선택이지만 하나는 필요합니다."
       operationId: rename
       parameters:
       - description: 워크스페이스 ID
@@ -1238,7 +1238,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-          description: name·auto_ingest_on_upload가 모두 없거나 name이 공백이거나 255자 초과
+          description: name·auto_ingest_markdown_on_upload·auto_ingest_pdf_on_convert·auto_ingest_on_upload가 모두 없거나 name이 공백이거나 255자 초과
         "404":
           content:
             '*/*':
@@ -2703,9 +2703,17 @@ components:
     WorkspaceRenameRequest:
       type: object
       properties:
+        auto_ingest_markdown_on_upload:
+          type: boolean
+          description: Markdown·txt 업로드 직후 자동으로 위키에 편입할지 여부. 생략하면 바꾸지 않는다.
+          example: true
         auto_ingest_on_upload:
           type: boolean
-          description: 업로드 시 자동으로 ingest할지 여부. 생략하면 바꾸지 않는다.
+          description: 하위호환용 옛 필드. 보내면 auto_ingest_markdown_on_upload와 auto_ingest_pdf_on_convert를 모두 이 값으로 바꾼다. 새 필드와 함께 오면 새 필드가 우선한다. 생략하면 바꾸지 않는다.
+          example: false
+        auto_ingest_pdf_on_convert:
+          type: boolean
+          description: PDF 변환이 끝난 뒤 자동으로 위키에 편입할지 여부. 생략하면 바꾸지 않는다.
           example: false
         name:
           type: string
@@ -2716,9 +2724,18 @@ components:
     WorkspaceResponse:
       type: object
       properties:
+        auto_ingest_markdown_on_upload:
+          type: boolean
+          description: Markdown·txt 업로드 직후 자동으로 위키에 편입할지 여부(기본 true)
+          example: true
         auto_ingest_on_upload:
           type: boolean
-          description: 업로드 시 자동으로 ingest할지 여부
+          deprecated: true
+          description: 하위호환용 옛 필드. 값은 auto_ingest_pdf_on_convert와 같다.
+          example: false
+        auto_ingest_pdf_on_convert:
+          type: boolean
+          description: PDF 변환이 끝난 뒤 자동으로 위키에 편입할지 여부(기본 false)
           example: false
         created_at:
           type: string

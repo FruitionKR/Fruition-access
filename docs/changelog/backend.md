@@ -1,5 +1,11 @@
 # Backend 변경 이력
 
+## 2026-11-07
+
+- 자동 편입 설정을 경로별로 나눴습니다. `auto_ingest_markdown_on_upload`(Markdown·txt 업로드 직후, 기본 켬)와 `auto_ingest_pdf_on_convert`(PDF 변환 뒤, 기본 끔)를 V30에서 추가하고, 기존 워크스페이스는 Markdown을 모두 켜고 PDF는 기존 `auto_ingest_on_upload` 값을 이어받습니다.
+- 워크스페이스 응답과 내부 settings 응답에 두 필드를 추가했습니다. 하위호환 `auto_ingest_on_upload`는 `auto_ingest_pdf_on_convert`와 같은 값입니다. `PATCH /api/workspaces/{ws}`는 두 필드를 부분 갱신으로 받고, 옛 필드만 오면 두 설정을 모두 바꿉니다.
+- 검증: V30 Flyway 마이그레이션 테스트 포함 전체 테스트 589개(실패·오류·스킵 0), bootJar 통과.
+
 ## 2026-10-22
 
 - 컨테이너 mock 기본 주소 `http://host.docker.internal:18080`에서 Access 분석 relay가 비활성화되던 문제를 수정했습니다. HTTP 허용 목록에는 해당 gateway literal만 추가하며 사용자 정보·query·fragment와 임의 HTTP 호스트는 계속 거부합니다.
