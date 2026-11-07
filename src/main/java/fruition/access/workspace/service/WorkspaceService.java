@@ -117,8 +117,16 @@ public class WorkspaceService {
         if (request.name() != null) {
             workspace.rename(request.name().trim());
         }
+        // 옛 필드는 두 설정을 함께 바꾸던 의미를 유지한다. 새 필드가 함께 오면 새 필드가 그 값을 덮는다.
         if (request.autoIngestOnUpload() != null) {
-            workspace.changeAutoIngestOnUpload(request.autoIngestOnUpload());
+            workspace.changeAutoIngestMarkdownOnUpload(request.autoIngestOnUpload());
+            workspace.changeAutoIngestPdfOnConvert(request.autoIngestOnUpload());
+        }
+        if (request.autoIngestMarkdownOnUpload() != null) {
+            workspace.changeAutoIngestMarkdownOnUpload(request.autoIngestMarkdownOnUpload());
+        }
+        if (request.autoIngestPdfOnConvert() != null) {
+            workspace.changeAutoIngestPdfOnConvert(request.autoIngestPdfOnConvert());
         }
         return toResponse(workspace);
     }

@@ -24,8 +24,17 @@ public record WorkspaceResponse(
         String iconUrl,
 
         @JsonProperty("auto_ingest_on_upload")
-        @Schema(description = "업로드 시 자동으로 ingest할지 여부", example = "false")
+        @Schema(description = "하위호환용 옛 필드. 값은 auto_ingest_pdf_on_convert와 같다.", example = "false",
+                deprecated = true)
         boolean autoIngestOnUpload,
+
+        @JsonProperty("auto_ingest_markdown_on_upload")
+        @Schema(description = "Markdown·txt 업로드 직후 자동으로 위키에 편입할지 여부(기본 true)", example = "true")
+        boolean autoIngestMarkdownOnUpload,
+
+        @JsonProperty("auto_ingest_pdf_on_convert")
+        @Schema(description = "PDF 변환이 끝난 뒤 자동으로 위키에 편입할지 여부(기본 false)", example = "false")
+        boolean autoIngestPdfOnConvert,
 
         @JsonProperty("created_at")
         @Schema(description = "생성 시각(ISO-8601 UTC)", example = "2026-08-13T04:25:24.371948Z")
@@ -41,7 +50,9 @@ public record WorkspaceResponse(
                 workspace.getName(),
                 workspace.getIconEmoji(),
                 workspace.hasIconImage() ? "/api/workspaces/" + workspace.getId() + "/icon/image" : null,
-                workspace.isAutoIngestOnUpload(),
+                workspace.isAutoIngestPdfOnConvert(),
+                workspace.isAutoIngestMarkdownOnUpload(),
+                workspace.isAutoIngestPdfOnConvert(),
                 workspace.getCreatedAt(),
                 workspace.getUpdatedAt());
     }
