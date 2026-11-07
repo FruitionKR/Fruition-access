@@ -63,7 +63,7 @@ class UserAvatarServiceTest {
     private void meFrom(User user) {
         when(authService.toMe(user)).thenAnswer(invocation -> new MeResponse(
                 user.getId(), user.getEmail(), user.getDisplayName(), user.avatarUrl(), user.getCreatedAt(),
-                List.of(), false));
+                List.of(), false, true, null));
     }
 
     private MockMultipartFile upload(byte[] bytes) {

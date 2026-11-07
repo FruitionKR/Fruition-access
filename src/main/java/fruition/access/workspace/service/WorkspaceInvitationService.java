@@ -4,6 +4,7 @@ import fruition.access.security.OpaqueTokens;
 import fruition.access.analytics.AnalyticsEvent;
 import fruition.access.user.domain.User;
 import fruition.access.user.exception.UserNotFoundException;
+import fruition.access.user.mail.MailLocaleResolver;
 import fruition.access.user.mail.WorkspaceInvitationSender;
 import fruition.access.user.repository.UserRepository;
 import fruition.access.workspace.domain.Workspace;
@@ -26,11 +27,13 @@ import fruition.access.workspace.exception.WorkspaceNotFoundException;
 import fruition.access.workspace.repository.WorkspaceInvitationRepository;
 import fruition.access.workspace.repository.WorkspaceMemberRepository;
 import fruition.access.workspace.repository.WorkspaceRepository;
+import fruition.shared.i18n.RequestLocale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.MessageSource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -50,6 +53,8 @@ public class WorkspaceInvitationService {
     private final WorkspaceRepository workspaceRepository;
     private final UserRepository userRepository;
     private final WorkspaceInvitationSender sender;
+    private final MailLocaleResolver mailLocaleResolver;
+    private final MessageSource messageSource;
     private final AuthzProjectionStore authzProjectionStore;
     private final TransactionTemplate transactionTemplate;
     private final long ttlSeconds;
@@ -62,6 +67,8 @@ public class WorkspaceInvitationService {
             WorkspaceRepository workspaceRepository,
             UserRepository userRepository,
             WorkspaceInvitationSender sender,
+            MailLocaleResolver mailLocaleResolver,
+            MessageSource messageSource,
             AuthzProjectionStore authzProjectionStore,
             TransactionTemplate transactionTemplate,
             @Value("${app.workspace.invitation.ttl-seconds}") long ttlSeconds,
@@ -72,6 +79,8 @@ public class WorkspaceInvitationService {
         this.workspaceRepository = workspaceRepository;
         this.userRepository = userRepository;
         this.sender = sender;
+        this.mailLocaleResolver = mailLocaleResolver;
+        this.messageSource = messageSource;
         this.authzProjectionStore = authzProjectionStore;
         this.transactionTemplate = transactionTemplate;
         this.ttlSeconds = ttlSeconds;
@@ -125,7 +134,9 @@ public class WorkspaceInvitationService {
         }
 
         // 발송 실패 시 예외를 전파한다. 초대 행은 남지만 재초대로 덮어쓰이고 만료로 정리된다.
-        sender.send(email, workspace.getName(), inviterName, acceptUrlBase + "/" + token);
+        // 메일 언어는 초대받는 사람이 기존 사용자면 그 사람의 저장 언어, 아니면 초대한 사람의 요청 언어다.
+        sender.send(email, workspace.getName(), inviterName, acceptUrlBase + "/" + token,
+                mailLocaleResolver.forEmail(email));
         log.info("[초대 발송] invitationId={} workspaceId={} role={}",
                 invitation.getId(), workspaceId, request.role());
 
@@ -162,7 +173,8 @@ public class WorkspaceInvitationService {
         Workspace workspace = activeWorkspace(invitation.getWorkspaceId());
         String inviterName = userRepository.findById(invitation.getInvitedBy())
                 .map(User::getDisplayName)
-                .orElse("알 수 없음");
+                .orElseGet(() -> messageSource.getMessage(
+                        "invitation.unknown_inviter", null, RequestLocale.current().toLocale()));
 
         return new InvitationPreviewResponse(
                 workspace.getId(),
@@ -254,7 +266,7 @@ public class WorkspaceInvitationService {
         WorkspaceRole role = workspaceMemberRepository.findActiveRole(workspaceId, actorId)
                 .orElseThrow(() -> new WorkspaceNotFoundException(workspaceId));
         if (role != WorkspaceRole.OWNER) {
-            throw new WorkspaceAccessDeniedException("멤버를 초대하려면 OWNER 권한이 필요합니다.");
+            throw new WorkspaceAccessDeniedException("error.WORKSPACE_ACCESS_DENIED.invite", "멤버를 초대하려면 OWNER 권한이 필요합니다.");
         }
     }
 

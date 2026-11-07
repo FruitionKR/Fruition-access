@@ -21,7 +21,7 @@ public class UserAvatarValidator {
 
     public ValidatedAvatar validate(MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            throw new UnsupportedUserAvatarException("프로필 사진 파일이 필요합니다.");
+            throw new UnsupportedUserAvatarException("error.UNSUPPORTED_USER_AVATAR.missing_file", "프로필 사진 파일이 필요합니다.");
         }
         if (file.getSize() > MAX_BYTES) {
             throw new UserAvatarTooLargeException(MAX_BYTES);
@@ -30,14 +30,14 @@ public class UserAvatarValidator {
         try {
             bytes = file.getBytes();
         } catch (IOException exception) {
-            throw new UnsupportedUserAvatarException("프로필 사진을 읽지 못했습니다.");
+            throw new UnsupportedUserAvatarException("error.UNSUPPORTED_USER_AVATAR.unreadable", "프로필 사진을 읽지 못했습니다.");
         }
         // getSize()는 헤더 값이라 실제 바이트로 한 번 더 확인한다.
         if (bytes.length > MAX_BYTES) {
             throw new UserAvatarTooLargeException(MAX_BYTES);
         }
         String contentType = ImageSignature.detectContentType(bytes)
-                .orElseThrow(() -> new UnsupportedUserAvatarException("PNG, JPEG, WebP, GIF 이미지만 프로필 사진으로 쓸 수 있습니다."));
+                .orElseThrow(() -> new UnsupportedUserAvatarException("error.UNSUPPORTED_USER_AVATAR.unsupported_type", "PNG, JPEG, WebP, GIF 이미지만 프로필 사진으로 쓸 수 있습니다."));
         return new ValidatedAvatar(bytes, contentType, ImageSignature.sha256(bytes));
     }
 

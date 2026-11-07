@@ -6,7 +6,7 @@ DB migration 원본은 `src/main/resources/db/migration/`입니다. 다른 서�
 
 | 테이블 | 소유 | 용도 | 핵심 컬럼/관계 |
 |---|---|---|---|
-| users | access-svc | 사용자 계정 | `(email, provider)` UK, `provider`는 계정을 만든 수단(`local`/OAuth 등록 ID), `password_hash`(OAuth 전용은 NULL), 프로필 사진 metadata `avatar_content_type`·`avatar_hash`(CHECK 제약으로 함께 채워지거나 함께 NULL, V26) |
+| users | access-svc | 사용자 계정 | `(email, provider)` UK, `provider`는 계정을 만든 수단(`local`/OAuth 등록 ID), `password_hash`(OAuth 전용은 NULL), 프로필 사진 metadata `avatar_content_type`·`avatar_hash`(CHECK 제약으로 함께 채워지거나 함께 NULL, V26), 화면 언어 `locale`(`ko`/`en`, 고른 적 없으면 NULL, CHECK 제약; V34) |
 | user_avatars | access-svc | 프로필 사진 바이너리 | PK/FK `user_id` → `users(id)`(삭제 cascade), `image bytea`. 멤버 목록·인가 조회가 바이너리를 함께 읽지 않도록 users에서 분리했다. 1MB 상한이라 object storage를 쓰지 않는다(workspace_icons와 같은 방식, V26) |
 | user_oauth_accounts | access-svc | OAuth provider 연결 | users 1:N(FK `ON DELETE CASCADE`), `(provider, provider_user_id)`. OAuth 가입 때 만들고, 로그인한 사용자가 설정에서 다른 provider를 연동·해제한다(사용자당 provider 하나, 가입 provider는 해제 불가 — 앱에서 검사) |
 | user_refresh_tokens | access-svc | JWT refresh token | `token_hash`(SHA-256), `revoked_at`으로 탈취 감지, `user_agent`(세션 목록의 기기 구분. 컬럼 신설 이전 발급분은 NULL), `family_id`(같은 로그인에서 회전으로 이어진 토큰의 계보. 세션 폐기·로그아웃은 계보 전체를 끊는다) |
@@ -20,7 +20,7 @@ DB migration 원본은 `src/main/resources/db/migration/`입니다. 다른 서�
 | workspace_membership_periods | access-svc | 멤버였던 기간 이력(탈퇴·제거 후에도 보존) | PK `(workspace_id, user_id, joined_at)`, `left_at` NULL이면 현재 멤버. `workspace_members` INSERT·DELETE trigger가 기록, FK 없음; V21 |
 | workspace_invitations | access-svc | 이메일 초대(수락 전 상태) | `token_hash`(SHA-256, 원문 미저장), `expires_at`, `accepted_at`/`accepted_by`/`revoked_at`. 대기 중 초대는 `(workspace_id, email)` partial unique라 재초대는 새 행이 아니라 재발송이다. 계정이 `(email, provider)`로 분리돼 있어 어느 계정이 멤버가 될지는 수락 시점에 정해진다 |
 | data_purge_requests | access-svc | 회원 탈퇴 뒤 document, 이어서 ai에 요청할 데이터 파기 | PK `(kind, target_id)`, `kind`는 `user`(공유 워크스페이스의 개인 데이터)·`workspace`(혼자 쓰던 워크스페이스). `attempts`·`next_attempt_at`·`last_error`로 재시도. 계정이 지워진 뒤에도 남아야 해 FK 없음; V22 |
-| email_change_notifications | access-svc | 이메일 변경 알림 outbox | 이메일 변경 트랜잭션에서 넣고 `EmailChangeNotificationJob`이 기존 이메일로 보낸 뒤 지운다. `recipient_email`(기존 이메일), `masked_new_email`(새 이메일은 가린 값만), `status`(`pending`/`failed`), `attempts`·`next_attempt_at`·`last_error`로 재시도. 이메일을 바꾼 뒤 탈퇴해도 알림이 가야 해 FK 없음; V28 |
+| email_change_notifications | access-svc | 이메일 변경 알림 outbox | 이메일 변경 트랜잭션에서 넣고 `EmailChangeNotificationJob`이 기존 이메일로 보낸 뒤 지운다. `recipient_email`(기존 이메일), `masked_new_email`(새 이메일은 가린 값만), `status`(`pending`/`failed`), `attempts`·`next_attempt_at`·`last_error`로 재시도. 이메일을 바꾼 뒤 탈퇴해도 알림이 가야 해 FK 없음; V28. 요청 밖에서 보내므로 넣을 때 고른 메일 언어 `locale`(`ko`/`en`, NULL이면 한국어)을 함께 둔다; V34 |
 | user_consents | access-svc | 가입·재동의 이력(덮어쓰지 않고 쌓음) | users FK `ON DELETE CASCADE`, `terms_version`·`privacy_version`(설정 `app.legal.*`), `age_confirmed`(만 18세 이상), `marketing_opt_in`(선택), `consented_at`. 최근 행의 이용약관 버전이 현재와 다르면 재동의 대상. `app.legal.consent-required=false`(약관 확정 전)면 쓰지 않는다; V23 |
 
 ### 보관 기간과 정리

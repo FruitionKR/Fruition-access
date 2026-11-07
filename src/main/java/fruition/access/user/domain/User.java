@@ -1,5 +1,6 @@
 package fruition.access.user.domain;
 
+import fruition.shared.i18n.SupportedLocale;
 import jakarta.persistence.*;
 import java.time.Instant;
 
@@ -39,6 +40,10 @@ public class User {
     @Column(name = "avatar_hash")
     private String avatarHash;
 
+    /** 사용자가 고른 화면 언어({@link SupportedLocale#code()}). 고른 적 없으면 null이다. */
+    @Column(name = "locale")
+    private String locale;
+
     protected User() {}
 
     public User(String id, String email, String provider, String displayName, String passwordHash) {
@@ -64,6 +69,16 @@ public class User {
     public void changePassword(String passwordHash) {
         this.passwordHash = passwordHash;
         this.updatedAt = Instant.now();
+    }
+
+    public void changeLocale(SupportedLocale locale) {
+        this.locale = locale.code();
+        this.updatedAt = Instant.now();
+    }
+
+    /** 로컬 비밀번호가 있는지. 소셜 가입 계정은 비밀번호가 없다(ADR 0017). */
+    public boolean hasPassword() {
+        return passwordHash != null;
     }
 
     /** 프로필 사진 metadata를 바꾼다. 바이너리 저장은 호출자가 한다. */
@@ -101,4 +116,5 @@ public class User {
     public Instant getUpdatedAt() { return updatedAt; }
     public String getAvatarContentType() { return avatarContentType; }
     public String getAvatarHash() { return avatarHash; }
+    public String getLocale() { return locale; }
 }

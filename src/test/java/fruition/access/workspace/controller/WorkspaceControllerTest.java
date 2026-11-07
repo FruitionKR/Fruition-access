@@ -310,7 +310,7 @@ class WorkspaceControllerTest {
     @Test
     void updateIconImage_unsupportedFormat_returns400() throws Exception {
         when(workspaceIconService.updateIconImage(eq(USER_ID), eq("ws_aaa11111"), any()))
-                .thenThrow(new UnsupportedWorkspaceIconException("PNG, JPEG, WebP, GIF 이미지만 아이콘으로 쓸 수 있습니다."));
+                .thenThrow(new UnsupportedWorkspaceIconException("error.UNSUPPORTED_WORKSPACE_ICON.unsupported_type", "PNG, JPEG, WebP, GIF 이미지만 아이콘으로 쓸 수 있습니다."));
 
         mockMvc.perform(multipart(HttpMethod.PUT, "/api/workspaces/ws_aaa11111/icon/image")
                         .file(new MockMultipartFile("file", "icon.txt", "image/png", "nope".getBytes()))

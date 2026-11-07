@@ -2,6 +2,7 @@ package fruition.access.user.service;
 
 import fruition.shared.logging.RepeatedFailureLogger;
 import fruition.access.user.mail.EmailChangeNotificationSender;
+import fruition.shared.i18n.SupportedLocale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -84,7 +85,8 @@ public class EmailChangeNotificationJob {
             }
             Notification notification = claimed.get(i);
             try {
-                sender.send(notification.recipientEmail(), notification.maskedNewEmail(), notification.changedAt());
+                sender.send(notification.recipientEmail(), notification.maskedNewEmail(), notification.changedAt(),
+                        SupportedLocale.fromCode(notification.locale()).orElse(SupportedLocale.DEFAULT).toLocale());
             } catch (RuntimeException e) {
                 recordFailure(notification, clock.instant(), e);
                 continue;
@@ -136,10 +138,10 @@ public class EmailChangeNotificationJob {
                     ORDER BY next_attempt_at
                     LIMIT ?
                     FOR UPDATE SKIP LOCKED)
-                RETURNING id, user_id, recipient_email, masked_new_email, changed_at, attempts
+                RETURNING id, user_id, recipient_email, masked_new_email, changed_at, attempts, locale
                 """, (rs, n) -> new Notification(rs.getLong("id"), rs.getString("user_id"),
                         rs.getString("recipient_email"), rs.getString("masked_new_email"),
-                        rs.getTimestamp("changed_at").toInstant(), rs.getInt("attempts")),
+                        rs.getTimestamp("changed_at").toInstant(), rs.getInt("attempts"), rs.getString("locale")),
                 Timestamp.from(now.plus(CLAIM_LEASE)), Timestamp.from(now), BATCH_SIZE);
     }
 
@@ -166,6 +168,7 @@ public class EmailChangeNotificationJob {
         return initialBackoff.multipliedBy(1L << Math.min(attempts - 1, MAX_BACKOFF_EXPONENT));
     }
 
+    /** {@code locale}은 넣을 때 고른 메일 언어. V34 이전 행은 null이고 한국어로 보낸다. */
     private record Notification(long id, String userId, String recipientEmail, String maskedNewEmail,
-                                Instant changedAt, int attempts) {}
+                                Instant changedAt, int attempts, String locale) {}
 }

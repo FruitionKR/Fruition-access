@@ -244,7 +244,7 @@ class VerifiedPasswordChangeIntegrationTest {
 
     private String sentCode(String email, String purpose) {
         ArgumentCaptor<String> code = ArgumentCaptor.forClass(String.class);
-        verify(sender).send(eq(email), eq(purpose), code.capture());
+        verify(sender).send(eq(email), eq(purpose), code.capture(), org.mockito.ArgumentMatchers.any());
         return code.getValue();
     }
 

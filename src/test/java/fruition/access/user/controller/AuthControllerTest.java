@@ -392,7 +392,7 @@ class AuthControllerTest {
     void me_withValidAccessToken_returns200() throws Exception {
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
         when(authService.me("user_1f9a74af")).thenReturn(
-                new MeResponse("user_1f9a74af", "test@example.com", "tes", null, Instant.now(), java.util.List.of(), false));
+                new MeResponse("user_1f9a74af", "test@example.com", "tes", null, Instant.now(), java.util.List.of(), false, true, null));
 
         mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
@@ -481,7 +481,7 @@ class AuthControllerTest {
     void updateDisplayName_authenticated_returns200() throws Exception {
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
         when(authService.updateDisplayName(eq("user_1f9a74af"), any())).thenReturn(
-                new MeResponse("user_1f9a74af", "test@example.com", "새 이름", null, Instant.now(), java.util.List.of(), false));
+                new MeResponse("user_1f9a74af", "test@example.com", "새 이름", null, Instant.now(), java.util.List.of(), false, true, null));
 
         mockMvc.perform(patch("/api/auth/me")
                         .header("Authorization", "Bearer " + token)
@@ -567,7 +567,7 @@ class AuthControllerTest {
     void changeEmail_authenticated_returns200() throws Exception {
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com");
         when(authService.changeEmail(eq("user_1f9a74af"), any(), eq("current-refresh"), any())).thenReturn(
-                new MeResponse("user_1f9a74af", "new@example.com", "이름", null, Instant.now(), java.util.List.of(), false));
+                new MeResponse("user_1f9a74af", "new@example.com", "이름", null, Instant.now(), java.util.List.of(), false, true, null));
 
         mockMvc.perform(put("/api/auth/me/email")
                         .header("Authorization", "Bearer " + token)
@@ -621,7 +621,7 @@ class AuthControllerTest {
         Instant authTime = Instant.ofEpochSecond(Instant.now().getEpochSecond());
         String token = jwtTokenProvider.generateAccessToken("user_1f9a74af", "test@example.com", authTime);
         when(authService.changeEmail(eq("user_1f9a74af"), any(), any(), eq(authTime))).thenReturn(
-                new MeResponse("user_1f9a74af", "new@example.com", "이름", null, Instant.now(), java.util.List.of(), false));
+                new MeResponse("user_1f9a74af", "new@example.com", "이름", null, Instant.now(), java.util.List.of(), false, true, null));
 
         mockMvc.perform(put("/api/auth/me/email")
                         .header("Authorization", "Bearer " + token)
@@ -876,7 +876,7 @@ class AuthControllerTest {
     void updateAvatar_returns200WithAvatarUrl() throws Exception {
         when(userAvatarService.updateAvatar(eq("user_1f9a74af"), any())).thenReturn(new MeResponse(
                 "user_1f9a74af", "test@example.com", "이름", "/api/users/user_1f9a74af/avatar?v=hash-1",
-                Instant.now(), java.util.List.of(), false));
+                Instant.now(), java.util.List.of(), false, true, null));
 
         mockMvc.perform(multipart(HttpMethod.PUT, "/api/auth/me/avatar")
                         .file(new MockMultipartFile("file", "me.png", "image/png", PNG_BYTES))
@@ -888,7 +888,7 @@ class AuthControllerTest {
     @Test
     void updateAvatar_unsupportedFormat_returns400() throws Exception {
         when(userAvatarService.updateAvatar(eq("user_1f9a74af"), any()))
-                .thenThrow(new UnsupportedUserAvatarException("PNG, JPEG, WebP, GIF 이미지만 프로필 사진으로 쓸 수 있습니다."));
+                .thenThrow(new UnsupportedUserAvatarException("error.UNSUPPORTED_USER_AVATAR.unsupported_type", "PNG, JPEG, WebP, GIF 이미지만 프로필 사진으로 쓸 수 있습니다."));
 
         mockMvc.perform(multipart(HttpMethod.PUT, "/api/auth/me/avatar")
                         .file(new MockMultipartFile("file", "me.txt", "image/png", "nope".getBytes()))
@@ -919,7 +919,7 @@ class AuthControllerTest {
     @Test
     void deleteAvatar_returns200WithNullAvatarUrl() throws Exception {
         when(userAvatarService.deleteAvatar("user_1f9a74af")).thenReturn(new MeResponse(
-                "user_1f9a74af", "test@example.com", "이름", null, Instant.now(), java.util.List.of(), false));
+                "user_1f9a74af", "test@example.com", "이름", null, Instant.now(), java.util.List.of(), false, true, null));
 
         mockMvc.perform(delete("/api/auth/me/avatar").header("Authorization", avatarBearer()))
                 .andExpect(status().isOk())

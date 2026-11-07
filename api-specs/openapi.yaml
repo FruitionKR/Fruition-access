@@ -449,6 +449,38 @@ paths:
       summary: 이메일 변경
       tags:
       - Auth
+  /api/auth/me/locale:
+    patch:
+      description: "인증된 사용자의 화면 언어(ko·en)를 저장합니다. 저장한 언어는 내 정보 응답의 locale로 돌아오고, 이 사용자에게 가는 메일(인증번호·초대·이메일 변경 알림)도 이 언어를 따릅니다."
+      operationId: updateLocale
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LocaleUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+          description: 저장 성공
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: locale이 없거나 ko·en이 아님(INVALID_REQUEST)
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: 인증되지 않음
+      summary: 화면 언어 저장
+      tags:
+      - Auth
   /api/auth/me/mfa:
     delete:
       description: 인증 앱의 코드 또는 복구 코드로 본인을 확인한 뒤 해제합니다.
@@ -2059,7 +2091,7 @@ components:
             $ref: "#/components/schemas/FieldError"
         message:
           type: string
-          description: 사용자에게 그대로 보여도 되는 한국어 문구
+          description: "사용자에게 그대로 보여도 되는 문구. 요청의 Accept-Language(ko·en)에 맞춘 언어이며, 헤더가 없거나 그 밖의 언어면 한국어다."
           example: 요청 형식이 올바르지 않습니다.
     ErrorResponse:
       type: object
@@ -2077,7 +2109,7 @@ components:
           example: email
         reason:
           type: string
-          description: 그 필드의 위반 사유
+          description: 그 필드의 위반 사유. message와 같은 언어다.
           example: email은 필수입니다.
     InvitationAcceptResponse:
       type: object
@@ -2128,6 +2160,19 @@ components:
           type: string
           description: 초대된 워크스페이스 이름
           example: 팀 워크스페이스
+    LocaleUpdateRequest:
+      type: object
+      properties:
+        locale:
+          type: string
+          description: 저장할 화면 언어
+          enum:
+          - ko
+          - en
+          example: en
+          pattern: ko|en
+      required:
+      - locale
     LoginRequest:
       type: object
       properties:
@@ -2196,10 +2241,21 @@ components:
           type: string
           description: 가입 이메일
           example: user@example.com
+        has_password:
+          type: boolean
+          description: 로컬 비밀번호가 설정돼 있는지. 소셜 가입 계정은 false다.
+          example: true
         id:
           type: string
           description: 사용자 ID
           example: user_3f1c8a6b52d7411e9c04ab5d2e7f6081
+        locale:
+          type: string
+          description: 사용자가 저장한 화면 언어. 저장한 적 없으면 null이다. PATCH /api/auth/me/locale로 바꾼다.
+          enum:
+          - ko
+          - en
+          example: ko
         oauth_providers:
           type: array
           description: "로그인에 쓸 수 있도록 연결된 소셜 provider(google, kakao, naver)"

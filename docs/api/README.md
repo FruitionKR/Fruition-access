@@ -6,7 +6,7 @@
 
 | 도메인 | API 수 | 역할 | 호출 연결 |
 |---|---:|---|---|
-| [Auth](auth.md) | 30 | 가입·인증·로그인·토큰·프로필·프로필 사진·소셜 계정 연동·가입 동의·회원 탈퇴 관리 | 20개는 frontend, 10개(소셜 계정 연동, 소셜 가입 동의, 약관 재동의, 회원 탈퇴, 프로필 사진, 인증번호 비밀번호 변경)는 호출자 미확인(frontend 구현 예정). signup과 회원 탈퇴가 document-svc를 호출 |
+| [Auth](auth.md) | 31 | 가입·인증·로그인·토큰·프로필·화면 언어·프로필 사진·소셜 계정 연동·가입 동의·회원 탈퇴 관리 | 20개는 frontend, 11개(화면 언어 저장 포함)(소셜 계정 연동, 소셜 가입 동의, 약관 재동의, 회원 탈퇴, 프로필 사진, 인증번호 비밀번호 변경)는 호출자 미확인(frontend 구현 예정). signup과 회원 탈퇴가 document-svc를 호출 |
 | [Users](users.md) | 1 | 다른 사용자의 프로필 사진 조회 | 호출자 미확인(frontend 구현 예정) |
 | [Workspaces](workspaces.md) | 16 | 워크스페이스·멤버 관리와 내부 인가·AI 모델 설정 | 9개는 frontend, 4개(`/internal/**`)는 document-svc·ai-svc, 3개는 호출자 미확인 |
 | [Invitations](invitations.md) | 5 | 이메일 초대 발송·취소·수락 | 3개는 frontend, 2개는 호출자 미확인 |
@@ -41,6 +41,7 @@
 | `POST /api/auth/password-reset` | frontend `src/entities/user/api/emailVerification.ts:82` | 없음 |
 | `GET /api/auth/me` | frontend `src/entities/user/api/account.ts:6` | 없음 |
 | `PATCH /api/auth/me` | frontend `src/entities/user/api/account.ts:11` | 없음 |
+| `PATCH /api/auth/me/locale` | **호출자 미확인** (frontend 디스플레이 설정 언어 선택 구현 중) | 없음 |
 | `DELETE /api/auth/me` | **호출자 미확인** (frontend 탈퇴 화면 구현 예정) | document-svc `purge/users`, `purge/workspaces` 다음 ai-svc `ai/purge/users`, `ai/purge/workspaces`(`DataPurgeRequestJob`이 커밋 뒤 호출) |
 | `POST /api/auth/me/consents` | **호출자 미확인** (frontend 재동의 화면 구현 예정) | 없음 |
 | `POST /api/auth/oauth/signup/consent` | **호출자 미확인** (frontend 가입 동의 화면 구현 예정) | document-svc `initial-note`(기본 워크스페이스 생성) |
@@ -98,6 +99,18 @@
 | `DELETE /api/workspaces/{workspace_id}/invitations/{invitation_id}` | **호출자 미확인** | 없음 |
 | `GET /api/invitations/{token}` | frontend `src/entities/workspace/api/invitations.ts:14` | 없음 |
 | `POST /api/invitations/{token}/accept` | frontend `src/entities/workspace/api/invitations.ts:19` | 없음 |
+
+### 오류 문구와 메일 언어
+
+- 오류 응답 `error.message`와 검증 실패 `error.details[].reason`은 요청의 `Accept-Language`로 언어를 고른다.
+  `ko`·`en`(지역 표기 `en-US` 등 포함)만 받고, 헤더가 없거나 그 밖의 언어면 한국어다. 헤더가 없는 기존 클라이언트는
+  예전과 같은 한국어 문구를 받는다. 분기는 언어와 상관없는 `error.code`로 한다.
+- 문구는 `src/main/resources/i18n/messages.properties`(한국어)와 `messages_en.properties`(영어)에 있다.
+  `/internal/**`의 오류 문구는 서비스 사이 호출이라 한국어로 둔다.
+- access가 보내는 메일(인증번호, 워크스페이스 초대, 이메일 변경 알림)은 수신자 계정의 저장 언어(`users.locale`) →
+  요청의 `Accept-Language` → 한국어 순으로 언어를 고른다. 가입 전 인증 메일이나 새 이메일 주소처럼 수신자 계정이 없으면
+  요청 언어를 쓰고, 초대받는 사람이 기존 사용자가 아니면 초대한 사람의 요청 언어를 쓴다. 템플릿은
+  `i18n/mail.properties`·`mail_en.properties`다. 결정 배경은 [ADR-0020](../adr/0020-localized-errors-and-mail.md).
 
 ### 내부 호출 인증
 
