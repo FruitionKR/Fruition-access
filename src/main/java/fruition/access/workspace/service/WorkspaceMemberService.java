@@ -20,6 +20,7 @@ import java.util.Set;
 
 @Service
 public class WorkspaceMemberService {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(WorkspaceMemberService.class);
 
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final AuthzProjectionStore authzProjectionStore;
@@ -71,6 +72,7 @@ public class WorkspaceMemberService {
         }
         if (changed) {
             authzProjectionStore.evict(workspaceId, targetUserId);
+            fruition.shared.logging.CommittedLog.info(log, "[멤버 권한 변경 완료] operation=member_change stage=completed workspaceId={} actorId={} targetUserId={} role={}", workspaceId, actorId, targetUserId, newRole);
         }
         return WorkspaceMemberResponse.from(target);
     }
@@ -90,6 +92,7 @@ public class WorkspaceMemberService {
 
         workspaceMemberRepository.delete(target);
         authzProjectionStore.evict(workspaceId, targetUserId);
+        fruition.shared.logging.CommittedLog.info(log, "[멤버 제거 완료] operation=member_remove stage=completed workspaceId={} actorId={} targetUserId={}", workspaceId, actorId, targetUserId);
     }
 
     /**

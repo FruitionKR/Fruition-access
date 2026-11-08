@@ -117,7 +117,7 @@ public class ExpiredRecordCleanupJob {
                         purged++;
                     }
                 } catch (RuntimeException e) {
-                    log.warn("[휴지통 워크스페이스 영구 삭제 실패, 다음 실행에서 다시 시도] workspaceId={}", candidate.id(), e);
+                    log.warn("[휴지통 워크스페이스 영구 삭제 실패, 다음 실행에서 다시 시도] operation=workspace_purge stage=purge workspaceId={}", candidate.id(), e);
                 }
             }
             last = candidates.get(candidates.size() - 1);

@@ -151,7 +151,7 @@ public class EmailChangeNotificationJob {
         if (notification.attempts() >= maxAttempts) {
             jdbc.update("UPDATE email_change_notifications SET status = 'failed', last_error = ? WHERE id = ?",
                     lastError, notification.id());
-            log.error("[이메일 변경 알림 발송 포기] id={} userId={} attempts={}",
+            log.error("[이메일 변경 알림 발송 포기] operation=email_change_notice stage=final_failure id={} userId={} attempts={}",
                     notification.id(), notification.userId(), notification.attempts(), error);
             return;
         }

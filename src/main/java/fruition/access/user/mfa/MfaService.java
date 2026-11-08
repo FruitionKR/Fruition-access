@@ -114,7 +114,7 @@ public class MfaService {
         }
         long counter = matchingCounter(mfa, code).orElseThrow(InvalidMfaCodeException::new);
         mfa.activate(counter);
-        log.info("[MFA 활성화] userId={}", userId);
+        fruition.shared.logging.CommittedLog.info(log, "[MFA 활성화] operation=mfa_enable stage=completed userId={}", userId);
     }
 
     /** 로그인 2단계와 해제에서 함께 쓴다. TOTP가 아니면 복구 코드로 한 번 더 본다. */
@@ -139,7 +139,7 @@ public class MfaService {
         UserMfa mfa = mfaRepository.findForUpdate(userId).orElseThrow(MfaNotEnabledException::new);
         recoveryCodeRepository.deleteAllByUserId(userId);
         mfaRepository.delete(mfa);
-        log.info("[MFA 해제] userId={}", userId);
+        fruition.shared.logging.CommittedLog.info(log, "[MFA 해제] operation=mfa_disable stage=completed userId={}", userId);
     }
 
     public boolean isEnabled(String userId) {
@@ -197,7 +197,7 @@ public class MfaService {
                 .findFirst()
                 .orElseThrow(InvalidMfaCodeException::new);
         recoveryCode.consume();
-        log.info("[MFA 복구 코드 사용] userId={} recoveryCodeId={}", userId, recoveryCode.getId());
+        fruition.shared.logging.CommittedLog.info(log, "[MFA 복구 코드 사용] operation=mfa_recovery stage=completed userId={} recoveryCodeId={}", userId, recoveryCode.getId());
     }
 
     private List<String> generateRecoveryCodes() {

@@ -88,8 +88,19 @@ class WorkspaceMemberServiceTest {
         when(workspaceMemberRepository.findByWorkspace_IdAndUser_Id(WORKSPACE_ID, MEMBER_ID))
                 .thenReturn(Optional.of(target));
 
-        WorkspaceMemberResponse response = workspaceMemberService.changeRole(
-                OWNER_ID, WORKSPACE_ID, MEMBER_ID, new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.OWNER, null));
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(WorkspaceMemberService.class);
+        var output = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        output.start();
+        logger.addAppender(output);
+        WorkspaceMemberResponse response;
+        try {
+            response = workspaceMemberService.changeRole(
+                    OWNER_ID, WORKSPACE_ID, MEMBER_ID, new WorkspaceMemberRoleUpdateRequest(WorkspaceRole.OWNER, null));
+        } finally {
+            logger.detachAppender(output);
+        }
+        assertThat(output.list).singleElement().extracting(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage)
+                .asString().startsWith("[멤버 권한 변경 완료] operation=member_change stage=completed").contains("targetUserId=" + MEMBER_ID, "role=OWNER");
 
         assertThat(response.role()).isEqualTo("OWNER");
         assertThat(target.getRole()).isEqualTo(WorkspaceRole.OWNER);
