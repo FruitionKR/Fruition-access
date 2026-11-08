@@ -10,6 +10,12 @@ security:
 tags:
 - description: 회원가입 및 인증 API
   name: Auth
+- description: Authenticated user's MCP connections
+  name: MCP Connections
+- description: OWNER-only workspace MCP connection management
+  name: MCP Workspace Connections
+- description: OWNER-only workspace MCP policy management
+  name: MCP Workspace Policy
 - description: 사용자 프로필 사진 조회 API
   name: Users
 - description: 워크스페이스 초대 API
@@ -1098,6 +1104,70 @@ paths:
       summary: 초대 수락
       tags:
       - Workspace Invitations
+  /api/mcp/connections:
+    get:
+      operationId: listMcpConnections
+      parameters:
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          minimum: 0
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          maximum: 100
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpConnectionListResponse"
+          description: User-scoped connection page
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Invalid page or size
+        "401":
+          description: Web authentication required
+      summary: List the authenticated user's MCP connections
+      tags:
+      - MCP Connections
+  /api/mcp/connections/{grant_id}:
+    delete:
+      operationId: disconnectMcpConnection
+      parameters:
+      - description: Server-generated UUIDv4 grant ID
+        in: path
+        name: grant_id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: Disconnected or already disconnected
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Invalid grant ID
+        "401":
+          description: Web authentication required
+        "404":
+          description: Connection not found
+      summary: Disconnect one of the authenticated user's MCP connections
+      tags:
+      - MCP Connections
   /api/users/{user_id}/avatar:
     get:
       description: 본인이거나 워크스페이스를 하나라도 같이 쓰는 멤버에게 프로필 사진 bytes를 반환합니다.
@@ -1534,6 +1604,187 @@ paths:
       summary: 초대 취소
       tags:
       - Workspace Invitations
+  /api/workspaces/{workspace_id}/mcp-connections:
+    get:
+      operationId: listWorkspaceMcpConnections
+      parameters:
+      - description: Workspace ID
+        example: ws_9d47a0e9a6324341b47562553b75f92a
+        in: path
+        name: workspace_id
+        required: true
+        schema:
+          type: string
+          default: ws_9d47a0e9a6324341b47562553b75f92a
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          minimum: 0
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          maximum: 100
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpWorkspaceConnectionListResponse"
+          description: Workspace-scoped connection page
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Invalid page or size
+        "401":
+          description: Web authentication required
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Current member is not an OWNER
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Workspace not found or actor is not a member
+      summary: List a workspace's MCP connections
+      tags:
+      - MCP Workspace Connections
+  /api/workspaces/{workspace_id}/mcp-connections/{grant_id}:
+    delete:
+      operationId: revokeWorkspaceMcpConnection
+      parameters:
+      - description: Workspace ID
+        example: ws_9d47a0e9a6324341b47562553b75f92a
+        in: path
+        name: workspace_id
+        required: true
+        schema:
+          type: string
+          default: ws_9d47a0e9a6324341b47562553b75f92a
+      - description: Server-generated UUIDv4 grant ID
+        in: path
+        name: grant_id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: Revoked or already sufficiently revoked
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Invalid grant ID
+        "401":
+          description: Web authentication required
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Current member is not an OWNER
+        "404":
+          description: "Workspace, membership, or connection not found"
+      summary: Administratively revoke a workspace MCP connection
+      tags:
+      - MCP Workspace Connections
+  /api/workspaces/{workspace_id}/mcp-policy:
+    get:
+      operationId: getMcpWorkspacePolicy
+      parameters:
+      - description: Workspace ID
+        example: ws_9d47a0e9a6324341b47562553b75f92a
+        in: path
+        name: workspace_id
+        required: true
+        schema:
+          type: string
+          default: ws_9d47a0e9a6324341b47562553b75f92a
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpWorkspacePolicyResponse"
+          description: Current policy or the disabled default
+        "401":
+          description: Web authentication required
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Current member is not an OWNER
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Workspace not found or actor is not a member
+      summary: Read a workspace's MCP policy
+      tags:
+      - MCP Workspace Policy
+    put:
+      operationId: replaceMcpWorkspacePolicy
+      parameters:
+      - description: Workspace ID
+        example: ws_9d47a0e9a6324341b47562553b75f92a
+        in: path
+        name: workspace_id
+        required: true
+        schema:
+          type: string
+          default: ws_9d47a0e9a6324341b47562553b75f92a
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/McpWorkspacePolicyRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpWorkspacePolicyResponse"
+          description: Updated policy
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Invalid policy body
+        "401":
+          description: Web authentication required
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Current member is not an OWNER
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Workspace not found or actor is not a member
+      summary: Replace a workspace's MCP policy
+      tags:
+      - MCP Workspace Policy
   /api/workspaces/{workspace_id}/members:
     get:
       description: 워크스페이스의 활성 멤버를 합류 순으로 반환합니다. 멤버만 조회할 수 있습니다.
@@ -1742,6 +1993,47 @@ paths:
           description: OK
       tags:
       - internal-authz-controller
+  /internal/mcp/grants/{grant_id}/authorize:
+    post:
+      operationId: authorize
+      parameters:
+      - description: Server-generated UUIDv4 grant ID
+        in: path
+        name: grant_id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/McpAuthorizationRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/McpAuthorizationResponse"
+          description: Current authorization decision
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Invalid grant ID or strict request schema
+        "401":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Missing or invalid internal token
+      security:
+      - internalToken: []
+      summary: Authorize current MCP grant context and action
+      tags:
+      - internal-mcp-authorization-controller
   /internal/users/{user_id}:
     get:
       operationId: user
@@ -1908,6 +2200,52 @@ components:
           description: 비밀번호 계정의 현재 비밀번호. 소셜 전용 계정은 비우고 10분 안에 다시 로그인한 토큰으로 요청한다.
           maxLength: 128
           minLength: 0
+    Action:
+      type: object
+      additionalProperties: false
+      properties:
+        approved_policy_generation:
+          type: integer
+          format: int64
+          minimum: 1
+        execution_basis:
+          type: string
+          enum:
+          - ACTIVE_GRANT
+          - EXPLICIT_WEB_APPROVAL
+        phase:
+          type: string
+          enum:
+          - TOOL_CALL
+          - PROPOSAL_CREATE
+          - WEB_APPROVAL
+          - OPERATION_BOUNDARY
+          - READ_RECEIPT
+        required_permissions:
+          type: array
+          items:
+            type: string
+            enum:
+            - wiki.ingest
+            - wiki.lint
+            - skill.author
+            - wiki.restore
+            - document.convert
+          uniqueItems: true
+        required_scopes:
+          type: array
+          items:
+            type: string
+            enum:
+            - read
+            - write_propose
+            - wiki_write
+          uniqueItems: true
+      required:
+      - execution_basis
+      - phase
+      - required_permissions
+      - required_scopes
     AiModelSelectionRequest:
       type: object
       description: 설정할 provider와 model 조합. 활성 catalog에 있는 짝만 허용된다.
@@ -1929,6 +2267,61 @@ components:
       required:
       - model
       - provider
+    Connection:
+      type: object
+      properties:
+        client_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        grant_id:
+          type: string
+          format: uuid
+        revocation_reason:
+          oneOf:
+          - type: string
+            enum:
+            - USER_DISCONNECT
+            - ADMIN_GRANT_REVOKE
+            - WORKSPACE_POLICY_DISABLED
+            - REFRESH_REUSE
+            - CLIENT_DISABLED
+            - USER_PURGED
+            - WORKSPACE_PURGED
+          - type: "null"
+        revoked_at:
+          type:
+          - string
+          - "null"
+          format: date-time
+        scopes:
+          type: array
+          items:
+            type: string
+            enum:
+            - read
+            - write_propose
+            - wiki_write
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - USER_DISCONNECTED
+          - ADMIN_REVOKED
+          - SECURITY_REVOKED
+          - PURGED
+        workspace_id:
+          type: string
+      required:
+      - client_id
+      - created_at
+      - grant_id
+      - revocation_reason
+      - revoked_at
+      - scopes
+      - status
+      - workspace_id
     ConsentRequest:
       type: object
       properties:
@@ -1948,6 +2341,30 @@ components:
           minLength: 0
       required:
       - marketing_opt_in
+    CurrentAccessView:
+      type: object
+      additionalProperties: false
+      properties:
+        permissions:
+          type: array
+          items:
+            type: string
+            enum:
+            - wiki.ingest
+            - wiki.lint
+            - skill.author
+            - wiki.restore
+            - document.convert
+          uniqueItems: true
+        role:
+          type: string
+          enum:
+          - OWNER
+          - MEMBER
+          - NONE
+      required:
+      - permissions
+      - role
     DisplayNameUpdateRequest:
       type: object
       properties:
@@ -2111,6 +2528,56 @@ components:
           type: string
           description: 그 필드의 위반 사유. message와 같은 언어다.
           example: email은 필수입니다.
+    GrantView:
+      type: object
+      additionalProperties: false
+      properties:
+        client_id:
+          type: string
+        grant_id:
+          type: string
+          format: uuid
+        revocation_reason:
+          oneOf:
+          - type: string
+            enum:
+            - USER_DISCONNECT
+            - ADMIN_GRANT_REVOKE
+            - WORKSPACE_POLICY_DISABLED
+            - REFRESH_REUSE
+            - CLIENT_DISABLED
+            - USER_PURGED
+            - WORKSPACE_PURGED
+          - type: "null"
+        scopes:
+          type: array
+          items:
+            type: string
+            enum:
+            - read
+            - write_propose
+            - wiki_write
+          uniqueItems: true
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - USER_DISCONNECTED
+          - ADMIN_REVOKED
+          - SECURITY_REVOKED
+          - PURGED
+        user_id:
+          type: string
+        workspace_id:
+          type: string
+      required:
+      - client_id
+      - grant_id
+      - revocation_reason
+      - scopes
+      - status
+      - user_id
+      - workspace_id
     InvitationAcceptResponse:
       type: object
       properties:
@@ -2217,6 +2684,166 @@ components:
           type: string
           description: 인증 스킴. 항상 Bearer다.
           example: Bearer
+    McpAuthorizationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        action:
+          $ref: "#/components/schemas/Action"
+        token_context:
+          $ref: "#/components/schemas/TokenContext"
+      required:
+      - action
+      - token_context
+    McpAuthorizationResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        checked_at:
+          type: string
+          format: date-time
+        client_name:
+          type: string
+        current_access:
+          oneOf:
+          - $ref: "#/components/schemas/CurrentAccessView"
+          - type: "null"
+        decision:
+          type: string
+          enum:
+          - ALLOW
+          - DENY
+        deny_reason:
+          oneOf:
+          - type: string
+            enum:
+            - TOKEN_CONTEXT_MISMATCH
+            - GRANT_INACTIVE
+            - POLICY_DISABLED
+            - POLICY_GENERATION_MISMATCH
+            - NOT_MEMBER
+            - PERMISSION_REVOKED
+            - INSUFFICIENT_SCOPE
+            - CLIENT_DISABLED
+            - PURGED
+            - AUTHZ_UNAVAILABLE
+          - type: "null"
+        effective_scopes:
+          type: array
+          items:
+            type: string
+            enum:
+            - read
+            - write_propose
+            - wiki_write
+          uniqueItems: true
+        grant:
+          oneOf:
+          - $ref: "#/components/schemas/GrantView"
+          - type: "null"
+        policy:
+          oneOf:
+          - $ref: "#/components/schemas/PolicyView"
+          - type: "null"
+      required:
+      - checked_at
+      - current_access
+      - decision
+      - deny_reason
+      - effective_scopes
+      - grant
+      - policy
+    McpConnectionListResponse:
+      type: object
+      properties:
+        connections:
+          type: array
+          items:
+            $ref: "#/components/schemas/Connection"
+        has_next:
+          type: boolean
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+      required:
+      - connections
+      - has_next
+      - page
+      - size
+    McpWorkspaceConnectionListResponse:
+      type: object
+      properties:
+        connections:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceMcpConnection"
+        has_next:
+          type: boolean
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+      required:
+      - connections
+      - has_next
+      - page
+      - size
+    McpWorkspacePolicyRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        allowed_scopes:
+          type: array
+          items:
+            type: string
+            enum:
+            - read
+            - write_propose
+            - wiki_write
+          uniqueItems: true
+        enabled:
+          type: boolean
+      required:
+      - allowed_scopes
+      - enabled
+    McpWorkspacePolicyResponse:
+      type: object
+      properties:
+        allowed_scopes:
+          type: array
+          items:
+            type: string
+            enum:
+            - read
+            - write_propose
+            - wiki_write
+          uniqueItems: true
+        enabled:
+          type: boolean
+        generation:
+          type:
+          - integer
+          - "null"
+          format: int64
+          minimum: 1
+        updated_at:
+          type:
+          - string
+          - "null"
+          format: date-time
+        workspace_id:
+          type: string
+      required:
+      - allowed_scopes
+      - enabled
+      - generation
+      - updated_at
+      - workspace_id
     MeResponse:
       type: object
       properties:
@@ -2422,6 +3049,28 @@ components:
       - email
       - new_password
       - verification_token
+    PolicyView:
+      type: object
+      additionalProperties: false
+      properties:
+        allowed_scopes:
+          type: array
+          items:
+            type: string
+            enum:
+            - read
+            - write_propose
+            - wiki_write
+          uniqueItems: true
+        enabled:
+          type: boolean
+        generation:
+          type: integer
+          format: int64
+      required:
+      - allowed_scopes
+      - enabled
+      - generation
     SessionListResponse:
       type: object
       properties:
@@ -2521,6 +3170,39 @@ components:
           type: string
           description: 생성된 사용자 ID
           example: user_3f1c8a6b52d7411e9c04ab5d2e7f6081
+    TokenContext:
+      type: object
+      additionalProperties: false
+      properties:
+        client_id:
+          type: string
+          minLength: 1
+        policy_generation:
+          type: integer
+          format: int64
+          minimum: 1
+        scopes:
+          type: array
+          items:
+            type: string
+            enum:
+            - read
+            - write_propose
+            - wiki_write
+          minItems: 1
+          uniqueItems: true
+        subject:
+          type: string
+          minLength: 1
+        workspace_id:
+          type: string
+          minLength: 1
+      required:
+      - client_id
+      - policy_generation
+      - scopes
+      - subject
+      - workspace_id
     VerificationConfirmRequest:
       type: object
       properties:
@@ -2681,6 +3363,64 @@ components:
           description: 내가 활성 멤버인 워크스페이스 목록
           items:
             $ref: "#/components/schemas/WorkspaceResponse"
+    WorkspaceMcpConnection:
+      type: object
+      properties:
+        client_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        grant_id:
+          type: string
+          format: uuid
+        revocation_reason:
+          type:
+          - string
+          - "null"
+          enum:
+          - USER_DISCONNECT
+          - ADMIN_GRANT_REVOKE
+          - WORKSPACE_POLICY_DISABLED
+          - REFRESH_REUSE
+          - CLIENT_DISABLED
+          - USER_PURGED
+          - WORKSPACE_PURGED
+        revoked_at:
+          type:
+          - string
+          - "null"
+          format: date-time
+        scopes:
+          type: array
+          items:
+            type: string
+            enum:
+            - read
+            - write_propose
+            - wiki_write
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - USER_DISCONNECTED
+          - ADMIN_REVOKED
+          - SECURITY_REVOKED
+          - PURGED
+        user_id:
+          type: string
+        workspace_id:
+          type: string
+      required:
+      - client_id
+      - created_at
+      - grant_id
+      - revocation_reason
+      - revoked_at
+      - scopes
+      - status
+      - user_id
+      - workspace_id
     WorkspaceMemberListResponse:
       type: object
       properties:
@@ -2861,3 +3601,7 @@ components:
       name: bearerAuth
       scheme: bearer
       type: http
+    internalToken:
+      in: header
+      name: X-Internal-Token
+      type: apiKey

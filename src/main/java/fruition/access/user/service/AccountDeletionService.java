@@ -44,7 +44,8 @@ public class AccountDeletionService {
     /** {@code authTime}은 요청 access token의 직접 로그인 시각이다. refresh로 받은 토큰이면 null이다. */
     @Transactional
     public void delete(String userId, AccountDeletionRequest request, Instant authTime) {
-        User user = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
+        User user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new UserNotFoundException(userId));
         reauthenticator.verify(user, request.password(), request.mfaCode(), authTime);
 
         List<Membership> memberships = lockMemberships(userId);

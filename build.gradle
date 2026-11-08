@@ -33,6 +33,9 @@ dependencies {
 	implementation 'io.micrometer:micrometer-registry-prometheus'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+	implementation 'org.springframework.boot:spring-boot-starter-oauth2-authorization-server'
+	// CIMD retrieval needs an injected DNS resolver on the actual TLS connection.
+	implementation 'org.apache.httpcomponents.client5:httpclient5'
 	implementation 'org.springframework.boot:spring-boot-starter-mail'
 	// TOTP(RFC 6238) 코드 생성. 의존성 없는 소형 라이브러리라 HMAC 계산만 맡기고
 	// 시간 창·재사용 방지 정책은 MfaService가 직접 다룬다.

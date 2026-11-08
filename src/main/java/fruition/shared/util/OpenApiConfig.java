@@ -4,6 +4,8 @@ import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;
 import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.media.ComposedSchema;
+import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.tags.Tag;
@@ -14,11 +16,13 @@ import org.springdoc.core.customizers.OpenApiCustomizer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 
 @Configuration
 public class OpenApiConfig {
 
     private static final String BEARER_SECURITY_SCHEME = "bearerAuth";
+    private static final String INTERNAL_SECURITY_SCHEME = "internalToken";
     private static final String WORKSPACE_ID_EXAMPLE = "ws_9d47a0e9a6324341b47562553b75f92a";
 
     @Bean
@@ -36,7 +40,11 @@ public class OpenApiConfig {
                                 .name(BEARER_SECURITY_SCHEME)
                                 .type(SecurityScheme.Type.HTTP)
                                 .scheme("bearer")
-                                .bearerFormat("JWT")));
+                                .bearerFormat("JWT"))
+                        .addSecuritySchemes(INTERNAL_SECURITY_SCHEME, new SecurityScheme()
+                                .name("X-Internal-Token")
+                                .type(SecurityScheme.Type.APIKEY)
+                                .in(SecurityScheme.In.HEADER)));
     }
 
     /**
@@ -74,5 +82,40 @@ public class OpenApiConfig {
                         }
                     });
         };
+    }
+
+    @Bean
+    public OpenApiCustomizer mcpAuthorizationNullableResponseCustomizer() {
+        return openApi -> {
+            if (openApi.getComponents() == null || openApi.getComponents().getSchemas() == null) {
+                return;
+            }
+            var schemas = openApi.getComponents().getSchemas();
+            nullableStringEnum(schemas.get("McpAuthorizationResponse"), "deny_reason");
+            nullableReference(schemas.get("McpAuthorizationResponse"), "grant");
+            nullableReference(schemas.get("McpAuthorizationResponse"), "policy");
+            nullableReference(schemas.get("McpAuthorizationResponse"), "current_access");
+            nullableStringEnum(schemas.get("GrantView"), "revocation_reason");
+            nullableStringEnum(schemas.get("Connection"), "revocation_reason");
+        };
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void nullableStringEnum(Schema<?> parent, String property) {
+        Schema<?> original = parent.getProperties().get(property);
+        Schema stringEnum = new Schema<>().types(Set.of("string"));
+        stringEnum.setEnum(original.getEnum());
+        parent.addProperties(property, nullable(stringEnum));
+    }
+
+    private static void nullableReference(Schema<?> parent, String property) {
+        Schema<?> original = parent.getProperties().get(property);
+        parent.addProperties(property, nullable(new Schema<>().$ref(original.get$ref())));
+    }
+
+    private static Schema<?> nullable(Schema<?> nonNull) {
+        return new ComposedSchema()
+                .addOneOfItem(nonNull)
+                .addOneOfItem(new Schema<>().types(Set.of("null")));
     }
 }
