@@ -100,7 +100,7 @@ class WorkspaceInvitationControllerTest {
     @Test
     void invite_nonOwner_returns403() throws Exception {
         when(workspaceInvitationService.invite(eq(USER_ID), eq(WORKSPACE_ID), any()))
-                .thenThrow(new WorkspaceAccessDeniedException("멤버를 초대하려면 OWNER 권한이 필요합니다."));
+                .thenThrow(new WorkspaceAccessDeniedException("error.WORKSPACE_ACCESS_DENIED.invite", "멤버를 초대하려면 OWNER 권한이 필요합니다."));
 
         mockMvc.perform(post("/api/workspaces/" + WORKSPACE_ID + "/invitations")
                         .header("Authorization", bearerToken())

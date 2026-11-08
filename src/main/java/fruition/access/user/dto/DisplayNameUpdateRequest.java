@@ -7,8 +7,8 @@ import jakarta.validation.constraints.Size;
 
 public record DisplayNameUpdateRequest(
         @JsonProperty("display_name")
-        @NotBlank(message = "display_name은 필수입니다.")
-        @Size(max = 255, message = "display_name은 255자 이하여야 합니다.")
+        @NotBlank(message = "{validation.display_name.required}")
+        @Size(max = 255, message = "{validation.display_name.max255}")
         @Schema(description = "새 표시 이름(255자 이하)", example = "새 이름")
         String displayName
 ) {}

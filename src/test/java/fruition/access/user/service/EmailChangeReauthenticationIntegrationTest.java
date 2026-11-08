@@ -87,12 +87,12 @@ class EmailChangeReauthenticationIntegrationTest {
         assertThat(emailOf(user)).isEqualTo(newEmail);
         String masked = newEmail.substring(0, 2) + "*".repeat(newEmail.indexOf('@') - 2) + "@example.com";
         // 요청 스레드는 메일을 보내지 않고 outbox에 남긴다. 새 이메일은 가린 값만 저장한다.
-        verify(notificationSender, never()).send(anyString(), anyString(), any());
+        verify(notificationSender, never()).send(anyString(), anyString(), any(), any());
         assertThat(notificationsOf(user)).containsExactly(user.getEmail() + " " + masked);
 
         notificationJob.run(Instant.now());
 
-        verify(notificationSender).send(eq(user.getEmail()), eq(masked), any(Instant.class));
+        verify(notificationSender).send(eq(user.getEmail()), eq(masked), any(Instant.class), any());
         assertThat(notificationsOf(user)).isEmpty();
     }
 
@@ -199,7 +199,7 @@ class EmailChangeReauthenticationIntegrationTest {
 
         assertThatThrownBy(() -> verificationService.request(new EmailVerificationRequest(taken, "email_change")))
                 .isInstanceOf(DuplicateEmailException.class);
-        verify(sender, never()).send(eq(taken), anyString(), anyString());
+        verify(sender, never()).send(eq(taken), anyString(), anyString(), any());
     }
 
     /**
@@ -249,7 +249,7 @@ class EmailChangeReauthenticationIntegrationTest {
 
     private String sentCode(String email, String purpose) {
         ArgumentCaptor<String> code = ArgumentCaptor.forClass(String.class);
-        verify(sender).send(eq(email), eq(purpose), code.capture());
+        verify(sender).send(eq(email), eq(purpose), code.capture(), any());
         return code.getValue();
     }
 

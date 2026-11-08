@@ -4,6 +4,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import fruition.shared.i18n.TestMessageSources;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,7 @@ class BaseExceptionHandlerTest {
 
     @BeforeEach
     void attachAppender() {
+        handler.setMessageSource(TestMessageSources.create());
         logger = (Logger) LoggerFactory.getLogger(BaseExceptionHandler.class);
         appender = new ListAppender<>();
         appender.start();

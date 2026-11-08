@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Size;
 /** 소셜 신규 가입 확정. OAuth 콜백이 넘긴 signup_token과 동의 항목을 함께 보낸다. */
 public record OAuthSignupConsentRequest(
         @JsonProperty("signup_token")
-        @NotBlank(message = "signup_token은 필수입니다.")
+        @NotBlank(message = "{validation.signup_token.required}")
         @Schema(description = "OAuth 콜백 주소에 ?signup_token=으로 붙어 온 1회용 토큰")
         String signupToken,
 

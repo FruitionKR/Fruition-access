@@ -1,5 +1,8 @@
 package fruition.access.user.service;
 
+import fruition.access.user.mail.MailLocaleResolver;
+import fruition.shared.i18n.SupportedLocale;
+import org.springframework.context.i18n.LocaleContextHolder;
 import fruition.access.user.domain.EmailVerification;
 import fruition.access.user.domain.User;
 import fruition.access.user.dto.EmailVerificationRequest;
@@ -63,7 +66,7 @@ class EmailVerificationServiceTest {
             return null;
         }).when(transactionTemplate).executeWithoutResult(any());
         service = new EmailVerificationService(
-                verificationRepository, userRepository, sender, transactionTemplate,
+                verificationRepository, userRepository, sender, new MailLocaleResolver(userRepository), transactionTemplate,
                 300, 600, 60, 5, 5);
     }
 
@@ -99,7 +102,7 @@ class EmailVerificationServiceTest {
         assertThatThrownBy(() -> service.request(new EmailVerificationRequest("oauth@example.com", "signup")))
                 .isInstanceOfSatisfying(EmailRegisteredWithOAuthException.class, e ->
                         assertThat(e.getOauthProviders()).containsExactly("google", "kakao"));
-        verify(sender, org.mockito.Mockito.never()).send(any(), any(), any());
+        verify(sender, org.mockito.Mockito.never()).send(any(), any(), any(), any());
         verify(verificationRepository, org.mockito.Mockito.never()).save(any());
     }
 
@@ -110,7 +113,7 @@ class EmailVerificationServiceTest {
 
         assertThatThrownBy(() -> service.request(new EmailVerificationRequest("taken@example.com", "email_change")))
                 .isInstanceOf(DuplicateEmailException.class);
-        verify(sender, org.mockito.Mockito.never()).send(any(), any(), any());
+        verify(sender, org.mockito.Mockito.never()).send(any(), any(), any(), any());
         verify(verificationRepository, org.mockito.Mockito.never()).save(any());
     }
 
@@ -120,7 +123,7 @@ class EmailVerificationServiceTest {
 
         service.request(new EmailVerificationRequest("free@example.com", "email_change"));
 
-        verify(sender).send(eq("free@example.com"), eq("email_change"), anyString());
+        verify(sender).send(eq("free@example.com"), eq("email_change"), anyString(), any());
     }
 
     @Test
@@ -129,7 +132,49 @@ class EmailVerificationServiceTest {
         service.request(new EmailVerificationRequest("oauth@example.com", "password_reset"));
 
         verify(userRepository, org.mockito.Mockito.never()).findProvidersByEmail(any());
-        verify(sender).send(eq("oauth@example.com"), eq("password_reset"), anyString());
+        verify(sender).send(eq("oauth@example.com"), eq("password_reset"), anyString(), any());
+    }
+
+    @Test
+    void request_passwordReset_usesSavedLocaleOfLocalAccountOverRequestLanguage() {
+        User social = new User("user_social", "user@example.com", "google", "소셜", null);
+        social.changeLocale(SupportedLocale.KO);
+        User local = new User("user_local", "user@example.com", User.PROVIDER_LOCAL, "로컬", "hash");
+        local.changeLocale(SupportedLocale.EN);
+        when(userRepository.findAllByEmail("user@example.com")).thenReturn(List.of(social, local));
+
+        LocaleContextHolder.setLocale(Locale.KOREAN);
+        try {
+            service.request(new EmailVerificationRequest("user@example.com", "password_reset"));
+        } finally {
+            LocaleContextHolder.resetLocaleContext();
+        }
+
+        verify(sender).send(eq("user@example.com"), eq("password_reset"), anyString(), eq(Locale.ENGLISH));
+    }
+
+    @Test
+    void request_signupWithoutAccount_usesRequestLanguage() {
+        LocaleContextHolder.setLocale(Locale.forLanguageTag("en-GB"));
+        try {
+            service.request(new EmailVerificationRequest("new@example.com", "signup"));
+        } finally {
+            LocaleContextHolder.resetLocaleContext();
+        }
+
+        verify(sender).send(eq("new@example.com"), eq("signup"), anyString(), eq(Locale.ENGLISH));
+    }
+
+    @Test
+    void request_unsupportedRequestLanguage_fallsBackToKorean() {
+        LocaleContextHolder.setLocale(Locale.JAPANESE);
+        try {
+            service.request(new EmailVerificationRequest("new@example.com", "signup"));
+        } finally {
+            LocaleContextHolder.resetLocaleContext();
+        }
+
+        verify(sender).send(eq("new@example.com"), eq("signup"), anyString(), eq(Locale.KOREAN));
     }
 
     @Test
@@ -177,7 +222,7 @@ class EmailVerificationServiceTest {
         assertThat(response.expiresIn()).isEqualTo(300);
         assertThat(response.retryAfter()).isEqualTo(60);
         verify(verificationRepository).save(any(EmailVerification.class));
-        verify(sender).send(eq("test@example.com"), eq("signup"), anyString());
+        verify(sender).send(eq("test@example.com"), eq("signup"), anyString(), any());
     }
 
     @Test
@@ -192,8 +237,8 @@ class EmailVerificationServiceTest {
             Locale.setDefault(original);
         }
 
-        verify(sender).send(eq("info@example.com"), eq("password_reset"), anyString());
-        verify(sender).send(eq("admin@example.com"), eq("password_change"), anyString());
+        verify(sender).send(eq("info@example.com"), eq("password_reset"), anyString(), any());
+        verify(sender).send(eq("admin@example.com"), eq("password_change"), anyString(), any());
     }
 
     @Test
@@ -208,13 +253,13 @@ class EmailVerificationServiceTest {
         service.request(new EmailVerificationRequest("test@example.com", "password_reset"));
 
         ArgumentCaptor<String> code = ArgumentCaptor.forClass(String.class);
-        verify(sender).send(eq("test@example.com"), eq("password_reset"), code.capture());
+        verify(sender).send(eq("test@example.com"), eq("password_reset"), code.capture(), any());
         assertThat(code.getValue()).matches("[0-9]{6}").isNotEqualTo("9700");
         ArgumentCaptor<EmailVerification> saved = ArgumentCaptor.forClass(EmailVerification.class);
         verify(verificationRepository).save(saved.capture());
         EmailVerification verification = saved.getValue();
         assertThat(verification.getCodeHash()).isEqualTo(sha256(code.getValue()));
-        when(verificationRepository.findById(verification.getId())).thenReturn(Optional.of(verification));
+        when(verificationRepository.findByIdForUpdate(verification.getId())).thenReturn(Optional.of(verification));
         assertThatThrownBy(() -> service.confirm(verification.getId(), new VerificationConfirmRequest("9700")))
                 .isInstanceOf(InvalidVerificationCodeException.class);
         assertThat(service.confirm(verification.getId(), new VerificationConfirmRequest(code.getValue()))
@@ -225,7 +270,7 @@ class EmailVerificationServiceTest {
 
     @Test
     void confirm_notFound_throws() {
-        when(verificationRepository.findById("ev_x")).thenReturn(Optional.empty());
+        when(verificationRepository.findByIdForUpdate("ev_x")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.confirm("ev_x", new VerificationConfirmRequest("123456")))
                 .isInstanceOf(EmailVerificationNotFoundException.class);
@@ -235,7 +280,7 @@ class EmailVerificationServiceTest {
     void confirm_expired_throws() {
         EmailVerification expired = verification("test@example.com", "signup", "123456",
                 Instant.now().minusSeconds(10));
-        when(verificationRepository.findById("ev_1")).thenReturn(Optional.of(expired));
+        when(verificationRepository.findByIdForUpdate("ev_1")).thenReturn(Optional.of(expired));
 
         assertThatThrownBy(() -> service.confirm("ev_1", new VerificationConfirmRequest("123456")))
                 .isInstanceOf(VerificationCodeExpiredException.class);
@@ -245,7 +290,7 @@ class EmailVerificationServiceTest {
     void confirm_wrongCode_incrementsAttemptAndThrows() {
         EmailVerification v = verification("test@example.com", "signup", "123456",
                 Instant.now().plusSeconds(300));
-        when(verificationRepository.findById("ev_1")).thenReturn(Optional.of(v));
+        when(verificationRepository.findByIdForUpdate("ev_1")).thenReturn(Optional.of(v));
 
         assertThatThrownBy(() -> service.confirm("ev_1", new VerificationConfirmRequest("000000")))
                 .isInstanceOf(InvalidVerificationCodeException.class);
@@ -259,7 +304,7 @@ class EmailVerificationServiceTest {
         for (int i = 0; i < 5; i++) {
             v.increaseAttempt();
         }
-        when(verificationRepository.findById("ev_1")).thenReturn(Optional.of(v));
+        when(verificationRepository.findByIdForUpdate("ev_1")).thenReturn(Optional.of(v));
 
         assertThatThrownBy(() -> service.confirm("ev_1", new VerificationConfirmRequest("123456")))
                 .isInstanceOf(VerificationCodeAttemptsExceededException.class);
@@ -269,7 +314,7 @@ class EmailVerificationServiceTest {
     void confirm_correctCode_issuesToken() {
         EmailVerification v = verification("test@example.com", "signup", "123456",
                 Instant.now().plusSeconds(300));
-        when(verificationRepository.findById("ev_1")).thenReturn(Optional.of(v));
+        when(verificationRepository.findByIdForUpdate("ev_1")).thenReturn(Optional.of(v));
 
         VerificationConfirmResponse response = service.confirm("ev_1", new VerificationConfirmRequest("123456"));
 

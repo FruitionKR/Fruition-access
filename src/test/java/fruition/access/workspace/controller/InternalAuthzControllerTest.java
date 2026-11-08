@@ -118,15 +118,47 @@ class InternalAuthzControllerTest {
     private static final String SETTINGS_URL = "/internal/workspaces/ws_1/settings";
 
     @Test
-    @DisplayName("워크스페이스 설정은 auto_ingest_on_upload를 돌려준다")
+    @DisplayName("워크스페이스 설정은 경로별 자동 편입 설정과 PDF 값과 같은 옛 auto_ingest_on_upload를 돌려준다")
     void settings_returnsAutoIngest() throws Exception {
         Workspace workspace = new Workspace("ws_1", "ws");
-        workspace.changeAutoIngestOnUpload(true);
+        workspace.changeAutoIngestMarkdownOnUpload(false);
+        workspace.changeAutoIngestPdfOnConvert(true);
         when(workspaceRepository.findById("ws_1")).thenReturn(Optional.of(workspace));
 
         mockMvc.perform(get(SETTINGS_URL).header("X-Internal-Token", internalToken))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.auto_ingest_markdown_on_upload").value(false))
+                .andExpect(jsonPath("$.auto_ingest_pdf_on_convert").value(true))
                 .andExpect(jsonPath("$.auto_ingest_on_upload").value(true));
+    }
+
+    @Test
+    @DisplayName("새 워크스페이스 설정은 Markdown만 자동 편입한다")
+    void settings_defaults() throws Exception {
+        when(workspaceRepository.findById("ws_1")).thenReturn(Optional.of(new Workspace("ws_1", "ws")));
+
+        mockMvc.perform(get(SETTINGS_URL).header("X-Internal-Token", internalToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.auto_ingest_markdown_on_upload").value(true))
+                .andExpect(jsonPath("$.auto_ingest_pdf_on_convert").value(false))
+                .andExpect(jsonPath("$.auto_ingest_on_upload").value(false));
+    }
+
+    @Test
+    @DisplayName("워크스페이스 설정은 describe_pdf_figures를 돌려주고 기본은 꺼짐이다")
+    void settings_returnsDescribePdfFigures() throws Exception {
+        Workspace off = new Workspace("ws_1", "ws");
+        when(workspaceRepository.findById("ws_1")).thenReturn(Optional.of(off));
+        mockMvc.perform(get(SETTINGS_URL).header("X-Internal-Token", internalToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.describe_pdf_figures").value(false));
+
+        Workspace on = new Workspace("ws_1", "ws");
+        on.changeDescribePdfFigures(true);
+        when(workspaceRepository.findById("ws_1")).thenReturn(Optional.of(on));
+        mockMvc.perform(get(SETTINGS_URL).header("X-Internal-Token", internalToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.describe_pdf_figures").value(true));
     }
 
     @Test

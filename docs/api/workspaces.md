@@ -16,7 +16,7 @@
 | [`GET /api/workspaces`](#summary-get-api-workspaces) | 로그인한 사용자가 소유한 워크스페이스 목록을 반환합니다. |
 | [`POST /api/workspaces`](#summary-post-api-workspaces) | 로그인한 사용자 소유의 워크스페이스를 생성합니다. |
 | [`GET /api/workspaces/trash`](#summary-get-api-workspaces-trash) | 소유자가 삭제한 워크스페이스를 반환합니다. |
-| [`PATCH /api/workspaces/{workspace_id}`](#summary-patch-api-workspaces-workspace-id) | 로그인한 사용자가 소유한 워크스페이스의 이름(`name`)과 업로드 시 자동 ingest 여부(`auto_ingest_on_upload`)를 변경합니다. |
+| [`PATCH /api/workspaces/{workspace_id}`](#summary-patch-api-workspaces-workspace-id) | 로그인한 사용자가 소유한 워크스페이스의 이름(`name`)과 자동 편입 설정(`auto_ingest_markdown_on_upload`·`auto_ingest_pdf_on_convert`)을 부분 변경합니다. |
 | [`DELETE /api/workspaces/{workspace_id}`](#summary-delete-api-workspaces-workspace-id) | 소유한 워크스페이스를 하위 데이터 변경 없이 소프트 삭제합니다. |
 | [`PUT /api/workspaces/{workspace_id}/icon`](#summary-put-api-workspaces-workspace-id-icon) | 소유한 워크스페이스의 아이콘 이모지를 설정하거나 지웁니다. |
 | [`PUT /api/workspaces/{workspace_id}/icon/image`](#summary-put-api-workspaces-workspace-id-icon-image) | 아이콘으로 쓸 이미지를 업로드합니다. |
@@ -28,7 +28,7 @@
 | [`GET /internal/authz/workspaces/{workspace_id}/users/{user_id}`](#summary-get-internal-authz-workspaces-workspace-id-users-user-id) | 워크스페이스에서 사용자의 활성 역할과 권한 항목을 조회합니다. |
 | [`GET /internal/users/{user_id}`](#summary-get-internal-users-user-id) | 워크스페이스에서 사용자의 활성 역할을 조회합니다. |
 | [`GET /internal/workspaces/{workspace_id}/member-users`](#summary-get-internal-workspaces-workspace-id-member-users) | 기간 중 멤버였던 사용자 ID를 조회합니다(탈퇴·제거 포함). |
-| [`GET /internal/workspaces/{workspace_id}/settings`](#summary-get-internal-workspaces-workspace-id-settings) | 워크스페이스 설정(`auto_ingest_on_upload`)을 조회합니다. |
+| [`GET /internal/workspaces/{workspace_id}/settings`](#summary-get-internal-workspaces-workspace-id-settings) | 워크스페이스 자동 편입 설정(`auto_ingest_markdown_on_upload`·`auto_ingest_pdf_on_convert`)을 조회합니다. |
 | [`GET /internal/workspaces/{workspace_id}/ai-model-settings`](#summary-get-internal-workspaces-workspace-id-ai-model-settings) | 내부 서비스가 사용자의 표시 이름을 조회합니다. |
 | [`PUT /internal/workspaces/{workspace_id}/ai-model-settings`](#summary-put-internal-workspaces-workspace-id-ai-model-settings) | 내부 서비스가 사용자의 표시 이름을 조회합니다. |
 
@@ -79,7 +79,9 @@
 {
   "workspaces": [
     {
+      "auto_ingest_markdown_on_upload": true,
       "auto_ingest_on_upload": false,
+      "auto_ingest_pdf_on_convert": false,
       "created_at": "2026-08-13T04:25:24.371948Z",
       "id": "ws_9d47a0e9a6324341b47562553b75f92a",
       "name": "내 워크스페이스",
@@ -113,7 +115,9 @@ curl -X GET "$ACCESS/api/workspaces" \
 {
   "workspaces": [
     {
+      "auto_ingest_markdown_on_upload": true,
       "auto_ingest_on_upload": false,
+      "auto_ingest_pdf_on_convert": false,
       "created_at": "2026-08-13T04:25:24.371948Z",
       "id": "ws_9d47a0e9a6324341b47562553b75f92a",
       "name": "내 워크스페이스",
@@ -183,7 +187,9 @@ curl -X GET "$ACCESS/api/workspaces" \
 
 ```json
 {
+  "auto_ingest_markdown_on_upload": true,
   "auto_ingest_on_upload": false,
+  "auto_ingest_pdf_on_convert": false,
   "created_at": "2026-08-13T04:25:24.371948Z",
   "id": "ws_9d47a0e9a6324341b47562553b75f92a",
   "name": "내 워크스페이스",
@@ -232,7 +238,9 @@ curl -X POST "$ACCESS/api/workspaces" \
 
 ```json
 {
+  "auto_ingest_markdown_on_upload": true,
   "auto_ingest_on_upload": false,
+  "auto_ingest_pdf_on_convert": false,
   "created_at": "2026-08-13T04:25:24.371948Z",
   "id": "ws_9d47a0e9a6324341b47562553b75f92a",
   "name": "내 워크스페이스",
@@ -354,11 +362,11 @@ curl -X GET "$ACCESS/api/workspaces/trash" \
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | 로그인한 사용자가 소유한 워크스페이스의 이름(`name`)과 업로드 시 자동 ingest 여부(`auto_ingest_on_upload`)를 변경합니다. 둘 다 선택이지만 하나는 필요합니다. |
+| 목적 | 로그인한 사용자가 소유한 워크스페이스의 이름(`name`)과 자동 편입 설정(`auto_ingest_markdown_on_upload`·`auto_ingest_pdf_on_convert`)을 부분 변경합니다. 모두 선택이지만 하나는 필요합니다. |
 | 입력 | **Path** — `workspace_id`: `string`<br>**Body** — `WorkspaceRenameRequest` |
 | 출력 | `200` 변경 성공 — `WorkspaceResponse` |
 | 조건 | 인증 필요<br>`Authorization: Bearer <access_token>`을 검증한다.<br>인증된 사용자만 호출할 수 있다.<br>path의 `workspace_id`에 대한 활성 멤버십을 검증한다. |
-| 주요 오류 | `400` `name`·`auto_ingest_on_upload`가 모두 없음, `name`이 공백이거나 255자 초과 — `ErrorResponse`<br>`404` 워크스페이스를 찾을 수 없음 — `ErrorResponse` |
+| 주요 오류 | `400` `name`·`auto_ingest_markdown_on_upload`·`auto_ingest_pdf_on_convert`·`auto_ingest_on_upload`가 모두 없음, `name`이 공백이거나 255자 초과 — `ErrorResponse`<br>`404` 워크스페이스를 찾을 수 없음 — `ErrorResponse` |
 
 <details>
 <summary>상세 계약 보기</summary>
@@ -372,7 +380,7 @@ curl -X GET "$ACCESS/api/workspaces/trash" \
 
 #### 2. 목적
 
-로그인한 사용자가 소유한 워크스페이스의 이름(`name`)과 업로드 시 자동 ingest 여부(`auto_ingest_on_upload`)를 변경합니다.
+로그인한 사용자가 소유한 워크스페이스의 이름(`name`)과 자동 편입 설정(`auto_ingest_markdown_on_upload`·`auto_ingest_pdf_on_convert`)을 부분 변경합니다.
 
 #### 3. Auth 필요 여부
 
@@ -385,15 +393,20 @@ curl -X GET "$ACCESS/api/workspaces/trash" \
 |---|---|---|---|---|
 | path | `workspace_id` | `string` | 예 | 워크스페이스 ID |
 | body | `name` | `string` | 아니오 | 새 이름. 공백만으로는 불가, 255자 이하. 생략하면 바꾸지 않는다. |
-| body | `auto_ingest_on_upload` | `boolean` | 아니오 | 업로드 시 자동 ingest 여부(기본 `false`). 생략하면 바꾸지 않는다. |
+| body | `auto_ingest_markdown_on_upload` | `boolean` | 아니오 | Markdown·txt 업로드 직후 자동으로 위키에 편입할지(새 워크스페이스 기본 `true`). 생략하면 바꾸지 않는다. |
+| body | `auto_ingest_pdf_on_convert` | `boolean` | 아니오 | PDF 변환이 끝난 뒤 자동으로 위키에 편입할지(새 워크스페이스 기본 `false`). 생략하면 바꾸지 않는다. |
+| body | `auto_ingest_on_upload` | `boolean` | 아니오 | 하위호환용 옛 필드. 보내면 위 두 설정을 모두 이 값으로 바꾼다. 새 필드와 함께 오면 새 필드가 우선한다. |
 
-- 두 필드 중 하나는 있어야 한다. 둘 다 없으면 `400 INVALID_REQUEST`다.
+- 필드 중 하나는 있어야 한다. 모두 없으면 `400 INVALID_REQUEST`다.
+- 자동 편입은 어느 경로든 요청자에게 `wiki.ingest` 권한이 있을 때만 일어난다(판정은 document).
+- 응답의 `auto_ingest_on_upload`는 하위호환용이며 `auto_ingest_pdf_on_convert`와 같은 값이다.
 - Content-Type: `application/json` (`WorkspaceRenameRequest`)
 
 ```json
 {
   "name": "이름 바꾼 워크스페이스",
-  "auto_ingest_on_upload": true
+  "auto_ingest_markdown_on_upload": true,
+  "auto_ingest_pdf_on_convert": false
 }
 ```
 
@@ -404,7 +417,9 @@ curl -X GET "$ACCESS/api/workspaces/trash" \
 
 ```json
 {
+  "auto_ingest_markdown_on_upload": true,
   "auto_ingest_on_upload": false,
+  "auto_ingest_pdf_on_convert": false,
   "created_at": "2026-08-13T04:25:24.371948Z",
   "id": "ws_9d47a0e9a6324341b47562553b75f92a",
   "name": "내 워크스페이스",
@@ -448,7 +463,9 @@ curl -X PATCH "$ACCESS/api/workspaces/ws_9d47a0e9a6324341b47562553b75f92a" \
 
 ```json
 {
+  "auto_ingest_markdown_on_upload": true,
   "auto_ingest_on_upload": false,
+  "auto_ingest_pdf_on_convert": false,
   "created_at": "2026-08-13T04:25:24.371948Z",
   "id": "ws_9d47a0e9a6324341b47562553b75f92a",
   "name": "내 워크스페이스",
@@ -1551,12 +1568,13 @@ curl -X GET "$ACCESS/internal/users/<value>" \
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | 워크스페이스 설정을 조회합니다. document가 업로드 시 자동 ingest 여부를 판단할 때 씁니다. |
+| 목적 | 워크스페이스 설정을 조회합니다. document가 Markdown 업로드 직후·PDF 변환 뒤 자동 편입 여부를 판단할 때 씁니다. |
 | 입력 | **Path** — `workspace_id`: `string`<br>**Header** — `X-Internal-Token`(필수): `string` |
-| 출력 | `200` 성공 — `{"auto_ingest_on_upload": false}` |
+| 출력 | `200` 성공 — `{"auto_ingest_markdown_on_upload": true, "auto_ingest_pdf_on_convert": false, "auto_ingest_on_upload": false}` |
 | 조건 | 내부 서비스 토큰을 가진 서비스만 호출할 수 있다. |
 | 주요 오류 | `401` `INVALID_INTERNAL_TOKEN`, `404` `WORKSPACE_NOT_FOUND`(없거나 소프트 삭제됨) |
 
+- `auto_ingest_on_upload`는 새 필드를 모르는 옛 document를 위한 하위호환 값으로 `auto_ingest_pdf_on_convert`와 같다.
 - 구현: `src/main/java/fruition/access/workspace/controller/InternalAuthzController.java`, `operationId: settings`
 
 <a id="summary-get-internal-workspaces-workspace-id-ai-model-settings"></a>

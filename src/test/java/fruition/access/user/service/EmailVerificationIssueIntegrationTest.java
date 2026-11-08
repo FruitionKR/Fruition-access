@@ -98,7 +98,7 @@ class EmailVerificationIssueIntegrationTest {
             assertThat(rateLimited).isEqualTo(1);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM email_verifications WHERE email = ?",
                     Long.class, email)).isEqualTo(1L);
-            verify(sender, times(1)).send(eq(email), eq(PURPOSE), anyString());
+            verify(sender, times(1)).send(eq(email), eq(PURPOSE), anyString(), org.mockito.ArgumentMatchers.any());
         } finally {
             executor.shutdownNow();
             assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
@@ -128,7 +128,7 @@ class EmailVerificationIssueIntegrationTest {
 
     private String lastCode(String email) {
         ArgumentCaptor<String> code = ArgumentCaptor.forClass(String.class);
-        verify(sender, atLeastOnce()).send(eq(email), eq(PURPOSE), code.capture());
+        verify(sender, atLeastOnce()).send(eq(email), eq(PURPOSE), code.capture(), org.mockito.ArgumentMatchers.any());
         List<String> codes = code.getAllValues();
         return codes.get(codes.size() - 1);
     }

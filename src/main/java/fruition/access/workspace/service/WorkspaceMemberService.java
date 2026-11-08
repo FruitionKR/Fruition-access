@@ -82,7 +82,7 @@ public class WorkspaceMemberService {
     public void remove(String actorId, String workspaceId, String targetUserId) {
         WorkspaceRole actorRole = requireMember(workspaceId, actorId);
         if (!actorId.equals(targetUserId) && actorRole != WorkspaceRole.OWNER) {
-            throw new WorkspaceAccessDeniedException("다른 멤버를 제거하려면 OWNER 권한이 필요합니다.");
+            throw new WorkspaceAccessDeniedException("error.WORKSPACE_ACCESS_DENIED.remove_member", "다른 멤버를 제거하려면 OWNER 권한이 필요합니다.");
         }
 
         WorkspaceMember target = findMember(workspaceId, targetUserId);
@@ -106,7 +106,7 @@ public class WorkspaceMemberService {
 
     private void requireOwner(String workspaceId, String userId) {
         if (requireMember(workspaceId, userId) != WorkspaceRole.OWNER) {
-            throw new WorkspaceAccessDeniedException("멤버 역할을 변경하려면 OWNER 권한이 필요합니다.");
+            throw new WorkspaceAccessDeniedException("error.WORKSPACE_ACCESS_DENIED.change_role", "멤버 역할을 변경하려면 OWNER 권한이 필요합니다.");
         }
     }
 

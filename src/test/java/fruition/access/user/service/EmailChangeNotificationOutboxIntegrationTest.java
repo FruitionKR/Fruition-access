@@ -1,7 +1,10 @@
 package fruition.access.user.service;
 
 import fruition.TestcontainersConfiguration;
+import fruition.access.user.domain.User;
 import fruition.access.user.mail.EmailChangeNotificationSender;
+import fruition.access.user.repository.UserRepository;
+import fruition.shared.i18n.SupportedLocale;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,6 +53,7 @@ class EmailChangeNotificationOutboxIntegrationTest {
     @Autowired TransactionTemplate transactionTemplate;
     @Autowired EmailChangeNotificationJob job;
     @Autowired JdbcTemplate jdbc;
+    @Autowired UserRepository users;
     @MockitoBean EmailChangeNotificationSender sender;
 
     final Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
@@ -70,7 +74,31 @@ class EmailChangeNotificationOutboxIntegrationTest {
         assertThat(row.get("masked_new_email")).isEqualTo("ne*****@example.com");
         assertThat(row.get("status")).isEqualTo("pending");
         assertThat(row.get("attempts")).isEqualTo(0);
-        verify(sender, never()).send(anyString(), anyString(), any());
+        verify(sender, never()).send(anyString(), anyString(), any(), any());
+    }
+
+    @Test
+    void notification_isSentInUsersSavedLocale() {
+        String userId = userId();
+        User user = new User(userId, "new-" + userId + "@example.com", User.PROVIDER_LOCAL, "언어", "hash");
+        user.changeLocale(SupportedLocale.EN);
+        users.saveAndFlush(user);
+
+        transactionTemplate.executeWithoutResult(status -> publish(userId));
+        assertThat(rowOf(userId).get("locale")).isEqualTo("en");
+
+        job.run(Instant.now());
+
+        verify(sender).send(userId + "@example.com", "ne*****@example.com", now, java.util.Locale.ENGLISH);
+    }
+
+    @Test
+    void notificationWithoutUserLocale_isStoredAsKorean() {
+        String userId = userId();
+
+        transactionTemplate.executeWithoutResult(status -> publish(userId));
+
+        assertThat(rowOf(userId).get("locale")).isEqualTo("ko");
     }
 
     @Test
@@ -97,7 +125,7 @@ class EmailChangeNotificationOutboxIntegrationTest {
 
         job.run(now);
 
-        verify(sender).send(userId + "@example.com", "ne*****@example.com", now);
+        verify(sender).send(userId + "@example.com", "ne*****@example.com", now, java.util.Locale.KOREAN);
         assertThat(exists(id)).isFalse();
     }
 
@@ -105,7 +133,7 @@ class EmailChangeNotificationOutboxIntegrationTest {
     void failedSend_incrementsAttemptsAndPostponesNextAttempt() {
         String userId = userId();
         long id = insert(userId, 0, now);
-        doThrow(new MailSendException("smtp down")).when(sender).send(anyString(), anyString(), any());
+        doThrow(new MailSendException("smtp down")).when(sender).send(anyString(), anyString(), any(), any());
 
         job.run(now);
 
@@ -118,7 +146,7 @@ class EmailChangeNotificationOutboxIntegrationTest {
         assertThat(nextAttemptAt).isAfterOrEqualTo(now.plus(Duration.ofMinutes(1)))
                 .isBefore(now.plus(Duration.ofMinutes(2)));
         job.run(now.plusSeconds(30));
-        verify(sender, times(1)).send(anyString(), anyString(), any());
+        verify(sender, times(1)).send(anyString(), anyString(), any(), any());
         assertThat(exists(id)).isTrue();
     }
 
@@ -126,7 +154,7 @@ class EmailChangeNotificationOutboxIntegrationTest {
     void retriesWithDoublingBackoff() {
         String userId = userId();
         insert(userId, 2, now);
-        doThrow(new MailSendException("smtp down")).when(sender).send(anyString(), anyString(), any());
+        doThrow(new MailSendException("smtp down")).when(sender).send(anyString(), anyString(), any(), any());
 
         job.run(now);
 
@@ -140,7 +168,7 @@ class EmailChangeNotificationOutboxIntegrationTest {
     void lastAttemptFailure_marksNotificationFailed() {
         String userId = userId();
         insert(userId, 4, now);
-        doThrow(new MailSendException("smtp down")).when(sender).send(anyString(), anyString(), any());
+        doThrow(new MailSendException("smtp down")).when(sender).send(anyString(), anyString(), any(), any());
 
         job.run(now);
 
@@ -148,7 +176,7 @@ class EmailChangeNotificationOutboxIntegrationTest {
         assertThat(row.get("status")).isEqualTo("failed");
         assertThat(row.get("attempts")).isEqualTo(5);
         job.run(now.plus(Duration.ofDays(1)));
-        verify(sender, times(1)).send(anyString(), anyString(), any());
+        verify(sender, times(1)).send(anyString(), anyString(), any(), any());
     }
 
     @Test
@@ -159,11 +187,11 @@ class EmailChangeNotificationOutboxIntegrationTest {
         doAnswer(invocation -> {
             job.run(now);
             return null;
-        }).when(sender).send(anyString(), anyString(), any());
+        }).when(sender).send(anyString(), anyString(), any(), any());
 
         job.run(now);
 
-        verify(sender, times(1)).send(anyString(), anyString(), any());
+        verify(sender, times(1)).send(anyString(), anyString(), any(), any());
         assertThat(countOf(userId)).isZero();
     }
 
@@ -178,7 +206,7 @@ class EmailChangeNotificationOutboxIntegrationTest {
 
         jobWith(failingDelete, Clock.systemUTC()).run(now);
 
-        verify(sender, times(1)).send(anyString(), anyString(), any());
+        verify(sender, times(1)).send(anyString(), anyString(), any(), any());
         // 일시적인 오류일 수 있어 한 번 더 지워 본다.
         verify(failingDelete, times(2)).update(DELETE_SQL, id);
         Map<String, Object> row = rowOf(userId);
@@ -212,11 +240,11 @@ class EmailChangeNotificationOutboxIntegrationTest {
         doAnswer(invocation -> {
             clock.advance(EmailChangeNotificationJob.SEND_DEADLINE);
             return null;
-        }).when(sender).send(anyString(), anyString(), any());
+        }).when(sender).send(anyString(), anyString(), any(), any());
 
         jobWith(jdbc, clock).run(now);
 
-        verify(sender, times(1)).send(anyString(), anyString(), any());
+        verify(sender, times(1)).send(anyString(), anyString(), any(), any());
         assertThat(countOf(userId)).isEqualTo(2);
         Instant releasedAt = now.plus(EmailChangeNotificationJob.SEND_DEADLINE);
         for (Map<String, Object> row : jdbc.queryForList(
@@ -227,7 +255,7 @@ class EmailChangeNotificationOutboxIntegrationTest {
 
         // 다음 실행이 남은 행을 바로 보낸다.
         jobWith(jdbc, Clock.systemUTC()).run(releasedAt);
-        verify(sender, times(3)).send(anyString(), anyString(), any());
+        verify(sender, times(3)).send(anyString(), anyString(), any(), any());
         assertThat(countOf(userId)).isZero();
     }
 

@@ -72,7 +72,7 @@ class WorkspaceControllerTest {
     @Test
     void create_authenticated_returns201() throws Exception {
         when(workspaceService.create(eq(USER_ID), any())).thenReturn(
-                new WorkspaceResponse("ws_aaa11111", "팀 워크스페이스", null, null, false, Instant.now(), Instant.now()));
+                new WorkspaceResponse("ws_aaa11111", "팀 워크스페이스", null, null, false, true, false, false, Instant.now(), Instant.now()));
 
         mockMvc.perform(post("/api/workspaces")
                         .header("Authorization", bearerToken())
@@ -95,7 +95,7 @@ class WorkspaceControllerTest {
     void list_authenticated_returnsWorkspaces() throws Exception {
         when(workspaceService.list(USER_ID)).thenReturn(
                 new WorkspaceListResponse(List.of(
-                        new WorkspaceResponse("ws_aaa11111", "워크스페이스 A", "🌱", null, false, Instant.now(), Instant.now()))));
+                        new WorkspaceResponse("ws_aaa11111", "워크스페이스 A", "🌱", null, false, true, false, false, Instant.now(), Instant.now()))));
 
         mockMvc.perform(get("/api/workspaces").header("Authorization", bearerToken()))
                 .andExpect(status().isOk())
@@ -106,12 +106,12 @@ class WorkspaceControllerTest {
     @Test
     void rename_ownedWorkspace_returns200() throws Exception {
         when(workspaceService.rename(eq(USER_ID), eq("ws_aaa11111"), any())).thenReturn(
-                new WorkspaceResponse("ws_aaa11111", "새 이름", null, null, false, Instant.now(), Instant.now()));
+                new WorkspaceResponse("ws_aaa11111", "새 이름", null, null, false, true, false, false, Instant.now(), Instant.now()));
 
         mockMvc.perform(patch("/api/workspaces/ws_aaa11111")
                         .header("Authorization", bearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new WorkspaceRenameRequest("새 이름", null))))
+                        .content(objectMapper.writeValueAsString(new WorkspaceRenameRequest("새 이름", null, null, null, null))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("새 이름"));
     }
@@ -124,7 +124,7 @@ class WorkspaceControllerTest {
         mockMvc.perform(patch("/api/workspaces/ws_unknown")
                         .header("Authorization", bearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new WorkspaceRenameRequest("새 이름", null))))
+                        .content(objectMapper.writeValueAsString(new WorkspaceRenameRequest("새 이름", null, null, null, null))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("WORKSPACE_NOT_FOUND"));
     }
@@ -132,14 +132,45 @@ class WorkspaceControllerTest {
     @Test
     void update_onlyAutoIngest_returns200() throws Exception {
         when(workspaceService.rename(eq(USER_ID), eq("ws_aaa11111"), any())).thenReturn(
-                new WorkspaceResponse("ws_aaa11111", "이름", null, null, true, Instant.now(), Instant.now()));
+                new WorkspaceResponse("ws_aaa11111", "이름", null, null, true, true, true, false, Instant.now(), Instant.now()));
 
         mockMvc.perform(patch("/api/workspaces/ws_aaa11111")
                         .header("Authorization", bearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"auto_ingest_on_upload\":true}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.auto_ingest_on_upload").value(true));
+                .andExpect(jsonPath("$.auto_ingest_on_upload").value(true))
+                .andExpect(jsonPath("$.auto_ingest_markdown_on_upload").value(true))
+                .andExpect(jsonPath("$.auto_ingest_pdf_on_convert").value(true));
+    }
+
+    @Test
+    void update_splitAutoIngestFields_bindsBothAndReturns200() throws Exception {
+        when(workspaceService.rename(eq(USER_ID), eq("ws_aaa11111"),
+                eq(new WorkspaceRenameRequest(null, null, true, false, null)))).thenReturn(
+                new WorkspaceResponse("ws_aaa11111", "이름", null, null, false, true, false, false, Instant.now(), Instant.now()));
+
+        mockMvc.perform(patch("/api/workspaces/ws_aaa11111")
+                        .header("Authorization", bearerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"auto_ingest_markdown_on_upload\":true,\"auto_ingest_pdf_on_convert\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.auto_ingest_markdown_on_upload").value(true))
+                .andExpect(jsonPath("$.auto_ingest_pdf_on_convert").value(false))
+                .andExpect(jsonPath("$.auto_ingest_on_upload").value(false));
+    }
+
+    @Test
+    void update_onlyDescribePdfFigures_returns200() throws Exception {
+        when(workspaceService.rename(eq(USER_ID), eq("ws_aaa11111"), any())).thenReturn(
+                new WorkspaceResponse("ws_aaa11111", "이름", null, null, false, true, false, true, Instant.now(), Instant.now()));
+
+        mockMvc.perform(patch("/api/workspaces/ws_aaa11111")
+                        .header("Authorization", bearerToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"describe_pdf_figures\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.describe_pdf_figures").value(true));
     }
 
     @Test
@@ -205,7 +236,7 @@ class WorkspaceControllerTest {
     @Test
     void updateIcon_ownedWorkspace_returns200() throws Exception {
         when(workspaceIconService.updateIcon(eq(USER_ID), eq("ws_aaa11111"), any())).thenReturn(
-                new WorkspaceResponse("ws_aaa11111", "워크스페이스", "📁", null, false, Instant.now(), Instant.now()));
+                new WorkspaceResponse("ws_aaa11111", "워크스페이스", "📁", null, false, true, false, false, Instant.now(), Instant.now()));
 
         mockMvc.perform(put("/api/workspaces/ws_aaa11111/icon")
                         .header("Authorization", bearerToken())
@@ -218,7 +249,7 @@ class WorkspaceControllerTest {
     @Test
     void updateIcon_nullClears_returns200() throws Exception {
         when(workspaceIconService.updateIcon(eq(USER_ID), eq("ws_aaa11111"), any())).thenReturn(
-                new WorkspaceResponse("ws_aaa11111", "워크스페이스", null, null, false, Instant.now(), Instant.now()));
+                new WorkspaceResponse("ws_aaa11111", "워크스페이스", null, null, false, true, false, false, Instant.now(), Instant.now()));
 
         mockMvc.perform(put("/api/workspaces/ws_aaa11111/icon")
                         .header("Authorization", bearerToken())
@@ -266,7 +297,7 @@ class WorkspaceControllerTest {
     void updateIconImage_returns200WithIconUrl() throws Exception {
         when(workspaceIconService.updateIconImage(eq(USER_ID), eq("ws_aaa11111"), any())).thenReturn(
                 new WorkspaceResponse("ws_aaa11111", "워크스페이스", null,
-                        "/api/workspaces/ws_aaa11111/icon/image", false, Instant.now(), Instant.now()));
+                        "/api/workspaces/ws_aaa11111/icon/image", false, true, false, false, Instant.now(), Instant.now()));
 
         mockMvc.perform(multipart(HttpMethod.PUT, "/api/workspaces/ws_aaa11111/icon/image")
                         .file(new MockMultipartFile("file", "icon.png", "image/png", PNG_BYTES))
@@ -279,7 +310,7 @@ class WorkspaceControllerTest {
     @Test
     void updateIconImage_unsupportedFormat_returns400() throws Exception {
         when(workspaceIconService.updateIconImage(eq(USER_ID), eq("ws_aaa11111"), any()))
-                .thenThrow(new UnsupportedWorkspaceIconException("PNG, JPEG, WebP, GIF 이미지만 아이콘으로 쓸 수 있습니다."));
+                .thenThrow(new UnsupportedWorkspaceIconException("error.UNSUPPORTED_WORKSPACE_ICON.unsupported_type", "PNG, JPEG, WebP, GIF 이미지만 아이콘으로 쓸 수 있습니다."));
 
         mockMvc.perform(multipart(HttpMethod.PUT, "/api/workspaces/ws_aaa11111/icon/image")
                         .file(new MockMultipartFile("file", "icon.txt", "image/png", "nope".getBytes()))

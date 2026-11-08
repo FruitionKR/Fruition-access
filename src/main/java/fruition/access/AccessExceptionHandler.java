@@ -76,7 +76,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.CONFLICT, "DUPLICATE_EMAIL");
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
-                .body(ErrorResponse.of("DUPLICATE_EMAIL", e.getMessage()));
+                .body(error("DUPLICATE_EMAIL", e));
     }
 
     @ExceptionHandler(EmailRegisteredWithOAuthException.class)
@@ -85,7 +85,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
                 .body(new EmailRegisteredWithOAuthResponse(
-                        ErrorResponse.of("EMAIL_REGISTERED_WITH_OAUTH", e.getMessage()).error(),
+                        error("EMAIL_REGISTERED_WITH_OAUTH", e).error(),
                         e.getOauthProviders()));
     }
 
@@ -95,7 +95,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
                 .body(new EmailRegisteredResponse(
-                        ErrorResponse.of("EMAIL_REGISTERED", e.getMessage()).error(),
+                        error("EMAIL_REGISTERED", e).error(),
                         e.getProviders()));
     }
 
@@ -104,7 +104,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS");
         return ResponseEntity
                 .status(HttpStatus.UNAUTHORIZED)
-                .body(ErrorResponse.of("INVALID_CREDENTIALS", e.getMessage()));
+                .body(error("INVALID_CREDENTIALS", e));
     }
 
     @ExceptionHandler(InvalidRefreshTokenException.class)
@@ -112,7 +112,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.UNAUTHORIZED, "INVALID_REFRESH_TOKEN");
         return ResponseEntity
                 .status(HttpStatus.UNAUTHORIZED)
-                .body(ErrorResponse.of("INVALID_REFRESH_TOKEN", e.getMessage()));
+                .body(error("INVALID_REFRESH_TOKEN", e));
     }
 
     @ExceptionHandler(MfaRateLimitedException.class)
@@ -120,7 +120,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.TOO_MANY_REQUESTS, "MFA_RATE_LIMITED");
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .header("Retry-After", String.valueOf(e.getRetryAfter()))
-                .body(ErrorResponse.of("MFA_RATE_LIMITED", e.getMessage()));
+                .body(error("MFA_RATE_LIMITED", e));
     }
 
     @ExceptionHandler(InvalidMfaCodeException.class)
@@ -128,7 +128,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.UNAUTHORIZED, "INVALID_MFA_CODE");
         return ResponseEntity
                 .status(HttpStatus.UNAUTHORIZED)
-                .body(ErrorResponse.of("INVALID_MFA_CODE", e.getMessage()));
+                .body(error("INVALID_MFA_CODE", e));
     }
 
     @ExceptionHandler(InvalidMfaChallengeException.class)
@@ -136,7 +136,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_REQUEST, "INVALID_MFA_CHALLENGE");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("INVALID_MFA_CHALLENGE", e.getMessage()));
+                .body(error("INVALID_MFA_CHALLENGE", e));
     }
 
     @ExceptionHandler(MfaNotEnabledException.class)
@@ -144,7 +144,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.NOT_FOUND, "MFA_NOT_ENABLED");
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse.of("MFA_NOT_ENABLED", e.getMessage()));
+                .body(error("MFA_NOT_ENABLED", e));
     }
 
     @ExceptionHandler(MfaAlreadyEnabledException.class)
@@ -152,7 +152,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.CONFLICT, "MFA_ALREADY_ENABLED");
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
-                .body(ErrorResponse.of("MFA_ALREADY_ENABLED", e.getMessage()));
+                .body(error("MFA_ALREADY_ENABLED", e));
     }
 
     @ExceptionHandler(UserNotFoundException.class)
@@ -160,7 +160,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.NOT_FOUND, "USER_NOT_FOUND");
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse.of("USER_NOT_FOUND", e.getMessage()));
+                .body(error("USER_NOT_FOUND", e));
     }
 
     @ExceptionHandler(OAuthAccountNotFoundException.class)
@@ -168,7 +168,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.NOT_FOUND, "OAUTH_ACCOUNT_NOT_FOUND");
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse.of("OAUTH_ACCOUNT_NOT_FOUND", e.getMessage()));
+                .body(error("OAUTH_ACCOUNT_NOT_FOUND", e));
     }
 
     @ExceptionHandler(UnsupportedOAuthProviderException.class)
@@ -176,7 +176,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.NOT_FOUND, "UNSUPPORTED_OAUTH_PROVIDER");
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse.of("UNSUPPORTED_OAUTH_PROVIDER", e.getMessage()));
+                .body(error("UNSUPPORTED_OAUTH_PROVIDER", e));
     }
 
     @ExceptionHandler(InvalidOAuthLinkCodeException.class)
@@ -184,7 +184,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_REQUEST, "INVALID_OAUTH_LINK_CODE");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("INVALID_OAUTH_LINK_CODE", e.getMessage()));
+                .body(error("INVALID_OAUTH_LINK_CODE", e));
     }
 
     @ExceptionHandler(OAuthAccountAlreadyLinkedException.class)
@@ -192,7 +192,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.CONFLICT, "OAUTH_ACCOUNT_ALREADY_LINKED");
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
-                .body(ErrorResponse.of("OAUTH_ACCOUNT_ALREADY_LINKED", e.getMessage()));
+                .body(error("OAUTH_ACCOUNT_ALREADY_LINKED", e));
     }
 
     @ExceptionHandler(OAuthUnlinkNotAllowedException.class)
@@ -200,7 +200,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.CONFLICT, "OAUTH_UNLINK_NOT_ALLOWED");
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
-                .body(ErrorResponse.of("OAUTH_UNLINK_NOT_ALLOWED", e.getMessage()));
+                .body(error("OAUTH_UNLINK_NOT_ALLOWED", e));
     }
 
     @ExceptionHandler(SessionNotFoundException.class)
@@ -208,7 +208,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.NOT_FOUND, "SESSION_NOT_FOUND");
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse.of("SESSION_NOT_FOUND", e.getMessage()));
+                .body(error("SESSION_NOT_FOUND", e));
     }
 
     @ExceptionHandler(WorkspaceNotFoundException.class)
@@ -216,7 +216,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.NOT_FOUND, "WORKSPACE_NOT_FOUND");
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse.of("WORKSPACE_NOT_FOUND", e.getMessage()));
+                .body(error("WORKSPACE_NOT_FOUND", e));
     }
 
     @ExceptionHandler(WorkspaceTrashExpiredException.class)
@@ -224,7 +224,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.CONFLICT, "WORKSPACE_TRASH_EXPIRED");
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
-                .body(ErrorResponse.of("WORKSPACE_TRASH_EXPIRED", e.getMessage()));
+                .body(error("WORKSPACE_TRASH_EXPIRED", e));
     }
 
     @ExceptionHandler(WorkspaceMemberNotFoundException.class)
@@ -232,7 +232,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.NOT_FOUND, "WORKSPACE_MEMBER_NOT_FOUND");
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse.of("WORKSPACE_MEMBER_NOT_FOUND", e.getMessage()));
+                .body(error("WORKSPACE_MEMBER_NOT_FOUND", e));
     }
 
     @ExceptionHandler(WorkspaceAccessDeniedException.class)
@@ -240,7 +240,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.FORBIDDEN, "WORKSPACE_ACCESS_DENIED");
         return ResponseEntity
                 .status(HttpStatus.FORBIDDEN)
-                .body(ErrorResponse.of("WORKSPACE_ACCESS_DENIED", e.getMessage()));
+                .body(error("WORKSPACE_ACCESS_DENIED", e));
     }
 
     @ExceptionHandler(LastOwnerException.class)
@@ -248,7 +248,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.CONFLICT, "LAST_OWNER");
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
-                .body(ErrorResponse.of("LAST_OWNER", e.getMessage()));
+                .body(error("LAST_OWNER", e));
     }
 
     @ExceptionHandler(OwnerPermissionsFixedException.class)
@@ -256,7 +256,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_REQUEST, "OWNER_PERMISSIONS_FIXED");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("OWNER_PERMISSIONS_FIXED", e.getMessage()));
+                .body(error("OWNER_PERMISSIONS_FIXED", e));
     }
 
     @ExceptionHandler(InvitationNotFoundException.class)
@@ -264,7 +264,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.NOT_FOUND, "INVITATION_NOT_FOUND");
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse.of("INVITATION_NOT_FOUND", e.getMessage()));
+                .body(error("INVITATION_NOT_FOUND", e));
     }
 
     @ExceptionHandler(InvitationExpiredException.class)
@@ -272,7 +272,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.GONE, "INVITATION_EXPIRED");
         return ResponseEntity
                 .status(HttpStatus.GONE)
-                .body(ErrorResponse.of("INVITATION_EXPIRED", e.getMessage()));
+                .body(error("INVITATION_EXPIRED", e));
     }
 
     @ExceptionHandler(InvitationAlreadyAcceptedException.class)
@@ -280,7 +280,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.CONFLICT, "INVITATION_ALREADY_ACCEPTED");
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
-                .body(ErrorResponse.of("INVITATION_ALREADY_ACCEPTED", e.getMessage()));
+                .body(error("INVITATION_ALREADY_ACCEPTED", e));
     }
 
     @ExceptionHandler(InvitationEmailMismatchException.class)
@@ -288,7 +288,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.FORBIDDEN, "INVITATION_EMAIL_MISMATCH");
         return ResponseEntity
                 .status(HttpStatus.FORBIDDEN)
-                .body(ErrorResponse.of("INVITATION_EMAIL_MISMATCH", e.getMessage()));
+                .body(error("INVITATION_EMAIL_MISMATCH", e));
     }
 
     @ExceptionHandler(InvitationInProgressException.class)
@@ -296,7 +296,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.CONFLICT, "INVITATION_IN_PROGRESS");
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
-                .body(ErrorResponse.of("INVITATION_IN_PROGRESS", e.getMessage()));
+                .body(error("INVITATION_IN_PROGRESS", e));
     }
 
     @ExceptionHandler(InvitationSendException.class)
@@ -304,7 +304,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_GATEWAY, "INVITATION_SEND_FAILED");
         return ResponseEntity
                 .status(HttpStatus.BAD_GATEWAY)
-                .body(ErrorResponse.of("INVITATION_SEND_FAILED", e.getMessage()));
+                .body(error("INVITATION_SEND_FAILED", e));
     }
 
     @ExceptionHandler(AlreadyMemberException.class)
@@ -312,7 +312,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.CONFLICT, "ALREADY_MEMBER");
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
-                .body(ErrorResponse.of("ALREADY_MEMBER", e.getMessage()));
+                .body(error("ALREADY_MEMBER", e));
     }
 
     @ExceptionHandler(UnsupportedWorkspaceIconException.class)
@@ -320,7 +320,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_REQUEST, "UNSUPPORTED_WORKSPACE_ICON");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("UNSUPPORTED_WORKSPACE_ICON", e.getMessage()));
+                .body(error("UNSUPPORTED_WORKSPACE_ICON", e));
     }
 
     @ExceptionHandler(WorkspaceIconTooLargeException.class)
@@ -328,7 +328,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.PAYLOAD_TOO_LARGE, "WORKSPACE_ICON_TOO_LARGE");
         return ResponseEntity
                 .status(HttpStatus.PAYLOAD_TOO_LARGE)
-                .body(ErrorResponse.of("WORKSPACE_ICON_TOO_LARGE", e.getMessage()));
+                .body(error("WORKSPACE_ICON_TOO_LARGE", e));
     }
 
     @ExceptionHandler(WorkspaceIconNotFoundException.class)
@@ -336,7 +336,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.NOT_FOUND, "WORKSPACE_ICON_NOT_FOUND");
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse.of("WORKSPACE_ICON_NOT_FOUND", e.getMessage()));
+                .body(error("WORKSPACE_ICON_NOT_FOUND", e));
     }
 
     @ExceptionHandler(UnsupportedUserAvatarException.class)
@@ -344,7 +344,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_REQUEST, "UNSUPPORTED_USER_AVATAR");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("UNSUPPORTED_USER_AVATAR", e.getMessage()));
+                .body(error("UNSUPPORTED_USER_AVATAR", e));
     }
 
     @ExceptionHandler(UserAvatarTooLargeException.class)
@@ -352,7 +352,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.PAYLOAD_TOO_LARGE, "USER_AVATAR_TOO_LARGE");
         return ResponseEntity
                 .status(HttpStatus.PAYLOAD_TOO_LARGE)
-                .body(ErrorResponse.of("USER_AVATAR_TOO_LARGE", e.getMessage()));
+                .body(error("USER_AVATAR_TOO_LARGE", e));
     }
 
     @ExceptionHandler(UserAvatarNotFoundException.class)
@@ -360,7 +360,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.NOT_FOUND, "USER_AVATAR_NOT_FOUND");
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse.of("USER_AVATAR_NOT_FOUND", e.getMessage()));
+                .body(error("USER_AVATAR_NOT_FOUND", e));
     }
 
     /**
@@ -371,13 +371,13 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
     public ResponseEntity<ErrorResponse> handleMaxUploadSize(MaxUploadSizeExceededException e, HttpServletRequest request) {
         boolean avatar = request.getRequestURI().endsWith("/avatar");
         String code = avatar ? "USER_AVATAR_TOO_LARGE" : "WORKSPACE_ICON_TOO_LARGE";
-        String message = avatar
-                ? new UserAvatarTooLargeException(UserAvatarValidator.MAX_BYTES).getMessage()
-                : new WorkspaceIconTooLargeException(WorkspaceIconValidator.MAX_BYTES).getMessage();
+        Exception tooLarge = avatar
+                ? new UserAvatarTooLargeException(UserAvatarValidator.MAX_BYTES)
+                : new WorkspaceIconTooLargeException(WorkspaceIconValidator.MAX_BYTES);
         logHandled(e, HttpStatus.PAYLOAD_TOO_LARGE, code);
         return ResponseEntity
                 .status(HttpStatus.PAYLOAD_TOO_LARGE)
-                .body(ErrorResponse.of(code, message));
+                .body(error(code, tooLarge));
     }
 
     @ExceptionHandler(InvalidOAuthCodeException.class)
@@ -385,7 +385,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.UNAUTHORIZED, "INVALID_OAUTH_CODE");
         return ResponseEntity
                 .status(HttpStatus.UNAUTHORIZED)
-                .body(ErrorResponse.of("INVALID_OAUTH_CODE", e.getMessage()));
+                .body(error("INVALID_OAUTH_CODE", e));
     }
 
     @ExceptionHandler(OAuthEmailNotProvidedException.class)
@@ -393,7 +393,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_REQUEST, "OAUTH_EMAIL_NOT_PROVIDED");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("OAUTH_EMAIL_NOT_PROVIDED", e.getMessage()));
+                .body(error("OAUTH_EMAIL_NOT_PROVIDED", e));
     }
 
     @ExceptionHandler(InvalidConsentException.class)
@@ -401,7 +401,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_REQUEST, "CONSENT_REQUIRED");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("CONSENT_REQUIRED", e.getMessage()));
+                .body(error("CONSENT_REQUIRED", e));
     }
 
     @ExceptionHandler(InvalidSignupTokenException.class)
@@ -409,7 +409,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.UNAUTHORIZED, "INVALID_SIGNUP_TOKEN");
         return ResponseEntity
                 .status(HttpStatus.UNAUTHORIZED)
-                .body(ErrorResponse.of("INVALID_SIGNUP_TOKEN", e.getMessage()));
+                .body(error("INVALID_SIGNUP_TOKEN", e));
     }
 
     @ExceptionHandler(ReauthenticationRequiredException.class)
@@ -417,7 +417,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.UNAUTHORIZED, "REAUTHENTICATION_REQUIRED");
         return ResponseEntity
                 .status(HttpStatus.UNAUTHORIZED)
-                .body(ErrorResponse.of("REAUTHENTICATION_REQUIRED", e.getMessage()));
+                .body(error("REAUTHENTICATION_REQUIRED", e));
     }
 
     @ExceptionHandler(AccountDeletionBlockedException.class)
@@ -426,7 +426,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
                 .body(new AccountDeletionBlockedResponse(
-                        ErrorResponse.of("SOLE_OWNER_OF_SHARED_WORKSPACE", e.getMessage()).error(),
+                        error("SOLE_OWNER_OF_SHARED_WORKSPACE", e).error(),
                         e.getWorkspaces()));
     }
 
@@ -435,7 +435,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_REQUEST, "PASSWORD_LOGIN_UNAVAILABLE");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("PASSWORD_LOGIN_UNAVAILABLE", e.getMessage()));
+                .body(error("PASSWORD_LOGIN_UNAVAILABLE", e));
     }
 
     @ExceptionHandler(EmailVerificationNotFoundException.class)
@@ -443,7 +443,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.NOT_FOUND, "VERIFICATION_NOT_FOUND");
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse.of("VERIFICATION_NOT_FOUND", e.getMessage()));
+                .body(error("VERIFICATION_NOT_FOUND", e));
     }
 
     @ExceptionHandler(InvalidVerificationCodeException.class)
@@ -451,7 +451,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_REQUEST, "INVALID_VERIFICATION_CODE");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("INVALID_VERIFICATION_CODE", e.getMessage()));
+                .body(error("INVALID_VERIFICATION_CODE", e));
     }
 
     @ExceptionHandler(VerificationCodeExpiredException.class)
@@ -459,7 +459,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_REQUEST, "VERIFICATION_CODE_EXPIRED");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("VERIFICATION_CODE_EXPIRED", e.getMessage()));
+                .body(error("VERIFICATION_CODE_EXPIRED", e));
     }
 
     @ExceptionHandler(VerificationCodeAttemptsExceededException.class)
@@ -467,7 +467,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_REQUEST, "VERIFICATION_CODE_ATTEMPTS_EXCEEDED");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("VERIFICATION_CODE_ATTEMPTS_EXCEEDED", e.getMessage()));
+                .body(error("VERIFICATION_CODE_ATTEMPTS_EXCEEDED", e));
     }
 
     @ExceptionHandler(InvalidVerificationTokenException.class)
@@ -475,7 +475,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_REQUEST, "INVALID_VERIFICATION_TOKEN");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("INVALID_VERIFICATION_TOKEN", e.getMessage()));
+                .body(error("INVALID_VERIFICATION_TOKEN", e));
     }
 
     @ExceptionHandler(VerificationRateLimitedException.class)
@@ -484,7 +484,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.TOO_MANY_REQUESTS)
                 .header("Retry-After", String.valueOf(e.getRetryAfter()))
-                .body(ErrorResponse.of("VERIFICATION_RATE_LIMITED", e.getMessage()));
+                .body(error("VERIFICATION_RATE_LIMITED", e));
     }
 
     @ExceptionHandler(EmailAvailabilityRateLimitedException.class)
@@ -493,7 +493,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.TOO_MANY_REQUESTS)
                 .header("Retry-After", String.valueOf(e.getRetryAfter()))
-                .body(ErrorResponse.of("EMAIL_AVAILABILITY_RATE_LIMITED", e.getMessage()));
+                .body(error("EMAIL_AVAILABILITY_RATE_LIMITED", e));
     }
 
     @ExceptionHandler(LoginRateLimitedException.class)
@@ -501,7 +501,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.TOO_MANY_REQUESTS, "LOGIN_RATE_LIMITED");
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .header("Retry-After", String.valueOf(e.getRetryAfter()))
-                .body(ErrorResponse.of("LOGIN_RATE_LIMITED", e.getMessage()));
+                .body(error("LOGIN_RATE_LIMITED", e));
     }
 
     @ExceptionHandler(PasswordChangeRateLimitedException.class)
@@ -509,7 +509,7 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.TOO_MANY_REQUESTS, "PASSWORD_CHANGE_RATE_LIMITED");
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .header("Retry-After", String.valueOf(e.getRetryAfter()))
-                .body(ErrorResponse.of("PASSWORD_CHANGE_RATE_LIMITED", e.getMessage()));
+                .body(error("PASSWORD_CHANGE_RATE_LIMITED", e));
     }
 
     @ExceptionHandler(EmailVerificationSendException.class)
@@ -517,6 +517,6 @@ public class AccessExceptionHandler extends BaseExceptionHandler {
         logHandled(e, HttpStatus.BAD_GATEWAY, "EMAIL_SEND_FAILED");
         return ResponseEntity
                 .status(HttpStatus.BAD_GATEWAY)
-                .body(ErrorResponse.of("EMAIL_SEND_FAILED", "인증번호 메일 발송에 실패했습니다. 잠시 후 다시 시도해 주세요."));
+                .body(error("EMAIL_SEND_FAILED", e));
     }
 }

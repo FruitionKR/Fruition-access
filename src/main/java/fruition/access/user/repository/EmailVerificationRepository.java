@@ -32,4 +32,10 @@ public interface EmailVerificationRepository extends JpaRepository<EmailVerifica
     // 소비 트랜잭션이 끝날 때까지 같은 토큰의 검증·소비를 직렬화한다.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<EmailVerification> findByTokenHash(String tokenHash);
+
+    /** 인증번호 확인을 행 단위로 직렬화한다. 잠그지 않으면 동시 오답이 시도 횟수를 서로 덮어써 한도보다 많이 비교된다. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select v from EmailVerification v where v.id = :id")
+    Optional<EmailVerification> findByIdForUpdate(@Param("id") String id);
+
 }

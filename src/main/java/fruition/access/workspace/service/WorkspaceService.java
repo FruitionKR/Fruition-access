@@ -121,8 +121,19 @@ public class WorkspaceService {
         if (request.name() != null) {
             workspace.rename(request.name().trim());
         }
+        // 옛 필드는 두 설정을 함께 바꾸던 의미를 유지한다. 새 필드가 함께 오면 새 필드가 그 값을 덮는다.
         if (request.autoIngestOnUpload() != null) {
-            workspace.changeAutoIngestOnUpload(request.autoIngestOnUpload());
+            workspace.changeAutoIngestMarkdownOnUpload(request.autoIngestOnUpload());
+            workspace.changeAutoIngestPdfOnConvert(request.autoIngestOnUpload());
+        }
+        if (request.autoIngestMarkdownOnUpload() != null) {
+            workspace.changeAutoIngestMarkdownOnUpload(request.autoIngestMarkdownOnUpload());
+        }
+        if (request.autoIngestPdfOnConvert() != null) {
+            workspace.changeAutoIngestPdfOnConvert(request.autoIngestPdfOnConvert());
+        }
+        if (request.describePdfFigures() != null) {
+            workspace.changeDescribePdfFigures(request.describePdfFigures());
         }
         fruition.shared.logging.CommittedLog.info(log, "[워크스페이스 설정 변경 완료] operation=workspace_update stage=completed workspaceId={} userId={}", workspaceId, userId);
         return toResponse(workspace);
