@@ -1,5 +1,9 @@
 package fruition.access.workspace.service;
 
+import fruition.access.user.mail.MailLocaleResolver;
+import fruition.shared.i18n.SupportedLocale;
+import fruition.shared.i18n.TestMessageSources;
+import org.springframework.context.i18n.LocaleContextHolder;
 import fruition.access.security.OpaqueTokens;
 import fruition.access.user.domain.User;
 import fruition.access.user.mail.WorkspaceInvitationSender;
@@ -34,6 +38,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -72,7 +77,8 @@ class WorkspaceInvitationServiceTest {
     void setUp() {
         service = new WorkspaceInvitationService(
                 invitationRepository, workspaceMemberRepository, workspaceRepository, userRepository,
-                sender, authzProjectionStore, transactionTemplate, TTL_SECONDS, ACCEPT_URL, eventPublisher);
+                sender, new MailLocaleResolver(userRepository), TestMessageSources.create(),
+                authzProjectionStore, transactionTemplate, TTL_SECONDS, ACCEPT_URL, eventPublisher);
         lenient().when(transactionTemplate.execute(any()))
                 .thenAnswer(invocation -> invocation
                         .<org.springframework.transaction.support.TransactionCallback<?>>getArgument(0)
@@ -114,7 +120,7 @@ class WorkspaceInvitationServiceTest {
         assertThat(response.role()).isEqualTo("MEMBER");
 
         ArgumentCaptor<String> url = ArgumentCaptor.forClass(String.class);
-        verify(sender).send(eq(INVITEE_EMAIL), eq("팀 워크스페이스"), eq("표시이름"), url.capture());
+        verify(sender).send(eq(INVITEE_EMAIL), eq("팀 워크스페이스"), eq("표시이름"), url.capture(), any());
         assertThat(url.getValue()).startsWith(ACCEPT_URL + "/");
         // 토큰 원문은 링크에만 실리고 DB에는 해시로 저장된다.
         String token = url.getValue().substring(ACCEPT_URL.length() + 1);
@@ -134,6 +140,61 @@ class WorkspaceInvitationServiceTest {
     }
 
     @Test
+    void invite_existingInviteeWithSavedLocale_getsMailInThatLanguage() {
+        ownerActor();
+        User invitee = user(INVITEE_ID, INVITEE_EMAIL);
+        invitee.changeLocale(SupportedLocale.EN);
+        when(userRepository.findAllByEmail(INVITEE_EMAIL)).thenReturn(List.of(invitee));
+        when(workspaceMemberRepository.findActiveRole(WORKSPACE_ID, INVITEE_ID)).thenReturn(Optional.empty());
+        stubNewInvitation();
+
+        // 초대한 사람의 요청 언어(ko)보다 초대받는 사람의 저장 언어가 앞선다.
+        LocaleContextHolder.setLocale(Locale.KOREAN);
+        try {
+            service.invite(OWNER_ID, WORKSPACE_ID, new WorkspaceInvitationCreateRequest(INVITEE_EMAIL, WorkspaceRole.MEMBER));
+        } finally {
+            LocaleContextHolder.resetLocaleContext();
+        }
+
+        verify(sender).send(eq(INVITEE_EMAIL), any(), any(), any(), eq(Locale.ENGLISH));
+    }
+
+    @Test
+    void invite_newInvitee_getsMailInInviterRequestLanguage() {
+        ownerActor();
+        when(userRepository.findAllByEmail(INVITEE_EMAIL)).thenReturn(List.of());
+        stubNewInvitation();
+
+        LocaleContextHolder.setLocale(Locale.forLanguageTag("en-US"));
+        try {
+            service.invite(OWNER_ID, WORKSPACE_ID, new WorkspaceInvitationCreateRequest(INVITEE_EMAIL, WorkspaceRole.MEMBER));
+        } finally {
+            LocaleContextHolder.resetLocaleContext();
+        }
+
+        verify(sender).send(eq(INVITEE_EMAIL), any(), any(), any(), eq(Locale.ENGLISH));
+    }
+
+    @Test
+    void invite_withoutRequestLanguage_sendsKoreanMail() {
+        ownerActor();
+        when(userRepository.findAllByEmail(INVITEE_EMAIL)).thenReturn(List.of());
+        stubNewInvitation();
+
+        service.invite(OWNER_ID, WORKSPACE_ID, new WorkspaceInvitationCreateRequest(INVITEE_EMAIL, WorkspaceRole.MEMBER));
+
+        verify(sender).send(eq(INVITEE_EMAIL), any(), any(), any(), eq(Locale.KOREAN));
+    }
+
+    private void stubNewInvitation() {
+        when(workspaceRepository.findById(WORKSPACE_ID)).thenReturn(Optional.of(workspace()));
+        when(userRepository.findById(OWNER_ID)).thenReturn(Optional.of(user(OWNER_ID, "owner@example.com")));
+        when(invitationRepository.findByWorkspaceIdAndEmailAndAcceptedAtIsNullAndRevokedAtIsNull(
+                WORKSPACE_ID, INVITEE_EMAIL)).thenReturn(Optional.empty());
+        when(invitationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+    }
+
+    @Test
     void invite_uppercaseEmailIsNormalized() {
         ownerActor();
         when(userRepository.findAllByEmail(INVITEE_EMAIL)).thenReturn(List.of());
@@ -146,7 +207,7 @@ class WorkspaceInvitationServiceTest {
         service.invite(OWNER_ID, WORKSPACE_ID,
                 new WorkspaceInvitationCreateRequest("  Invitee@Example.COM  ", WorkspaceRole.MEMBER));
 
-        verify(sender).send(eq(INVITEE_EMAIL), any(), any(), any());
+        verify(sender).send(eq(INVITEE_EMAIL), any(), any(), any(), any());
     }
 
     @Test
@@ -170,7 +231,7 @@ class WorkspaceInvitationServiceTest {
         assertThat(pending.getTokenHash()).isNotEqualTo(OpaqueTokens.sha256("old-token"));
         // 새 해시는 이번에 메일로 나간 토큰의 것이다.
         ArgumentCaptor<String> url = ArgumentCaptor.forClass(String.class);
-        verify(sender).send(eq(INVITEE_EMAIL), any(), any(), url.capture());
+        verify(sender).send(eq(INVITEE_EMAIL), any(), any(), url.capture(), any());
         String reissued = url.getValue().substring(ACCEPT_URL.length() + 1);
         assertThat(pending.getTokenHash()).isEqualTo(OpaqueTokens.sha256(reissued));
         verifyNoInteractions(eventPublisher);

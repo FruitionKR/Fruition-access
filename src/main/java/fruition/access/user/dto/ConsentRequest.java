@@ -17,7 +17,7 @@ public record ConsentRequest(
         String termsVersion,
 
         @JsonProperty("marketing_opt_in")
-        @NotNull(message = "marketing_opt_in은 필수입니다.")
+        @NotNull(message = "{validation.marketing_opt_in.required}")
         @Schema(description = "마케팅 정보 수신 동의(선택 항목)", example = "false")
         Boolean marketingOptIn
 ) {}

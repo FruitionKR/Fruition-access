@@ -46,8 +46,19 @@ public class Workspace {
     @Column(name = "ingest_lint_model", nullable = false)
     private String ingestLintModel;
 
+    /**
+     * 옛 통합 설정. 배포 중 함께 떠 있는 옛 pod가 읽고 쓰므로 {@link #autoIngestPdfOnConvert}와 같은 값으로 유지한다.
+     */
     @Column(name = "auto_ingest_on_upload", nullable = false)
     private boolean autoIngestOnUpload;
+
+    /** Markdown·txt 업로드 직후 자동 편입 여부. 기본은 켠다. */
+    @Column(name = "auto_ingest_markdown_on_upload", nullable = false)
+    private boolean autoIngestMarkdownOnUpload = true;
+
+    /** PDF 변환이 끝난 뒤 자동 편입 여부. 비용이 커서 기본은 끈다. */
+    @Column(name = "auto_ingest_pdf_on_convert", nullable = false)
+    private boolean autoIngestPdfOnConvert;
 
     /** PDF 변환 때 그림을 외부 AI로 보내 설명을 붙일지 여부. 외부 전송·비용이 생기므로 기본은 끈다. */
     @Column(name = "describe_pdf_figures", nullable = false)
@@ -69,8 +80,14 @@ public class Workspace {
         this.updatedAt = Instant.now();
     }
 
-    public void changeAutoIngestOnUpload(boolean autoIngestOnUpload) {
-        this.autoIngestOnUpload = autoIngestOnUpload;
+    public void changeAutoIngestMarkdownOnUpload(boolean autoIngestMarkdownOnUpload) {
+        this.autoIngestMarkdownOnUpload = autoIngestMarkdownOnUpload;
+        this.updatedAt = Instant.now();
+    }
+
+    public void changeAutoIngestPdfOnConvert(boolean autoIngestPdfOnConvert) {
+        this.autoIngestPdfOnConvert = autoIngestPdfOnConvert;
+        this.autoIngestOnUpload = autoIngestPdfOnConvert;
         this.updatedAt = Instant.now();
     }
 
@@ -132,7 +149,8 @@ public class Workspace {
     public String getDeletedBy() { return deletedBy; }
     public String getIngestLintProvider() { return ingestLintProvider; }
     public String getIngestLintModel() { return ingestLintModel; }
-    public boolean isAutoIngestOnUpload() { return autoIngestOnUpload; }
+    public boolean isAutoIngestMarkdownOnUpload() { return autoIngestMarkdownOnUpload; }
+    public boolean isAutoIngestPdfOnConvert() { return autoIngestPdfOnConvert; }
 
     public boolean isDescribePdfFigures() { return describePdfFigures; }
 }

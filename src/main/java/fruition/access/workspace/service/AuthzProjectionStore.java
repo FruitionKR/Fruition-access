@@ -102,7 +102,7 @@ public class AuthzProjectionStore {
         try {
             action.run();
         } catch (RuntimeException retry) {
-            log.error("[인가 projection 무효화 실패] target={} — 커밋된 권한 변경이 projection TTL까지"
+            log.error("[인가 projection 무효화 실패] operation=authz_projection stage=evict target={} — 커밋된 권한 변경이 projection TTL까지"
                     + " 적용되지 않습니다. Redis 복구 후 해당 키를 삭제하세요.", target, retry);
         }
     }

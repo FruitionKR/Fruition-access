@@ -16,6 +16,7 @@ import fruition.access.user.exception.VerificationCodeAttemptsExceededException;
 import fruition.access.user.exception.VerificationCodeExpiredException;
 import fruition.access.user.exception.VerificationRateLimitedException;
 import fruition.access.user.mail.EmailVerificationSender;
+import fruition.access.user.mail.MailLocaleResolver;
 import fruition.access.user.repository.EmailVerificationRepository;
 import fruition.access.user.repository.UserRepository;
 import org.slf4j.Logger;
@@ -45,6 +46,7 @@ public class EmailVerificationService {
     private final EmailVerificationRepository verificationRepository;
     private final UserRepository userRepository;
     private final EmailVerificationSender sender;
+    private final MailLocaleResolver mailLocaleResolver;
     private final TransactionTemplate transactionTemplate;
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -58,6 +60,7 @@ public class EmailVerificationService {
             EmailVerificationRepository verificationRepository,
             UserRepository userRepository,
             EmailVerificationSender sender,
+            MailLocaleResolver mailLocaleResolver,
             TransactionTemplate transactionTemplate,
             @Value("${app.auth.email-verification.code-ttl-seconds}") long codeTtlSeconds,
             @Value("${app.auth.email-verification.token-ttl-seconds}") long tokenTtlSeconds,
@@ -67,6 +70,7 @@ public class EmailVerificationService {
         this.verificationRepository = verificationRepository;
         this.userRepository = userRepository;
         this.sender = sender;
+        this.mailLocaleResolver = mailLocaleResolver;
         this.transactionTemplate = transactionTemplate;
         this.codeTtlSeconds = codeTtlSeconds;
         this.tokenTtlSeconds = tokenTtlSeconds;
@@ -91,13 +95,13 @@ public class EmailVerificationService {
         // 회원가입은 의도적으로 존재 여부를 노출한다. 비밀번호 재설정은 노출하지 않는다.
         if (PURPOSE_SIGNUP.equals(purpose)) {
             if (userRepository.existsByEmailAndProvider(email, User.PROVIDER_LOCAL)) {
-                log.warn("[인증 요청 거부] reason=duplicate_email email={}", email);
+                log.warn("[인증 요청 거부] operation=email_verification stage=validation reason=duplicate_email email={}", email);
                 throw new DuplicateEmailException(email);
             }
             // 같은 이메일의 소셜 계정이 있으면 두 번째 계정이 생기지 않게 메일을 보내기 전에 거절한다.
             List<String> oauthProviders = userRepository.findProvidersByEmail(email);
             if (!oauthProviders.isEmpty()) {
-                log.warn("[인증 요청 거부] reason=email_registered_with_oauth email={} providers={}", email, oauthProviders);
+                log.warn("[인증 요청 거부] operation=email_verification stage=validation reason=email_registered_with_oauth email={} providers={}", email, oauthProviders);
                 throw new EmailRegisteredWithOAuthException(email, oauthProviders);
             }
         }
@@ -107,7 +111,7 @@ public class EmailVerificationService {
         // 걸리지 않고, 반복 조회는 컨트롤러의 IP별·이메일별 요청 제한(EmailAvailabilityRateLimiter)이 막는다.
         // 인증 없이 부르는 API라 현재 본인 주소도 함께 거절된다(본인 주소로의 변경은 아무것도 바꾸지 않는다).
         if (PURPOSE_EMAIL_CHANGE.equals(purpose) && userRepository.existsByEmail(email)) {
-            log.warn("[인증 요청 거부] reason=email_in_use purpose={} email={}", purpose, email);
+            log.warn("[인증 요청 거부] operation=email_verification stage=validation reason=email_in_use purpose={} email={}", purpose, email);
             throw new DuplicateEmailException(email);
         }
     }
@@ -135,8 +139,9 @@ public class EmailVerificationService {
         });
 
         // 발송 실패 시 예외를 전파한다(레코드는 남지만 재요청 시 폐기되고 TTL로 만료된다).
-        sender.send(email, purpose, code);
-        log.info("[인증 요청] verificationId={} email={} purpose={}", id, email, purpose);
+        // 메일 언어는 이 주소 계정의 저장 언어, 없으면(가입 전·새 주소) 요청 언어다.
+        sender.send(email, purpose, code, mailLocaleResolver.forEmail(email));
+        fruition.shared.logging.CommittedLog.info(log, "[인증 요청] operation=email_verification stage=accepted verificationId={} email={} purpose={}", id, email, purpose);
 
         return new EmailVerificationResponse(id, codeTtlSeconds, resendCooldownSeconds);
     }
@@ -158,13 +163,13 @@ public class EmailVerificationService {
         }
         if (!verification.getCodeHash().equals(OpaqueTokens.sha256(request.code()))) {
             verification.increaseAttempt();
-            log.warn("[인증번호 검증 실패] verificationId={} attempt={}", verificationId, verification.getAttemptCount());
+            log.warn("[인증번호 검증 실패] operation=email_verification stage=confirm verificationId={} attempt={}", verificationId, verification.getAttemptCount());
             throw new InvalidVerificationCodeException();
         }
 
         String token = OpaqueTokens.generate();
         verification.confirm(OpaqueTokens.sha256(token), Instant.now().plusSeconds(tokenTtlSeconds));
-        log.info("[인증번호 검증 성공] verificationId={} email={}", verification.getId(), verification.getEmail());
+        fruition.shared.logging.CommittedLog.info(log, "[인증번호 검증 성공] operation=email_verification stage=completed verificationId={} email={}", verification.getId(), verification.getEmail());
 
         return new VerificationConfirmResponse(token, tokenTtlSeconds);
     }

@@ -5,17 +5,19 @@ import org.hibernate.exception.ConstraintViolationException;
 
 /** 이름 고유 제약만 사용자에게 알린다. 그 밖의 무결성 오류는 기존 오류 처리에 맡긴다. */
 public final class DuplicateResourceName {
-    private static final Map<String, String> MESSAGES = Map.of(
-            "uq_documents_active_name", "같은 워크스페이스에 같은 파일명이 이미 있습니다. 다른 이름을 사용해 주세요.",
-            "uq_folders_active_name", "같은 워크스페이스에 같은 폴더명이 이미 있습니다. 다른 이름을 사용해 주세요.");
+    /** 제약 이름 → 메시지 번들 키. */
+    private static final Map<String, String> MESSAGE_KEYS = Map.of(
+            "uq_documents_active_name", "error.DUPLICATE_NAME.document",
+            "uq_folders_active_name", "error.DUPLICATE_NAME.folder");
 
     private DuplicateResourceName() {}
 
-    public static String message(Throwable error) {
+    /** 이름 고유 제약 위반이면 문구의 메시지 번들 키, 아니면 null. */
+    public static String messageKey(Throwable error) {
         for (Throwable cause = error; cause != null; cause = cause.getCause()) {
             if (cause instanceof ConstraintViolationException violation && violation.getConstraintName() != null) {
-                String message = MESSAGES.get(violation.getConstraintName());
-                if (message != null) return message;
+                String key = MESSAGE_KEYS.get(violation.getConstraintName());
+                if (key != null) return key;
             }
         }
         return null;

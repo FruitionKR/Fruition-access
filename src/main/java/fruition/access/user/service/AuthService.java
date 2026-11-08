@@ -12,6 +12,8 @@ import fruition.access.user.dto.LoginResponse;
 import fruition.access.user.dto.MeResponse;
 import fruition.access.user.dto.OAuthExchangeRequest;
 import fruition.access.user.dto.DisplayNameUpdateRequest;
+import fruition.access.user.dto.LocaleUpdateRequest;
+import fruition.shared.i18n.SupportedLocale;
 import fruition.access.user.dto.EmailChangeRequest;
 import fruition.access.user.dto.EmailVerificationResponse;
 import fruition.access.user.dto.PasswordChangeRequest;
@@ -114,22 +116,22 @@ public class AuthService {
 
         User user = userRepository.findByEmailAndProvider(email, User.PROVIDER_LOCAL)
                 .orElseThrow(() -> {
-                    log.warn("[로그인 실패] reason=unknown_email email={}", email);
+                    log.warn("[로그인 실패] operation=login stage=credentials reason=unknown_email email={}", email);
                     return new InvalidCredentialsException();
                 });
 
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
-            log.warn("[로그인 실패] reason=password_mismatch userId={} email={}", user.getId(), email);
+            log.warn("[로그인 실패] operation=login stage=credentials reason=password_mismatch userId={} email={}", user.getId(), email);
             throw new InvalidCredentialsException();
         }
 
         if (mfaService.isEnabled(user.getId())) {
-            log.info("[로그인 1단계 통과] userId={} mfa=required", user.getId());
+            log.info("[로그인 1단계 통과] operation=login stage=mfa_required userId={} mfa=required", user.getId());
             return LoginResponse.mfaRequired(issueMfaChallenge(user));
         }
 
         LoginResponse response = issueTokenPair(user, Instant.now());
-        log.info("[로그인 성공] userId={} email={}", user.getId(), user.getEmail());
+        fruition.shared.logging.CommittedLog.info(log, "[로그인 성공] operation=login stage=completed userId={} email={}", user.getId(), user.getEmail());
         return response;
     }
 
@@ -170,12 +172,12 @@ public class AuthService {
         log.info("[OAuth code 교환 요청]");
         String userId = oAuthExchangeCodeStore.consume(request.code(), request.codeVerifier())
                 .orElseThrow(() -> {
-                    log.warn("[OAuth code 교환 실패] reason=invalid_code");
+                    log.warn("[OAuth code 교환 실패] operation=oauth_login stage=code_exchange reason=invalid_code");
                     return new InvalidOAuthCodeException();
                 });
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> {
-                    log.warn("[OAuth code 교환 실패] reason=user_not_found userId={}", userId);
+                    log.warn("[OAuth code 교환 실패] operation=oauth_login stage=code_exchange reason=user_not_found userId={}", userId);
                     return new InvalidOAuthCodeException();
                 });
         if (mfaService.isEnabled(user.getId())) {
@@ -183,7 +185,7 @@ public class AuthService {
         }
 
         LoginResponse response = issueTokenPair(user, Instant.now());
-        log.info("[OAuth code 교환 성공] userId={} email={}", user.getId(), user.getEmail());
+        fruition.shared.logging.CommittedLog.info(log, "[OAuth code 교환 성공] operation=oauth_login stage=completed userId={} email={}", user.getId(), user.getEmail());
         return response;
     }
 
@@ -199,7 +201,7 @@ public class AuthService {
                 .map(UserOAuthAccount::getProvider)
                 .toList();
         return new MeResponse(user.getId(), user.getEmail(), user.getDisplayName(), user.avatarUrl(), user.getCreatedAt(),
-                providers, userConsentService.consentRequired(user.getId()));
+                providers, userConsentService.consentRequired(user.getId()), user.hasPassword(), user.getLocale());
     }
 
     @Transactional
@@ -208,6 +210,17 @@ public class AuthService {
                 .orElseThrow(() -> new UserNotFoundException(userId));
         user.changeDisplayName(request.displayName().trim());
         log.info("[표시 이름 변경] userId={}", userId);
+        return toMe(user);
+    }
+
+    /** 화면 언어를 저장한다. 이후 이 사용자에게 가는 메일도 이 언어를 따른다. 값 검증은 요청 DTO가 한다. */
+    @Transactional
+    public MeResponse updateLocale(String userId, LocaleUpdateRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException(userId));
+        SupportedLocale locale = SupportedLocale.fromCode(request.locale()).orElseThrow();
+        user.changeLocale(locale);
+        log.info("[화면 언어 변경] userId={} locale={}", userId, locale.code());
         return toMe(user);
     }
 
@@ -228,11 +241,11 @@ public class AuthService {
 
         // OAuth 전용 계정은 password_hash가 없어 "현재 비밀번호"라는 개념이 성립하지 않는다.
         if (user.getPasswordHash() == null) {
-            log.warn("[비밀번호 변경 거부] reason=no_password userId={} provider={}", userId, user.getProvider());
+            log.warn("[비밀번호 변경 거부] operation=password_change stage=validation reason=no_password userId={} provider={}", userId, user.getProvider());
             throw new PasswordLoginUnavailableException(List.of(user.getProvider()));
         }
         if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
-            log.warn("[비밀번호 변경 거부] reason=current_password_mismatch userId={}", userId);
+            log.warn("[비밀번호 변경 거부] operation=password_change stage=validation reason=current_password_mismatch userId={}", userId);
             throw new InvalidCredentialsException();
         }
         // 현재 비밀번호를 먼저 확인해, 비밀번호를 모르는 요청이 MFA 시도 횟수를 쓰지 못하게 한다.
@@ -241,7 +254,7 @@ public class AuthService {
         user.changePassword(passwordEncoder.encode(request.newPassword()));
 
         int revoked = revokeOtherSessions(userId, currentRefreshToken);
-        log.info("[비밀번호 변경 성공] userId={} revokedSessions={}", userId, revoked);
+        fruition.shared.logging.CommittedLog.info(log, "[비밀번호 변경 성공] operation=password_change stage=completed userId={} revokedSessions={}", userId, revoked);
     }
 
     /**
@@ -279,7 +292,7 @@ public class AuthService {
         user.changePassword(passwordEncoder.encode(request.newPassword()));
 
         int revoked = revokeOtherSessions(userId, currentRefreshToken);
-        log.info("[비밀번호 변경 성공] method=email_verification userId={} revokedSessions={}", userId, revoked);
+        fruition.shared.logging.CommittedLog.info(log, "[비밀번호 변경 성공] operation=password_change stage=completed method=email_verification userId={} revokedSessions={}", userId, revoked);
     }
 
     /** 비밀번호 로그인을 쓰는 계정만 돌려준다. OAuth 전용 계정의 비밀번호는 로그인에 쓰이지 않는다. */
@@ -287,7 +300,7 @@ public class AuthService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException(userId));
         if (user.getPasswordHash() == null) {
-            log.warn("[비밀번호 변경 거부] reason=no_password userId={} provider={}", userId, user.getProvider());
+            log.warn("[비밀번호 변경 거부] operation=password_change stage=validation reason=no_password userId={} provider={}", userId, user.getProvider());
             throw new PasswordLoginUnavailableException(List.of(user.getProvider()));
         }
         return user;
@@ -318,7 +331,7 @@ public class AuthService {
         // 한 이메일에 계정이 둘 생기고, 이후 연동으로 합칠 수 없다(가입 거절과 같은 이유).
         // 본인 확인을 통과한 뒤에만 알려 주고, 토큰을 소비하기 전에 거절해 토큰을 태우지 않는다.
         if (!newEmail.equals(user.getEmail()) && userRepository.existsByEmail(newEmail)) {
-            log.warn("[이메일 변경 거부] reason=duplicate_email userId={} provider={}", userId, user.getProvider());
+            log.warn("[이메일 변경 거부] operation=email_change stage=validation reason=duplicate_email userId={} provider={}", userId, user.getProvider());
             throw new DuplicateEmailException(newEmail);
         }
         emailVerificationService.consumeForEmailChange(newEmail, request.verificationToken());
@@ -341,7 +354,7 @@ public class AuthService {
         if (!previousEmail.equals(newEmail)) {
             eventPublisher.publishEvent(new EmailChangedEvent(userId, previousEmail, newEmail, Instant.now()));
         }
-        log.info("[이메일 변경 성공] userId={} revokedSessions={}", userId, revoked);
+        fruition.shared.logging.CommittedLog.info(log, "[이메일 변경 성공] operation=email_change stage=completed userId={} revokedSessions={}", userId, revoked);
         return toMe(user);
     }
 
@@ -395,7 +408,7 @@ public class AuthService {
         for (UserRefreshToken token : refreshTokenRepository.findAllByUserIdAndRevokedAtIsNull(user.getId())) {
             token.revoke();
         }
-        log.info("[비밀번호 재설정 성공] userId={} email={}", user.getId(), user.getEmail());
+        fruition.shared.logging.CommittedLog.info(log, "[비밀번호 재설정 성공] operation=password_reset stage=completed userId={} email={}", user.getId(), user.getEmail());
     }
 
     /** 폐기되지 않은 세션 목록. 지금 요청을 보낸 세션에는 {@code current} 표시를 단다. */
@@ -429,7 +442,7 @@ public class AuthService {
         if (revoked == 0) {
             throw new SessionNotFoundException(sessionId);
         }
-        log.info("[세션 폐기] userId={} sessionId={} revokedTokens={}", userId, sessionId, revoked);
+        fruition.shared.logging.CommittedLog.info(log, "[세션 폐기] operation=session_revoke stage=completed userId={} authSessionId={} revokedTokens={}", userId, sessionId, revoked);
     }
 
     /** 호출 전에 {@link UserRefreshTokenRepository#lockUserSessions}로 사용자 잠금을 잡아야 후속 토큰을 놓치지 않는다. */
@@ -470,7 +483,7 @@ public class AuthService {
         challenge.consume();
 
         LoginResponse response = issueTokenPair(user, Instant.now());
-        log.info("[로그인 성공] userId={} email={} mfa=verified", user.getId(), user.getEmail());
+        fruition.shared.logging.CommittedLog.info(log, "[로그인 성공] operation=login stage=completed userId={} email={} mfa=verified", user.getId(), user.getEmail());
         return response;
     }
 
@@ -495,7 +508,7 @@ public class AuthService {
             return LoginResponse.mfaRequired(issueMfaChallenge(user));
         }
         LoginResponse response = issueTokenPair(user, Instant.now());
-        log.info("[OAuth 가입 후 로그인] userId={}", user.getId());
+        fruition.shared.logging.CommittedLog.info(log, "[OAuth 가입 후 로그인] operation=oauth_signup stage=completed userId={}", user.getId());
         return response;
     }
 

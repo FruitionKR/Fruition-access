@@ -4,6 +4,8 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Locale;
+
 /**
  * 개발용 stub. 실제 메일을 보내지 않고 수락 링크를 로그로 출력한다.
  * SMTP(spring.mail.host)가 설정되지 않은 환경에서만 {@link EmailSenderConfig}가 fallback으로 등록한다.
@@ -20,7 +22,8 @@ public class LoggingWorkspaceInvitationSender implements WorkspaceInvitationSend
     }
 
     @Override
-    public void send(String email, String workspaceName, String inviterName, String acceptUrl) {
-        log.info("[초대 메일 발송(dev stub)] email={} workspaceName={} acceptUrl={}", email, workspaceName, acceptUrl);
+    public void send(String email, String workspaceName, String inviterName, String acceptUrl, Locale locale) {
+        log.info("[초대 메일 발송(dev stub)] email={} workspaceName={} acceptUrl={} locale={}",
+                email, workspaceName, acceptUrl, locale);
     }
 }

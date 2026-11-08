@@ -23,6 +23,7 @@ import fruition.access.user.dto.LoginResponse;
 import fruition.access.user.dto.MeResponse;
 import fruition.access.user.dto.OAuthExchangeRequest;
 import fruition.access.user.dto.DisplayNameUpdateRequest;
+import fruition.access.user.dto.LocaleUpdateRequest;
 import fruition.access.user.dto.EmailChangeRequest;
 import fruition.access.user.dto.EmailRegisteredResponse;
 import fruition.access.user.dto.EmailRegisteredWithOAuthResponse;
@@ -361,6 +362,24 @@ public class AuthController {
             @AuthenticationPrincipal String userId,
             @Valid @RequestBody DisplayNameUpdateRequest request) {
         return ResponseEntity.ok(authService.updateDisplayName(userId, request));
+    }
+
+    @Operation(summary = "화면 언어 저장",
+            description = "인증된 사용자의 화면 언어(ko·en)를 저장합니다. 저장한 언어는 내 정보 응답의 locale로 돌아오고,"
+                    + " 이 사용자에게 가는 메일(인증번호·초대·이메일 변경 알림)도 이 언어를 따릅니다.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "저장 성공",
+            content = @Content(schema = @Schema(implementation = MeResponse.class))),
+        @ApiResponse(responseCode = "400", description = "locale이 없거나 ko·en이 아님(INVALID_REQUEST)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않음",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PatchMapping("/me/locale")
+    public ResponseEntity<MeResponse> updateLocale(
+            @AuthenticationPrincipal String userId,
+            @Valid @RequestBody LocaleUpdateRequest request) {
+        return ResponseEntity.ok(authService.updateLocale(userId, request));
     }
 
     @Operation(summary = "프로필 사진 업로드",

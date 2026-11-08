@@ -1,5 +1,6 @@
 package fruition.access.cleanup;
 
+import fruition.shared.logging.RepeatedFailureLogger;
 import fruition.access.workspace.service.AiInternalClient;
 import fruition.access.workspace.service.DocumentInternalClient;
 import org.slf4j.Logger;
@@ -22,6 +23,7 @@ import java.util.List;
 public class DataPurgeRequestJob {
 
     private static final Logger log = LoggerFactory.getLogger(DataPurgeRequestJob.class);
+    private final RepeatedFailureLogger failures = new RepeatedFailureLogger(log);
     private static final int BATCH_SIZE = 20;
 
     private final JdbcTemplate jdbc;
@@ -51,7 +53,7 @@ public class DataPurgeRequestJob {
             try {
                 transactionTemplate.executeWithoutResult(status -> process(request, now));
             } catch (RuntimeException e) {
-                log.warn("[데이터 파기 요청 실패, 다시 시도] kind={} targetId={}", request.kind(), request.targetId(), e);
+                failures.warn(request.kind() + ":" + request.targetId(), "[데이터 파기 요청 실패, 다시 시도] kind=" + request.kind() + " targetId=" + request.targetId(), e);
                 transactionTemplate.executeWithoutResult(status -> recordFailure(request, now, e));
             }
         }
@@ -75,7 +77,8 @@ public class DataPurgeRequestJob {
         }
         jdbc.update("DELETE FROM data_purge_requests WHERE kind = ? AND target_id = ?",
                 request.kind(), request.targetId());
-        log.info("[데이터 파기 완료] kind={} targetId={}", request.kind(), request.targetId());
+        failures.recovered(request.kind() + ":" + request.targetId());
+        log.info("[데이터 파기 완료] operation=data_purge stage=completed kind={} targetId={}", request.kind(), request.targetId());
     }
 
     /** 다음 시도는 1분에서 시작해 실패할 때마다 두 배로 늘리고 6시간에서 멈춘다. */

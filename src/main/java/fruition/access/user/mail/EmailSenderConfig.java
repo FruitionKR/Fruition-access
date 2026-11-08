@@ -3,6 +3,7 @@ package fruition.access.user.mail;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.MessageSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -18,8 +19,9 @@ public class EmailSenderConfig {
     @ConditionalOnProperty(name = "spring.mail.host")
     EmailVerificationSender smtpEmailVerificationSender(
             JavaMailSender mailSender,
+            MessageSource messageSource,
             @Value("${app.auth.email-verification.from:}") String from) {
-        return new SmtpEmailVerificationSender(mailSender, from);
+        return new SmtpEmailVerificationSender(mailSender, messageSource, from);
     }
 
     @Bean
@@ -32,8 +34,9 @@ public class EmailSenderConfig {
     @ConditionalOnProperty(name = "spring.mail.host")
     WorkspaceInvitationSender smtpWorkspaceInvitationSender(
             JavaMailSender mailSender,
+            MessageSource messageSource,
             @Value("${app.auth.email-verification.from:}") String from) {
-        return new SmtpWorkspaceInvitationSender(mailSender, from);
+        return new SmtpWorkspaceInvitationSender(mailSender, messageSource, from);
     }
 
     @Bean
@@ -46,8 +49,9 @@ public class EmailSenderConfig {
     @ConditionalOnProperty(name = "spring.mail.host")
     EmailChangeNotificationSender smtpEmailChangeNotificationSender(
             JavaMailSender mailSender,
+            MessageSource messageSource,
             @Value("${app.auth.email-verification.from:}") String from) {
-        return new SmtpEmailChangeNotificationSender(mailSender, from);
+        return new SmtpEmailChangeNotificationSender(mailSender, messageSource, from);
     }
 
     @Bean

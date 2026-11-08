@@ -63,7 +63,7 @@ class VerifiedPasswordChangeMixedCaseEmailIntegrationTest {
         String verificationId = objectMapper.readTree(body).get("verification_id").asText();
         String normalizedEmail = user.getEmail().toLowerCase(Locale.ROOT);
         ArgumentCaptor<String> code = ArgumentCaptor.forClass(String.class);
-        verify(sender).send(eq(normalizedEmail), eq("password_change"), code.capture());
+        verify(sender).send(eq(normalizedEmail), eq("password_change"), code.capture(), org.mockito.ArgumentMatchers.any());
         String token = verificationService.confirm(verificationId, new VerificationConfirmRequest(code.getValue()))
                 .verificationToken();
 

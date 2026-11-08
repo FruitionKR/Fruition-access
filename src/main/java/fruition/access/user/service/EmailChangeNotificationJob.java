@@ -1,6 +1,8 @@
 package fruition.access.user.service;
 
+import fruition.shared.logging.RepeatedFailureLogger;
 import fruition.access.user.mail.EmailChangeNotificationSender;
+import fruition.shared.i18n.SupportedLocale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +36,7 @@ import java.util.List;
 public class EmailChangeNotificationJob {
 
     private static final Logger log = LoggerFactory.getLogger(EmailChangeNotificationJob.class);
+    private final RepeatedFailureLogger failures = new RepeatedFailureLogger(log);
     private static final int BATCH_SIZE = 20;
     /** SMTP timeout(연결·읽기·쓰기 각 5초)보다 넉넉히 길어야 발송 중인 행을 다른 replica가 다시 고르지 않는다. */
     private static final Duration CLAIM_LEASE = Duration.ofMinutes(5);
@@ -82,11 +85,13 @@ public class EmailChangeNotificationJob {
             }
             Notification notification = claimed.get(i);
             try {
-                sender.send(notification.recipientEmail(), notification.maskedNewEmail(), notification.changedAt());
+                sender.send(notification.recipientEmail(), notification.maskedNewEmail(), notification.changedAt(),
+                        SupportedLocale.fromCode(notification.locale()).orElse(SupportedLocale.DEFAULT).toLocale());
             } catch (RuntimeException e) {
                 recordFailure(notification, clock.instant(), e);
                 continue;
             }
+            failures.recovered("send:" + notification.id());
             delete(notification);
         }
     }
@@ -97,6 +102,7 @@ public class EmailChangeNotificationJob {
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
                 jdbc.update("DELETE FROM email_change_notifications WHERE id = ?", notification.id());
+                failures.recovered("delete:" + notification.id());
                 log.info("[이메일 변경 알림 발송 완료] id={} userId={} attempts={}",
                         notification.id(), notification.userId(), notification.attempts());
                 return;
@@ -104,8 +110,8 @@ public class EmailChangeNotificationJob {
                 failure = e;
             }
         }
-        log.error("[이메일 변경 알림 발송 완료, 삭제 실패] id={} userId={} attempts={} 대기 시간 뒤 다시 발송될 수 있다",
-                notification.id(), notification.userId(), notification.attempts(), failure);
+        failures.error("delete:" + notification.id(), "[이메일 변경 알림 발송 완료, 삭제 실패] id="
+                + notification.id() + " userId=" + notification.userId() + " 대기 시간 뒤 다시 발송될 수 있다", failure);
     }
 
     /** 보내지 않은 행은 claim에서 올린 시도 횟수를 되돌리고 바로 다시 고를 수 있게 둔다. */
@@ -132,10 +138,10 @@ public class EmailChangeNotificationJob {
                     ORDER BY next_attempt_at
                     LIMIT ?
                     FOR UPDATE SKIP LOCKED)
-                RETURNING id, user_id, recipient_email, masked_new_email, changed_at, attempts
+                RETURNING id, user_id, recipient_email, masked_new_email, changed_at, attempts, locale
                 """, (rs, n) -> new Notification(rs.getLong("id"), rs.getString("user_id"),
                         rs.getString("recipient_email"), rs.getString("masked_new_email"),
-                        rs.getTimestamp("changed_at").toInstant(), rs.getInt("attempts")),
+                        rs.getTimestamp("changed_at").toInstant(), rs.getInt("attempts"), rs.getString("locale")),
                 Timestamp.from(now.plus(CLAIM_LEASE)), Timestamp.from(now), BATCH_SIZE);
     }
 
@@ -145,15 +151,16 @@ public class EmailChangeNotificationJob {
         if (notification.attempts() >= maxAttempts) {
             jdbc.update("UPDATE email_change_notifications SET status = 'failed', last_error = ? WHERE id = ?",
                     lastError, notification.id());
-            log.error("[이메일 변경 알림 발송 포기] id={} userId={} attempts={}",
+            log.error("[이메일 변경 알림 발송 포기] operation=email_change_notice stage=final_failure id={} userId={} attempts={}",
                     notification.id(), notification.userId(), notification.attempts(), error);
             return;
         }
         Instant nextAttemptAt = now.plus(backoff(notification.attempts()));
         jdbc.update("UPDATE email_change_notifications SET next_attempt_at = ?, last_error = ? WHERE id = ?",
                 Timestamp.from(nextAttemptAt), lastError, notification.id());
-        log.warn("[이메일 변경 알림 발송 실패, 다시 시도] id={} userId={} attempts={} nextAttemptAt={} error={}",
-                notification.id(), notification.userId(), notification.attempts(), nextAttemptAt, message);
+        failures.warn("send:" + notification.id(), "[이메일 변경 알림 발송 실패, 다시 시도] id="
+                + notification.id() + " userId=" + notification.userId() + " attempts=" + notification.attempts()
+                + " nextAttemptAt=" + nextAttemptAt, error);
     }
 
     /** n번째 시도가 실패하면 첫 간격 × 2^(n-1) 뒤에 다시 시도한다(기본 1·2·4·8분). */
@@ -161,6 +168,7 @@ public class EmailChangeNotificationJob {
         return initialBackoff.multipliedBy(1L << Math.min(attempts - 1, MAX_BACKOFF_EXPONENT));
     }
 
+    /** {@code locale}은 넣을 때 고른 메일 언어. V34 이전 행은 null이고 한국어로 보낸다. */
     private record Notification(long id, String userId, String recipientEmail, String maskedNewEmail,
-                                Instant changedAt, int attempts) {}
+                                Instant changedAt, int attempts, String locale) {}
 }

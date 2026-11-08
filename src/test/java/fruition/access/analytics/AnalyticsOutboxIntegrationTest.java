@@ -231,7 +231,7 @@ class AnalyticsOutboxIntegrationTest {
         var url = org.mockito.ArgumentCaptor.forClass(String.class);
         org.mockito.Mockito.verify(invitationSender, org.mockito.Mockito.times(2)).send(
                 org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(), url.capture());
+                org.mockito.ArgumentMatchers.anyString(), url.capture(), org.mockito.ArgumentMatchers.any());
         String link = url.getValue();
         String token = link.substring(link.lastIndexOf('/') + 1);
         try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -265,7 +265,7 @@ class AnalyticsOutboxIntegrationTest {
                 invitee + "@example.test", fruition.access.workspace.domain.WorkspaceRole.MEMBER));
         var url = org.mockito.ArgumentCaptor.forClass(String.class);
         org.mockito.Mockito.verify(invitationSender).send(org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), url.capture());
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), url.capture(), org.mockito.ArgumentMatchers.any());
         String token = url.getValue().substring(url.getValue().lastIndexOf('/') + 1);
         for (int i = 0; i < 2; i++)
             org.assertj.core.api.Assertions.assertThatThrownBy(() -> invitations.accept(stranger, token))

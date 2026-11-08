@@ -59,7 +59,10 @@ public class InternalAuthzController {
                 .orElseGet(() -> new RoleResponse("NONE", List.of())));
     }
 
-    /** document가 업로드 시 자동 ingest 여부와 PDF 그림 설명 여부를 판단할 때 읽는 워크스페이스 설정. */
+    /**
+     * document가 자동 편입 여부와 PDF 그림 설명 여부를 판단할 때 읽는 워크스페이스 설정. 자동 편입은 Markdown 업로드와 PDF 변환을 따로 내려준다.
+     * auto_ingest_on_upload는 새 필드를 모르는 옛 document를 위한 값으로 auto_ingest_pdf_on_convert와 같다.
+     */
     @GetMapping("/internal/workspaces/{workspace_id}/settings")
     public ResponseEntity<?> settings(
             @PathVariable("workspace_id") String workspaceId,
@@ -70,7 +73,9 @@ public class InternalAuthzController {
         return workspaceRepository.findById(workspaceId)
                 .filter(workspace -> workspace.getDeletedAt() == null)
                 .<ResponseEntity<?>>map(workspace -> ResponseEntity.ok(
-                        new SettingsResponse(workspace.isAutoIngestOnUpload(), workspace.isDescribePdfFigures())))
+                        new SettingsResponse(workspace.isAutoIngestPdfOnConvert(),
+                                workspace.isAutoIngestMarkdownOnUpload(), workspace.isAutoIngestPdfOnConvert(),
+                                workspace.isDescribePdfFigures())))
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(ErrorResponse.of("WORKSPACE_NOT_FOUND", "워크스페이스를 찾을 수 없습니다.")));
     }
@@ -124,6 +129,8 @@ public class InternalAuthzController {
     record RoleResponse(String role, List<String> permissions) {}
 
     record SettingsResponse(@JsonProperty("auto_ingest_on_upload") boolean autoIngestOnUpload,
+                            @JsonProperty("auto_ingest_markdown_on_upload") boolean autoIngestMarkdownOnUpload,
+                            @JsonProperty("auto_ingest_pdf_on_convert") boolean autoIngestPdfOnConvert,
                             @JsonProperty("describe_pdf_figures") boolean describePdfFigures) {}
 
     record MemberUsersResponse(@JsonProperty("user_ids") List<String> userIds) {}

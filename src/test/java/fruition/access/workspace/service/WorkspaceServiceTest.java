@@ -146,42 +146,105 @@ class WorkspaceServiceTest {
         when(workspaceMemberRepository.findOwnedWorkspaceIncludingDeleted(
                 "ws_aaa11111", "user_1f9a74af", WorkspaceRole.OWNER)).thenReturn(Optional.of(workspace));
 
-        WorkspaceResponse response = workspaceService.rename("user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest("새 이름", null, null));
+        WorkspaceResponse response = workspaceService.rename("user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest("새 이름", null, null, null, null));
 
         assertThat(response.name()).isEqualTo("새 이름");
     }
 
     @Test
-    void update_onlyAutoIngest_keepsNameAndSetsFlag() {
+    void newWorkspace_autoIngestsMarkdownButNotPdfByDefault() {
+        Workspace workspace = new Workspace("ws_aaa11111", "새 워크스페이스");
+
+        assertThat(workspace.isAutoIngestMarkdownOnUpload()).isTrue();
+        assertThat(workspace.isAutoIngestPdfOnConvert()).isFalse();
+    }
+
+    @Test
+    void update_legacyAutoIngestOnly_setsBothSettingsAndKeepsName() {
         Workspace workspace = new Workspace("ws_aaa11111", "이전 이름");
+        workspace.changeAutoIngestMarkdownOnUpload(false);
         when(workspaceMemberRepository.findOwnedWorkspaceIncludingDeleted(
                 "ws_aaa11111", "user_1f9a74af", WorkspaceRole.OWNER)).thenReturn(Optional.of(workspace));
 
         WorkspaceResponse response = workspaceService.rename(
-                "user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest(null, true, null));
+                "user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest(null, true, null, null, null));
 
         assertThat(response.name()).isEqualTo("이전 이름");
+        assertThat(response.autoIngestMarkdownOnUpload()).isTrue();
+        assertThat(response.autoIngestPdfOnConvert()).isTrue();
         assertThat(response.autoIngestOnUpload()).isTrue();
+    }
+
+    @Test
+    void update_markdownOnly_keepsPdfSetting() {
+        Workspace workspace = new Workspace("ws_aaa11111", "이름");
+        workspace.changeAutoIngestPdfOnConvert(true);
+        when(workspaceMemberRepository.findOwnedWorkspaceIncludingDeleted(
+                "ws_aaa11111", "user_1f9a74af", WorkspaceRole.OWNER)).thenReturn(Optional.of(workspace));
+
+        WorkspaceResponse response = workspaceService.rename(
+                "user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest(null, null, false, null, null));
+
+        assertThat(response.autoIngestMarkdownOnUpload()).isFalse();
+        assertThat(response.autoIngestPdfOnConvert()).isTrue();
+        assertThat(response.autoIngestOnUpload()).isTrue();
+    }
+
+    @Test
+    void update_pdfOnly_keepsMarkdownSettingAndMirrorsLegacyField() {
+        Workspace workspace = new Workspace("ws_aaa11111", "이름");
+        when(workspaceMemberRepository.findOwnedWorkspaceIncludingDeleted(
+                "ws_aaa11111", "user_1f9a74af", WorkspaceRole.OWNER)).thenReturn(Optional.of(workspace));
+
+        WorkspaceResponse response = workspaceService.rename(
+                "user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest(null, null, null, true, null));
+
+        assertThat(response.autoIngestMarkdownOnUpload()).isTrue();
+        assertThat(response.autoIngestPdfOnConvert()).isTrue();
+        assertThat(response.autoIngestOnUpload()).isTrue();
+    }
+
+    @Test
+    void update_legacyAndNewFields_newFieldsWin() {
+        Workspace workspace = new Workspace("ws_aaa11111", "이름");
+        when(workspaceMemberRepository.findOwnedWorkspaceIncludingDeleted(
+                "ws_aaa11111", "user_1f9a74af", WorkspaceRole.OWNER)).thenReturn(Optional.of(workspace));
+
+        WorkspaceResponse response = workspaceService.rename(
+                "user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest(null, true, false, null, null));
+
+        assertThat(response.autoIngestMarkdownOnUpload()).isFalse();
+        assertThat(response.autoIngestPdfOnConvert()).isTrue();
+    }
+
+    @Test
+    void update_autoIngest_notOwner_throwsNotFound() {
+        assertThatThrownBy(() -> workspaceService.rename(
+                "user_other", "ws_aaa11111", new WorkspaceRenameRequest(null, null, true, true, null)))
+                .isInstanceOf(WorkspaceNotFoundException.class);
     }
 
     @Test
     void update_onlyDescribePdfFigures_keepsOtherSettings() {
         Workspace workspace = new Workspace("ws_aaa11111", "이전 이름");
-        workspace.changeAutoIngestOnUpload(true);
+        workspace.changeAutoIngestMarkdownOnUpload(false);
+        workspace.changeAutoIngestPdfOnConvert(true);
         when(workspaceMemberRepository.findOwnedWorkspaceIncludingDeleted(
                 "ws_aaa11111", "user_1f9a74af", WorkspaceRole.OWNER)).thenReturn(Optional.of(workspace));
 
         WorkspaceResponse response = workspaceService.rename(
-                "user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest(null, null, true));
+                "user_1f9a74af", "ws_aaa11111", new WorkspaceRenameRequest(null, null, null, null, true));
 
         assertThat(response.describePdfFigures()).isTrue();
+        assertThat(response.autoIngestMarkdownOnUpload()).isFalse();
+        assertThat(response.autoIngestPdfOnConvert()).isTrue();
         assertThat(response.autoIngestOnUpload()).isTrue();
         assertThat(response.name()).isEqualTo("이전 이름");
     }
 
     @Test
     void rename_notOwnedWorkspace_throwsNotFound() {
-        assertThatThrownBy(() -> workspaceService.rename("user_other", "ws_aaa11111", new WorkspaceRenameRequest("새 이름", null, null)))
+        assertThatThrownBy(() -> workspaceService.rename("user_other", "ws_aaa11111", new WorkspaceRenameRequest("새 이름", null, null, null, null)))
                 .isInstanceOf(WorkspaceNotFoundException.class);
     }
 

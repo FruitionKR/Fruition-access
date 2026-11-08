@@ -17,7 +17,8 @@ public record ErrorResponse(
                     example = "INVALID_REQUEST")
             String code,
 
-            @Schema(description = "사용자에게 그대로 보여도 되는 한국어 문구",
+            @Schema(description = "사용자에게 그대로 보여도 되는 문구. 요청의 Accept-Language(ko·en)에 맞춘 언어이며,"
+                    + " 헤더가 없거나 그 밖의 언어면 한국어다.",
                     example = "요청 형식이 올바르지 않습니다.")
             String message,
 
@@ -28,7 +29,7 @@ public record ErrorResponse(
                 @Schema(description = "문제가 된 요청 필드명", example = "email")
                 String field,
 
-                @Schema(description = "그 필드의 위반 사유", example = "email은 필수입니다.")
+                @Schema(description = "그 필드의 위반 사유. message와 같은 언어다.", example = "email은 필수입니다.")
                 String reason) {}
     }
 
@@ -36,7 +37,7 @@ public record ErrorResponse(
         return new ErrorResponse(new ErrorDetail(code, message, null));
     }
 
-    public static ErrorResponse ofValidation(List<ErrorDetail.FieldError> details) {
-        return new ErrorResponse(new ErrorDetail("INVALID_REQUEST", "요청 형식이 올바르지 않습니다.", details));
+    public static ErrorResponse ofValidation(String message, List<ErrorDetail.FieldError> details) {
+        return new ErrorResponse(new ErrorDetail("INVALID_REQUEST", message, details));
     }
 }
