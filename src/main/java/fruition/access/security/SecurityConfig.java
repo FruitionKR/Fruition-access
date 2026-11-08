@@ -10,6 +10,7 @@ import fruition.shared.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.config.ObjectPostProcessor;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -25,10 +26,19 @@ import org.springframework.security.web.context.RequestAttributeSecurityContextR
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.OncePerRequestFilter;
 
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
 
 @Configuration
@@ -40,17 +50,20 @@ public class SecurityConfig {
     private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
     private final OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
     private final List<String> corsAllowedOrigins;
+    private final InternalMcpTokenFilter internalMcpTokenFilter;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
                           CustomOAuth2UserService customOAuth2UserService,
                           OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler,
                           OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler,
-                          @Value("${app.cors.allowed-origins}") List<String> corsAllowedOrigins) {
+                          @Value("${app.cors.allowed-origins}") List<String> corsAllowedOrigins,
+                          @Value("${app.internal.callback-token}") String internalToken) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.customOAuth2UserService = customOAuth2UserService;
         this.oAuth2AuthenticationSuccessHandler = oAuth2AuthenticationSuccessHandler;
         this.oAuth2AuthenticationFailureHandler = oAuth2AuthenticationFailureHandler;
         this.corsAllowedOrigins = corsAllowedOrigins;
+        this.internalMcpTokenFilter = new InternalMcpTokenFilter(internalToken);
     }
 
     @Bean
@@ -73,6 +86,7 @@ public class SecurityConfig {
     }
 
     @Bean
+    @Order(2)
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    ClientRegistrationRepository clientRegistrationRepository,
                                                    OAuthExchangeCodeStore oAuthExchangeCodeStore) throws Exception {
@@ -131,8 +145,44 @@ public class SecurityConfig {
                                 return filter;
                             }
                         }))
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(internalMcpTokenFilter, JwtAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    static final class InternalMcpTokenFilter extends OncePerRequestFilter {
+        private static final String HEADER = "X-Internal-Token";
+        private static final String UNAUTHORIZED = "{\"error\":{\"code\":\"INVALID_INTERNAL_TOKEN\","
+                + "\"message\":\"내부 토큰이 올바르지 않습니다.\"}}";
+        private final byte[] expected;
+
+        InternalMcpTokenFilter(String token) {
+            if (token == null || token.isBlank()) {
+                throw new IllegalArgumentException("app.internal.callback-token must not be blank");
+            }
+            expected = token.getBytes(StandardCharsets.UTF_8);
+        }
+
+        @Override
+        protected boolean shouldNotFilter(HttpServletRequest request) {
+            String path = request.getRequestURI().substring(request.getContextPath().length());
+            return !(path.equals("/internal/mcp") || path.startsWith("/internal/mcp/"));
+        }
+
+        @Override
+        protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+                                        FilterChain filterChain) throws ServletException, IOException {
+            String supplied = request.getHeader(HEADER);
+            if (supplied == null || !MessageDigest.isEqual(
+                    supplied.getBytes(StandardCharsets.UTF_8), expected)) {
+                response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                response.getWriter().write(UNAUTHORIZED);
+                return;
+            }
+            filterChain.doFilter(request, response);
+        }
     }
 }

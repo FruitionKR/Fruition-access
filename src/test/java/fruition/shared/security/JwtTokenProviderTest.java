@@ -48,6 +48,12 @@ class JwtTokenProviderTest {
                 .audience().add("fruition-api").and().header().keyId("current").and()
                 .signWith(Keys.hmacShaKeyFor(pair.getPublic().getEncoded()), Jwts.SIG.HS256).compact();
         assertFalse(verifier.isValid(confused));
+
+        String dualAudience = Jwts.builder().subject("audit-test-user").issuer("fruition-access")
+                .audience().add("fruition-api").add("https://mcp.test.example/mcp").and()
+                .expiration(Date.from(Instant.now().plusSeconds(60))).header().keyId("current").and()
+                .signWith(pair.getPrivate(), Jwts.SIG.RS256).compact();
+        assertFalse(verifier.isValid(dualAudience));
     }
     @Test void permitsExplicitPreviousPublicKeyForRotation() throws Exception {
         var old = pair();

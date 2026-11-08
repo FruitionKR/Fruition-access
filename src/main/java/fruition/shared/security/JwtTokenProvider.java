@@ -9,6 +9,8 @@ import java.security.KeyFactory;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.interfaces.RSAKey;
+import java.security.interfaces.RSAPrivateKey;
+import java.security.interfaces.RSAPublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.time.Duration;
@@ -24,6 +26,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 @Component
 public class JwtTokenProvider {
@@ -32,6 +36,7 @@ public class JwtTokenProvider {
     private final SecretKey legacySigningKey;
     private final boolean legacySigning;
     private final PrivateKey signingKey;
+    private final PublicKey verificationKey;
     private final JwtParser rsaParser;
     private final JwtParser legacyParser;
     private final Instant legacyUntil;
@@ -81,6 +86,7 @@ public class JwtTokenProvider {
             this.legacySigningKey = null;
             this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
             this.signingKey = null;
+            this.verificationKey = null;
             this.rsaParser = null;
             this.legacyUntil = null;
             this.legacyParser = legacyParser(key, issuer, audience);
@@ -91,6 +97,7 @@ public class JwtTokenProvider {
             PublicKey current = parsePublicKey(publicPem);
             PublicKey previous = previousPem.isBlank() ? null : parsePublicKey(previousPem);
             this.signingKey = parsePrivateKey(privatePem);
+            this.verificationKey = current;
             if (!((RSAKey) signingKey).getModulus().equals(((RSAKey) current).getModulus())) {
                 throw new IllegalArgumentException("JWT RSA key pair does not match");
             }
@@ -219,21 +226,71 @@ public class JwtTokenProvider {
         return accessTokenExpirationSeconds;
     }
 
+    /** MCP reuses the configured rotating RSA key but keeps its audience and claims separate from web JWTs. */
+    public String generateMcpAccessToken(String userId, String workspaceId, String clientId, UUID grantId,
+                                         long policyGeneration, Set<String> scopes, String resource,
+                                         Duration timeToLive) {
+        if (!(signingKey instanceof RSAPrivateKey) || !(verificationKey instanceof RSAPublicKey)
+                || keyId == null || keyId.isBlank()) {
+            throw new IllegalStateException("MCP OAuth requires configured RSA signing keys");
+        }
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .header().keyId(keyId).and()
+                .issuer(issuer)
+                .audience().add(resource).and()
+                .subject(userId)
+                .id(UUID.randomUUID().toString())
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plus(timeToLive)))
+                .claim("grant_id", grantId.toString())
+                .claim("workspace_id", workspaceId)
+                .claim("client_id", clientId)
+                .claim("policy_generation", policyGeneration)
+                .claim("scope", String.join(" ", scopes.stream().sorted().toList()))
+                .signWith(signingKey, Jwts.SIG.RS256)
+                .compact();
+    }
+
+    public RSAPublicKey rsaVerificationKey() {
+        if (!(verificationKey instanceof RSAPublicKey rsa)) {
+            throw new IllegalStateException("RSA verification key is not configured");
+        }
+        return rsa;
+    }
+
+    public RSAPrivateKey rsaSigningKey() {
+        if (!(signingKey instanceof RSAPrivateKey rsa)) {
+            throw new IllegalStateException("RSA signing key is not configured");
+        }
+        return rsa;
+    }
+
+    public String rsaKeyId() {
+        if (keyId == null || keyId.isBlank()) {
+            throw new IllegalStateException("RSA key ID is not configured");
+        }
+        return keyId;
+    }
+
     private Claims parseClaims(String token) {
-        if (rsaParser == null) return requiredClaims(legacyParser.parseSignedClaims(token).getPayload());
+        if (rsaParser == null) return requiredClaims(legacyParser.parseSignedClaims(token).getPayload(), audience);
         try {
-            return requiredClaims(rsaParser.parseSignedClaims(token).getPayload());
+            return requiredClaims(rsaParser.parseSignedClaims(token).getPayload(), audience);
         } catch (JwtException | IllegalArgumentException e) {
             // Time-bounded migration only; removing the old secret disables this path entirely.
             if (legacyParser != null && Instant.now().isBefore(legacyUntil)) {
-                return requiredClaims(legacyParser.parseSignedClaims(token).getPayload());
+                return requiredClaims(legacyParser.parseSignedClaims(token).getPayload(), audience);
             }
             throw e;
         }
     }
-    private static Claims requiredClaims(Claims claims) {
+    private static Claims requiredClaims(Claims claims, String audience) {
         if (claims.getExpiration() == null || claims.getSubject() == null || claims.getSubject().isBlank()) {
             throw new UnsupportedJwtException("JWT requires expiration and a nonblank subject");
+        }
+        if (!Set.of(audience).equals(claims.getAudience())) {
+            throw new UnsupportedJwtException("JWT requires the exact web audience");
         }
         return claims;
     }
