@@ -69,6 +69,19 @@ public interface WorkspaceMemberRepository extends JpaRepository<WorkspaceMember
             @Param("userId") String userId
     );
 
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("""
+            SELECT m
+            FROM WorkspaceMember m
+            WHERE m.workspace.id = :workspaceId
+              AND m.user.id = :userId
+              AND m.workspace.deletedAt IS NULL
+            """)
+    Optional<WorkspaceMember> findActiveMemberForShare(
+            @Param("workspaceId") String workspaceId,
+            @Param("userId") String userId
+    );
+
     @Query("""
             SELECT m.workspace
             FROM WorkspaceMember m

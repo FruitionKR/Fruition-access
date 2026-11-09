@@ -1,5 +1,6 @@
 package fruition.access.workspace.service;
 
+import fruition.access.mcp.repository.McpGrantRepository;
 import fruition.access.workspace.domain.WorkspaceMember;
 import fruition.access.workspace.domain.WorkspacePermission;
 import fruition.access.workspace.domain.WorkspaceRole;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.time.Instant;
 
 @Service
 public class WorkspaceMemberService {
@@ -24,11 +26,14 @@ public class WorkspaceMemberService {
 
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final AuthzProjectionStore authzProjectionStore;
+    private final McpGrantRepository mcpGrants;
 
     public WorkspaceMemberService(WorkspaceMemberRepository workspaceMemberRepository,
-                                  AuthzProjectionStore authzProjectionStore) {
+                                  AuthzProjectionStore authzProjectionStore,
+                                  McpGrantRepository mcpGrants) {
         this.workspaceMemberRepository = workspaceMemberRepository;
         this.authzProjectionStore = authzProjectionStore;
+        this.mcpGrants = mcpGrants;
     }
 
     public WorkspaceMemberListResponse list(String userId, String workspaceId) {
@@ -91,6 +96,12 @@ public class WorkspaceMemberService {
         }
 
         workspaceMemberRepository.delete(target);
+        workspaceMemberRepository.flush();
+        if (actorId.equals(targetUserId)) {
+            mcpGrants.disconnectForRemovedMember(workspaceId, targetUserId, Instant.now());
+        } else {
+            mcpGrants.revokeForRemovedMember(workspaceId, targetUserId, Instant.now());
+        }
         authzProjectionStore.evict(workspaceId, targetUserId);
         fruition.shared.logging.CommittedLog.info(log, "[멤버 제거 완료] operation=member_remove stage=completed workspaceId={} actorId={} targetUserId={}", workspaceId, actorId, targetUserId);
     }

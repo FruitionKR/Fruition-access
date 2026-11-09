@@ -10,6 +10,7 @@
 | [Users](users.md) | 1 | 다른 사용자의 프로필 사진 조회 | 호출자 미확인(frontend 구현 예정) |
 | [Workspaces](workspaces.md) | 16 | 워크스페이스·멤버 관리와 내부 인가·AI 모델 설정 | 9개는 frontend, 4개(`/internal/**`)는 document-svc·ai-svc, 3개는 호출자 미확인 |
 | [Invitations](invitations.md) | 5 | 이메일 초대 발송·취소·수락 | 3개는 frontend, 2개는 호출자 미확인 |
+| [MCP internal authorization](mcp.md) | 1 | grant·workspace/client 정책과 현재 원본 인가 판정 | document-svc MCP resource server가 호출 예정 |
 
 ## 호출 연결 요약
 
@@ -90,6 +91,12 @@
 | `GET /internal/workspaces/{workspace_id}/ai-model-settings` | document-svc `src/main/java/fruition/core/authz/WorkspaceAiModelClient.java:25` | 없음 |
 | `PUT /internal/workspaces/{workspace_id}/ai-model-settings` | document-svc `src/main/java/fruition/core/authz/WorkspaceAiModelClient.java:36` | 없음 |
 
+### MCP internal authorization
+
+| API | 호출자 | 하위 호출 |
+|---|---|---|
+| `POST /internal/mcp/grants/{grant_id}/authorize` | document-svc MCP resource server 구현 예정 | PostgreSQL의 grant, workspace/client policy, 현재 membership/permissions |
+
 ### Invitations
 
 | API | 호출자 | 하위 호출 |
@@ -114,10 +121,11 @@
 
 ### 내부 호출 인증
 
-`/internal/**`은 `SecurityConfig`에서 `permitAll`이라 JWT 필터를 통과시키지 않고
-(`src/main/java/fruition/access/security/SecurityConfig.java:102`), 각 컨트롤러가 `X-Internal-Token`
-헤더를 상수 시간 비교로 검증한다
-(`src/main/java/fruition/access/workspace/controller/InternalAuthzController.java:69`,
+`/internal/**`은 `SecurityConfig`에서 `permitAll`이라 사용자 JWT를 요구하지 않는다. MCP 경로
+`/internal/mcp/**`는 같은 security chain의 전용 필터가 MVC body parsing 전에 `X-Internal-Token`을
+상수 시간 비교하고, 나머지 기존 내부 경로는 각 컨트롤러가 검증한다
+(`src/main/java/fruition/access/security/SecurityConfig.java`,
+`src/main/java/fruition/access/workspace/controller/InternalAuthzController.java:69`,
 `src/main/java/fruition/access/workspace/controller/InternalWorkspaceAiModelController.java:56`).
 토큰 값은 `app.internal.callback-token`(`INTERNAL_CALLBACK_TOKEN`)이다.
 access-svc의 내부 엔드포인트에는 `X-Agent-Service-Token`을 쓰지 않는다 — 그 헤더는

@@ -1,6 +1,7 @@
 package fruition.access.workspace.service;
 
 import fruition.access.user.domain.User;
+import fruition.access.mcp.repository.McpGrantRepository;
 import fruition.access.workspace.domain.Workspace;
 import fruition.access.workspace.domain.WorkspaceMember;
 import fruition.access.workspace.domain.WorkspacePermission;
@@ -40,12 +41,14 @@ class WorkspaceMemberServiceTest {
 
     @Mock WorkspaceMemberRepository workspaceMemberRepository;
     @Mock AuthzProjectionStore authzProjectionStore;
+    @Mock McpGrantRepository mcpGrantRepository;
 
     WorkspaceMemberService workspaceMemberService;
 
     @BeforeEach
     void setUp() {
-        workspaceMemberService = new WorkspaceMemberService(workspaceMemberRepository, authzProjectionStore);
+        workspaceMemberService = new WorkspaceMemberService(
+                workspaceMemberRepository, authzProjectionStore, mcpGrantRepository);
     }
 
     private WorkspaceMember member(String userId, WorkspaceRole role) {
