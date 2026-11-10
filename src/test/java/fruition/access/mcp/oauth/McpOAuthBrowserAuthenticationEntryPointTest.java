@@ -28,10 +28,24 @@ class McpOAuthBrowserAuthenticationEntryPointTest {
     }
 
     @Test
+    void handoffDropsUnknownParametersButKeepsAllowedOnes() {
+        var entryPoint = new McpOAuthBrowserAuthenticationEntryPoint("https://app.example.com/mcp/authorize");
+        String location = entryPoint.handoffLocation("response_type=code&prompt=consent&login_hint=a%40b.test"
+                + "&nonce=n-1&access_type=offline&client_id=https%3A%2F%2Fclient.test%2Fm&next=%2F%2Fevil.test"
+                + "&state=s1&prompt=login");
+        assertThat(location).isEqualTo("https://app.example.com/mcp/authorize?response_type=code"
+                + "&client_id=https%3A%2F%2Fclient.test%2Fm&state=s1");
+        assertThat(entryPoint.handoffLocation("prompt=consent"))
+                .isEqualTo("https://app.example.com/mcp/authorize");
+    }
+
+    @Test
     void handoffRejectsMalformedEncodingDuplicatesAndTechnicalOverflowAtExactBounds() {
         var entryPoint = new McpOAuthBrowserAuthenticationEntryPoint("https://app.example.com/mcp/authorize");
         for (String query : new String[]{"state=%", "state=%GG", "state=%C3%28",
-                "state=one&%73tate=two", "next=%2F%2Fevil.test", "state=" + "x".repeat(1025),
+                "state=one&%73tate=two", "scope=read&scope=read", "state=" + "x".repeat(1025),
+                "request=eyJhbGciOiJub25lIn0", "request_uri=urn%3Aexample%3Arequest",
+                "state=s&request_uri=https%3A%2F%2Fevil.test%2Fjar", "next=%ZZ",
                 "redirect_uri=" + "x".repeat(McpOAuthBrowserAuthenticationEntryPoint.MAX_RAW_QUERY_BYTES),
                 "redirect_uri=" + "!".repeat(2700)}) {
             assertThatIllegalArgumentException().as(query)
