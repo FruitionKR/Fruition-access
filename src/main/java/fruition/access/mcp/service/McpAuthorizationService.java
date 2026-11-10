@@ -100,6 +100,21 @@ public class McpAuthorizationService {
 
     @Transactional
     public McpGrant createGrant(String userId, String workspaceId, String clientId, Set<McpScope> scopes) {
+        return createGrant(userId, workspaceId, clientId, scopes, false);
+    }
+
+    /**
+     * OAuth consent grant: grants the requested scopes the locked workspace policy still allows.
+     * Never grants a scope that was not requested; fails when nothing requested is allowed.
+     */
+    @Transactional
+    public McpGrant createConsentGrant(String userId, String workspaceId, String clientId,
+                                       Set<McpScope> requestedScopes) {
+        return createGrant(userId, workspaceId, clientId, requestedScopes, true);
+    }
+
+    private McpGrant createGrant(String userId, String workspaceId, String clientId, Set<McpScope> scopes,
+                                 boolean narrowToPolicy) {
         requireId(userId, "user_id");
         requireId(workspaceId, "workspace_id");
         String exactClientId = McpClientIds.requireValid(clientId);
@@ -117,11 +132,18 @@ public class McpAuthorizationService {
         McpWorkspacePolicy policy = policies.findForUpdate(workspaceId)
                 .filter(McpWorkspacePolicy::isEnabled)
                 .orElseThrow(() -> new IllegalStateException("workspace MCP policy is disabled"));
-        if (!policy.getAllowedScopes().containsAll(requestedScopes)) {
+        Set<McpScope> grantedScopes = requestedScopes;
+        if (narrowToPolicy) {
+            grantedScopes = EnumSet.copyOf(requestedScopes);
+            grantedScopes.retainAll(policy.getAllowedScopes());
+            if (grantedScopes.isEmpty()) {
+                throw new IllegalArgumentException("no requested scope is allowed by workspace policy");
+            }
+        } else if (!policy.getAllowedScopes().containsAll(requestedScopes)) {
             throw new IllegalArgumentException("grant scopes exceed workspace policy");
         }
         return grants.saveAndFlush(new McpGrant(UUID.randomUUID(), userId, workspaceId, client.getClientId(),
-                policy.getGeneration(), requestedScopes, Instant.now()));
+                policy.getGeneration(), grantedScopes, Instant.now()));
     }
 
     @Transactional

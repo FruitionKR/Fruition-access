@@ -153,11 +153,13 @@ public class McpAuthorizationServerConfiguration {
                                     scopes.addAll(List.of("read", "write_propose", "wiki_write"));
                                 })
                                 .claim("client_id_metadata_document_supported", true)
+                                .claim("authorization_response_iss_parameter_supported", true)
                                 .claims(claims -> List.of("registration_endpoint", "revocation_endpoint",
                                                 "revocation_endpoint_auth_methods_supported", "introspection_endpoint",
                                                 "introspection_endpoint_auth_methods_supported",
                                                 "device_authorization_endpoint", "pushed_authorization_request_endpoint",
-                                                "dpop_signing_alg_values_supported")
+                                                "dpop_signing_alg_values_supported",
+                                                "tls_client_certificate_bound_access_tokens")
                                         .forEach(claims::remove)))))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .csrf(config -> config.csrfTokenRepository(csrf)

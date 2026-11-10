@@ -32,6 +32,7 @@ public class McpOAuthCredentialService {
     private static final Pattern PKCE_CHALLENGE = Pattern.compile("[A-Za-z0-9_-]{43}");
     private static final Pattern PKCE_VERIFIER = Pattern.compile("[A-Za-z0-9._~-]{43,128}");
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final String OFFLINE_ACCESS = "offline_access";
     private final JdbcTemplate jdbc;
     private final McpOAuthSettings settings;
     private final McpClientMetadataResolver clients;
@@ -90,7 +91,7 @@ public class McpOAuthCredentialService {
         } else {
             if (!StringUtils.hasText(request.workspaceId())) throw new InvalidOAuthRequest("invalid_request");
             try {
-                grant = authorization.createGrant(userId, request.workspaceId(), snapshot.clientId(),
+                grant = authorization.createConsentGrant(userId, request.workspaceId(), snapshot.clientId(),
                         parseScopes(snapshot.scopes()));
             } catch (RuntimeException denied) {
                 throw new InvalidOAuthRequest("access_denied");
@@ -114,7 +115,7 @@ public class McpOAuthCredentialService {
                    code_challenge,policy_generation,expires_at,created_at)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                 """, hash(code), grant.getGrantId(), grant.getUserId(), grant.getWorkspaceId(), grant.getClientId(),
-                pending.redirectUri(), pending.resource(), pending.scopes(), pending.codeChallenge(),
+                pending.redirectUri(), pending.resource(), scopeText(grant.getScopes()), pending.codeChallenge(),
                 grant.getPolicyGeneration(), ts(now.plus(settings.authorizationCodeTtl())), ts(now));
         jdbc.update("UPDATE mcp_oauth_pending_authorizations SET decision='APPROVED', decided_at=? WHERE pending_id=?",
                 ts(now), pendingId);
@@ -151,8 +152,8 @@ public class McpOAuthCredentialService {
         }
         if (jdbc.update("UPDATE mcp_oauth_authorization_codes SET consumed_at=? WHERE code_hash=? AND consumed_at IS NULL",
                 ts(now), codeHash) != 1) return Optional.empty();
-        RefreshValue refresh = createFamily(grant, resource, scopes, now);
-        return Optional.of(tokens(grant, scopes, resource, refresh.value(), now));
+        RefreshValue refresh = createFamily(grant, row.resource(), scopes, now);
+        return Optional.of(tokens(grant, scopes, row.resource(), refresh.value(), now));
     }
 
     @Transactional(timeout = 4)
@@ -161,7 +162,9 @@ public class McpOAuthCredentialService {
         Optional<RefreshRow> found = refresh(tokenHash);
         if (found.isEmpty()) return RefreshResult.invalid();
         RefreshRow snapshot = found.get();
-        if (!snapshot.clientId().equals(clientId) || !snapshot.resource().equals(resource)) return RefreshResult.invalid();
+        if (!snapshot.clientId().equals(clientId) || !sameResource(snapshot.resource(), resource)) {
+            return RefreshResult.invalid();
+        }
         McpAuthorizationService.LockedCredentialContext context;
         try {
             context = authorization.lockCredentialContext(snapshot.grantId(), snapshot.userId(),
@@ -172,14 +175,17 @@ public class McpOAuthCredentialService {
         Optional<RefreshRow> locked = refreshForUpdate(tokenHash);
         if (locked.isEmpty() || !sameRefreshIdentity(snapshot, locked.get())) return RefreshResult.invalid();
         RefreshRow row = locked.get();
-        if (!row.clientId().equals(clientId) || !row.resource().equals(resource)) return RefreshResult.invalid();
+        if (!row.clientId().equals(clientId) || !sameResource(row.resource(), resource)) return RefreshResult.invalid();
         Instant now = Instant.now();
         if ("USED".equals(row.tokenStatus())) {
             revokeFamilyForReuse(row, context, now);
             return RefreshResult.reused();
         }
         Set<McpScope> scopes = parseScopes(row.scopes());
-        if (!requestedScopes.isEmpty() && !requestedScopes.equals(scopeValues(scopes))) return RefreshResult.invalid();
+        if (!requestedScopes.isEmpty()) {
+            Set<String> requested = withoutOfflineAccess(requestedScopes);
+            if (requested.isEmpty() || !requested.equals(scopeValues(scopes))) return RefreshResult.invalid();
+        }
         if (!"ACTIVE".equals(row.familyStatus()) || !"ACTIVE".equals(row.tokenStatus())
                 || !row.tokenId().equals(row.currentTokenId()) || !row.expiresAt().isAfter(now)) {
             return RefreshResult.invalid();
@@ -194,7 +200,7 @@ public class McpOAuthCredentialService {
         RefreshValue next = createRefresh(row.familyId(), row.sequence() + 1, now);
         jdbc.update("UPDATE mcp_oauth_refresh_families SET current_token_id=? WHERE family_id=?",
                 next.tokenId(), row.familyId());
-        return RefreshResult.success(tokens(grant, scopes, resource, next.value(), now));
+        return RefreshResult.success(tokens(grant, scopes, row.resource(), next.value(), now));
     }
 
     private void revokeFamilyForReuse(RefreshRow row, McpAuthorizationService.LockedCredentialContext context,
@@ -254,8 +260,12 @@ public class McpOAuthCredentialService {
             Set<McpScope> allowed = parseScopes(String.join(" ", jdbc.queryForList(
                     "SELECT lower(scope) FROM mcp_workspace_policy_scopes WHERE workspace_id=? ORDER BY scope",
                     String.class, workspaceId)));
-            if (allowed.containsAll(requested)) {
-                result.add(new WorkspaceChoice(workspaceId, rs.getString(2), rs.getString(3), rs.getLong(4)));
+            Set<McpScope> grantable = EnumSet.noneOf(McpScope.class);
+            grantable.addAll(requested);
+            grantable.retainAll(allowed);
+            if (!grantable.isEmpty()) {
+                result.add(new WorkspaceChoice(workspaceId, rs.getString(2), rs.getString(3), rs.getLong(4),
+                        Set.copyOf(grantable)));
             }
         }, userId);
         return List.copyOf(result);
@@ -330,8 +340,13 @@ public class McpOAuthCredentialService {
     private static boolean validCode(CodeRow row, String clientId, String redirectUri, String resource,
                                      String verifier, Instant now) {
         return row.consumedAt() == null && row.expiresAt().isAfter(now) && row.clientId().equals(clientId)
-                && row.redirectUri().equals(redirectUri) && row.resource().equals(resource)
+                && row.redirectUri().equals(redirectUri) && sameResource(row.resource(), resource)
                 && verifyPkce(verifier, row.codeChallenge());
+    }
+
+    /** Token requests may omit resource; the value bound at authorization then applies (RFC 8707 §2.2). */
+    private static boolean sameResource(String bound, String requested) {
+        return requested == null || bound.equals(requested);
     }
 
     private static boolean sameRefreshIdentity(RefreshRow first, RefreshRow second) {
@@ -356,11 +371,19 @@ public class McpOAuthCredentialService {
 
     private static Set<McpScope> scopes(String value) {
         if (!StringUtils.hasText(value)) throw new InvalidOAuthRequest("invalid_scope");
-        Set<McpScope> scopes = parseScopes(value);
-        if (scopes.isEmpty() || scopeValues(scopes).size() != value.split(" ").length) {
+        // offline_access is an OIDC hint for refresh tokens, which every grant here already gets; drop it.
+        List<String> items = java.util.Arrays.stream(value.split(" "))
+                .filter(item -> !OFFLINE_ACCESS.equals(item)).toList();
+        Set<McpScope> scopes = parseScopes(String.join(" ", items));
+        if (items.isEmpty() || scopes.isEmpty() || scopes.size() != items.size()) {
             throw new InvalidOAuthRequest("invalid_scope");
         }
         return scopes;
+    }
+
+    private static Set<String> withoutOfflineAccess(Set<String> scopes) {
+        return scopes.stream().filter(scope -> !OFFLINE_ACCESS.equals(scope))
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     private static Set<McpScope> parseScopes(String value) {
@@ -400,9 +423,11 @@ public class McpOAuthCredentialService {
         return Timestamp.from(value);
     }
 
-    private static String redirectResponse(String redirect, String name, String value, String state) {
+    // RFC 9207: iss on every authorization response lets clients bind the code to this issuer (Codex requires it).
+    private String redirectResponse(String redirect, String name, String value, String state) {
         var builder = org.springframework.web.util.UriComponentsBuilder.fromUriString(redirect).queryParam(name, value);
         if (state != null) builder.queryParam("state", state);
+        builder.queryParam("iss", settings.issuer().toString());
         return builder.build().encode().toUriString();
     }
 
@@ -413,7 +438,8 @@ public class McpOAuthCredentialService {
     public record DecisionRequest(Decision decision, String workspaceId) {}
     public record WorkspaceChoice(@JsonProperty("workspace_id") String workspaceId,
                                   @JsonProperty("workspace_name") String workspaceName,
-                                  String role, @JsonProperty("policy_generation") long policyGeneration) {}
+                                  String role, @JsonProperty("policy_generation") long policyGeneration,
+                                  Set<McpScope> scopes) {}
     public record PendingAuthorization(@JsonProperty("pending_id") UUID pendingId,
                                        @JsonProperty("client_id") String clientId,
                                        @JsonProperty("client_name") Optional<String> clientName,
