@@ -90,7 +90,7 @@ public class McpOAuthCredentialService {
         } else {
             if (!StringUtils.hasText(request.workspaceId())) throw new InvalidOAuthRequest("invalid_request");
             try {
-                grant = authorization.createGrant(userId, request.workspaceId(), snapshot.clientId(),
+                grant = authorization.createConsentGrant(userId, request.workspaceId(), snapshot.clientId(),
                         parseScopes(snapshot.scopes()));
             } catch (RuntimeException denied) {
                 throw new InvalidOAuthRequest("access_denied");
@@ -114,7 +114,7 @@ public class McpOAuthCredentialService {
                    code_challenge,policy_generation,expires_at,created_at)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                 """, hash(code), grant.getGrantId(), grant.getUserId(), grant.getWorkspaceId(), grant.getClientId(),
-                pending.redirectUri(), pending.resource(), pending.scopes(), pending.codeChallenge(),
+                pending.redirectUri(), pending.resource(), scopeText(grant.getScopes()), pending.codeChallenge(),
                 grant.getPolicyGeneration(), ts(now.plus(settings.authorizationCodeTtl())), ts(now));
         jdbc.update("UPDATE mcp_oauth_pending_authorizations SET decision='APPROVED', decided_at=? WHERE pending_id=?",
                 ts(now), pendingId);
@@ -254,8 +254,12 @@ public class McpOAuthCredentialService {
             Set<McpScope> allowed = parseScopes(String.join(" ", jdbc.queryForList(
                     "SELECT lower(scope) FROM mcp_workspace_policy_scopes WHERE workspace_id=? ORDER BY scope",
                     String.class, workspaceId)));
-            if (allowed.containsAll(requested)) {
-                result.add(new WorkspaceChoice(workspaceId, rs.getString(2), rs.getString(3), rs.getLong(4)));
+            Set<McpScope> grantable = EnumSet.noneOf(McpScope.class);
+            grantable.addAll(requested);
+            grantable.retainAll(allowed);
+            if (!grantable.isEmpty()) {
+                result.add(new WorkspaceChoice(workspaceId, rs.getString(2), rs.getString(3), rs.getLong(4),
+                        Set.copyOf(grantable)));
             }
         }, userId);
         return List.copyOf(result);
@@ -415,7 +419,8 @@ public class McpOAuthCredentialService {
     public record DecisionRequest(Decision decision, String workspaceId) {}
     public record WorkspaceChoice(@JsonProperty("workspace_id") String workspaceId,
                                   @JsonProperty("workspace_name") String workspaceName,
-                                  String role, @JsonProperty("policy_generation") long policyGeneration) {}
+                                  String role, @JsonProperty("policy_generation") long policyGeneration,
+                                  Set<McpScope> scopes) {}
     public record PendingAuthorization(@JsonProperty("pending_id") UUID pendingId,
                                        @JsonProperty("client_id") String clientId,
                                        @JsonProperty("client_name") Optional<String> clientName,

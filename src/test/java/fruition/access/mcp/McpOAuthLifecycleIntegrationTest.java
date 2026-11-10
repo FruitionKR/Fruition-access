@@ -73,6 +73,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 class McpOAuthLifecycleIntegrationTest {
     private static final String RESOURCE = "https://mcp.test.example/mcp";
+    private static final String ALL_SCOPES = "read write_propose wiki_write";
     private static final String REGISTERED_REDIRECT = "http://127.0.0.1/callback";
     private static final String ACTUAL_REDIRECT = "http://127.0.0.1:43123/callback";
     private static final KeyPair RSA = rsa();
@@ -308,6 +309,93 @@ class McpOAuthLifecycleIntegrationTest {
     }
 
     @Test
+    void readOnlyPolicyGrantsOnlyReadWhenClientRequestsEveryScope() throws Exception {
+        Fixture fixture = fixture();
+        String verifier = verifier("narrowed");
+        Preview preview = preview(fixture, verifier, ALL_SCOPES);
+        assertThat(preview.body().path("scopes")).hasSize(3);
+        assertThat(preview.body().path("workspaces")).hasSize(1);
+        assertThat(preview.body().path("workspaces").get(0).path("scopes").toString()).isEqualTo("[\"read\"]");
+
+        Approved approved = approve(fixture, verifier("narrowed-approve"), ALL_SCOPES);
+        assertThat(grants.findById(approved.grantId()).orElseThrow().getScopes()).containsExactly(McpScope.READ);
+        assertThat(jdbc.queryForObject("SELECT scopes FROM mcp_oauth_authorization_codes WHERE grant_id=?",
+                String.class, approved.grantId())).isEqualTo("read");
+
+        JsonNode issued = exchangeCode(fixture, approved.code(), verifier("narrowed-approve"), ACTUAL_REDIRECT,
+                RESOURCE, 200);
+        assertThat(issued.path("scope").asText()).isEqualTo("read");
+        assertThat(accessScope(issued)).isEqualTo("read");
+
+        JsonNode rotated = refresh(fixture, issued.path("refresh_token").asText(), RESOURCE, null, 200);
+        assertThat(rotated.path("scope").asText()).isEqualTo("read");
+        assertThat(accessScope(rotated)).isEqualTo("read");
+        String current = rotated.path("refresh_token").asText();
+        JsonNode escalation = refresh(fixture, current, RESOURCE, ALL_SCOPES, 400);
+        assertThat(escalation.path("error").asText()).isEqualTo("invalid_grant");
+        JsonNode sameScope = refresh(fixture, current, RESOURCE, "read", 200);
+        assertThat(sameScope.path("scope").asText()).isEqualTo("read");
+        assertThat(grants.findById(approved.grantId()).orElseThrow().getStatus()).isEqualTo(McpGrantStatus.ACTIVE);
+    }
+
+    @Test
+    void partialPolicyGrantsExactlyTheRequestedAllowedIntersection() throws Exception {
+        Fixture fixture = fixture();
+        authorization.updateWorkspacePolicy(fixture.workspaceId(), true,
+                Set.of(McpScope.READ, McpScope.WRITE_PROPOSE));
+        String verifier = verifier("partial");
+        Approved approved = approve(fixture, verifier, "read wiki_write");
+        assertThat(grants.findById(approved.grantId()).orElseThrow().getScopes()).containsExactly(McpScope.READ);
+        JsonNode issued = exchangeCode(fixture, approved.code(), verifier, ACTUAL_REDIRECT, RESOURCE, 200);
+        assertThat(issued.path("scope").asText()).isEqualTo("read");
+
+        Fixture full = fixture();
+        authorization.updateWorkspacePolicy(full.workspaceId(), true,
+                Set.of(McpScope.READ, McpScope.WRITE_PROPOSE));
+        Approved both = approve(full, verifier("partial-both"), ALL_SCOPES);
+        assertThat(grants.findById(both.grantId()).orElseThrow().getScopes())
+                .containsExactlyInAnyOrder(McpScope.READ, McpScope.WRITE_PROPOSE);
+        JsonNode bothIssued = exchangeCode(full, both.code(), verifier("partial-both"), ACTUAL_REDIRECT,
+                RESOURCE, 200);
+        assertThat(Set.of(bothIssued.path("scope").asText().split(" ")))
+                .containsExactlyInAnyOrder("read", "write_propose");
+        assertThat(Set.of(accessScope(bothIssued).split(" "))).containsExactlyInAnyOrder("read", "write_propose");
+    }
+
+    @Test
+    void workspaceWithoutAnyRequestedScopeIsHiddenAndCannotBeApproved() throws Exception {
+        Fixture fixture = fixture();
+        authorization.updateWorkspacePolicy(fixture.workspaceId(), true, Set.of(McpScope.WRITE_PROPOSE));
+        String challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                MessageDigest.getInstance("SHA-256").digest(verifier("hidden").getBytes(StandardCharsets.US_ASCII)));
+        MvcResult preview = mvc.perform(get("/oauth2/authorize")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + fixture.webToken())
+                        .queryParam("response_type", "code").queryParam("client_id", fixture.clientId())
+                        .queryParam("redirect_uri", ACTUAL_REDIRECT).queryParam("scope", "read")
+                        .queryParam("code_challenge", challenge)
+                        .queryParam("code_challenge_method", "S256").queryParam("resource", RESOURCE))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workspaces.length()").value(0))
+                .andReturn();
+        String pendingId = json.readTree(preview.getResponse().getContentAsByteArray()).path("pending_id").asText();
+        mvc.perform(post("/oauth2/authorize/{id}", pendingId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + fixture.webToken())
+                        .header("X-CSRF-TOKEN", preview.getResponse().getHeader("X-CSRF-TOKEN"))
+                        .cookie(preview.getResponse().getCookie("SESSION"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"APPROVE\",\"workspace_id\":\"" + fixture.workspaceId() + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("access_denied"));
+        assertThat(grantCount(fixture.userId())).isZero();
+    }
+
+    private static String accessScope(JsonNode tokenResponse) {
+        return Jwts.parser().verifyWith((RSAPublicKey) RSA.getPublic()).build()
+                .parseSignedClaims(tokenResponse.path("access_token").asText()).getPayload()
+                .get("scope", String.class);
+    }
+
+    @Test
     void consentDecisionRequiresCsrfSameUserAndSameSession() throws Exception {
         Fixture fixture = fixture();
         Preview original = preview(fixture, verifier("decision-binding"));
@@ -539,7 +627,11 @@ class McpOAuthLifecycleIntegrationTest {
     }
 
     private Approved approve(Fixture fixture, String verifier) throws Exception {
-        Preview preview = preview(fixture, verifier);
+        return approve(fixture, verifier, "read");
+    }
+
+    private Approved approve(Fixture fixture, String verifier, String scope) throws Exception {
+        Preview preview = preview(fixture, verifier, scope);
         MvcResult decision = mvc.perform(post("/oauth2/authorize/{id}", preview.body().path("pending_id").asText())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + fixture.webToken())
                         .header("X-CSRF-TOKEN", preview.csrf()).cookie(preview.session())
@@ -555,12 +647,16 @@ class McpOAuthLifecycleIntegrationTest {
     }
 
     private Preview preview(Fixture fixture, String verifier) throws Exception {
+        return preview(fixture, verifier, "read");
+    }
+
+    private Preview preview(Fixture fixture, String verifier, String scope) throws Exception {
         String challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(
                 MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)));
         MvcResult preview = mvc.perform(get("/oauth2/authorize")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + fixture.webToken())
                         .queryParam("response_type", "code").queryParam("client_id", fixture.clientId())
-                        .queryParam("redirect_uri", ACTUAL_REDIRECT).queryParam("scope", "read")
+                        .queryParam("redirect_uri", ACTUAL_REDIRECT).queryParam("scope", scope)
                         .queryParam("state", "opaque-state").queryParam("code_challenge", challenge)
                         .queryParam("code_challenge_method", "S256").queryParam("resource", RESOURCE))
                 .andExpect(status().isOk())
