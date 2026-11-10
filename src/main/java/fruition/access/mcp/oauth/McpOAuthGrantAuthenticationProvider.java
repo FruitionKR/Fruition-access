@@ -33,7 +33,7 @@ final class McpOAuthGrantAuthenticationProvider {
             OAuth2ClientAuthenticationToken client = client(request.getPrincipal());
             Optional<McpOAuthCredentialService.IssuedTokens> issued = credentials.exchangeCode(
                     request.getCode(), (String) client.getPrincipal(), request.getRedirectUri(),
-                    exact(request.getAdditionalParameters(), "resource"),
+                    optional(request.getAdditionalParameters(), "resource"),
                     exact(request.getAdditionalParameters(), PkceParameterNames.CODE_VERIFIER));
             return issued.<Authentication>map(tokens -> response(client, tokens)).orElseThrow(
                     McpOAuthGrantAuthenticationProvider::invalidGrant);
@@ -55,7 +55,7 @@ final class McpOAuthGrantAuthenticationProvider {
             OAuth2RefreshTokenAuthenticationToken request = (OAuth2RefreshTokenAuthenticationToken) authentication;
             OAuth2ClientAuthenticationToken client = client(request.getPrincipal());
             McpOAuthCredentialService.RefreshResult result = credentials.refresh(request.getRefreshToken(),
-                    (String) client.getPrincipal(), exact(request.getAdditionalParameters(), "resource"),
+                    (String) client.getPrincipal(), optional(request.getAdditionalParameters(), "resource"),
                     request.getScopes());
             if (result.status() != McpOAuthCredentialService.RefreshResult.Status.SUCCESS) throw invalidGrant();
             return response(client, result.tokens());
@@ -87,6 +87,11 @@ final class McpOAuthGrantAuthenticationProvider {
         Object value = values.get(name);
         if (value instanceof String text && !text.isBlank()) return text;
         throw new OAuth2AuthenticationException(new OAuth2Error(OAuth2ErrorCodes.INVALID_REQUEST));
+    }
+
+    /** Absent means "use the resource bound at authorization"; present must be a single non-blank value. */
+    private static String optional(Map<String, Object> values, String name) {
+        return values.containsKey(name) ? exact(values, name) : null;
     }
 
     private static OAuth2AuthenticationException invalidGrant() {

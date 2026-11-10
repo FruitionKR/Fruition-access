@@ -170,11 +170,20 @@ class McpOAuthLifecycleIntegrationTest {
 
     @Test
     void browserHandoffRejectsHostileShapeAndApiOrBadBearerStillGets401() throws Exception {
-        mvc.perform(get("/oauth2/authorize").accept(MediaType.TEXT_HTML).queryParam("next", "//evil.test"))
+        mvc.perform(get("/oauth2/authorize").accept(MediaType.TEXT_HTML)
+                        .queryParam("request_uri", "https://evil.test/jar"))
                 .andExpect(status().isBadRequest()).andExpect(header().doesNotExist(HttpHeaders.LOCATION))
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
                 .andExpect(header().string(HttpHeaders.PRAGMA, "no-cache"))
                 .andExpect(header().string("X-Frame-Options", "DENY"));
+        mvc.perform(get("/oauth2/authorize").accept(MediaType.TEXT_HTML).queryParam("request", "eyJhbGciOiJub25lIn0"))
+                .andExpect(status().isBadRequest()).andExpect(header().doesNotExist(HttpHeaders.LOCATION));
+        MvcResult dropped = mvc.perform(get("/oauth2/authorize").accept(MediaType.TEXT_HTML)
+                        .queryParam("next", "//evil.test").queryParam("prompt", "consent")
+                        .queryParam("state", "kept"))
+                .andExpect(status().isFound()).andReturn();
+        URI droppedLocation = URI.create(dropped.getResponse().getHeader(HttpHeaders.LOCATION));
+        assertThat(droppedLocation.getRawQuery()).isEqualTo("state=kept");
         mvc.perform(get("/oauth2/authorize").accept(MediaType.TEXT_HTML)
                         .queryParam("state", "one", "two"))
                 .andExpect(status().isBadRequest()).andExpect(header().doesNotExist(HttpHeaders.LOCATION));
@@ -387,6 +396,61 @@ class McpOAuthLifecycleIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("access_denied"));
         assertThat(grantCount(fixture.userId())).isZero();
+    }
+
+    @Test
+    void offlineAccessScopeIsDroppedFromConsentGrantTokenAndRefresh() throws Exception {
+        Fixture fixture = fixture();
+        String verifier = verifier("offline");
+        Preview preview = preview(fixture, verifier("offline-preview"), "offline_access read");
+        assertThat(preview.body().path("scopes").toString()).isEqualTo("[\"read\"]");
+        assertThat(preview.body().path("workspaces").get(0).path("scopes").toString()).isEqualTo("[\"read\"]");
+
+        Approved approved = approve(fixture, verifier, ALL_SCOPES + " offline_access");
+        assertThat(grants.findById(approved.grantId()).orElseThrow().getScopes()).containsExactly(McpScope.READ);
+        JsonNode issued = exchangeCode(fixture, approved.code(), verifier, ACTUAL_REDIRECT, RESOURCE, 200);
+        assertThat(issued.path("scope").asText()).isEqualTo("read");
+        assertThat(accessScope(issued)).isEqualTo("read");
+
+        JsonNode rotated = refresh(fixture, issued.path("refresh_token").asText(), RESOURCE, "read offline_access", 200);
+        assertThat(rotated.path("scope").asText()).isEqualTo("read");
+        assertThat(accessScope(rotated)).isEqualTo("read");
+        refresh(fixture, rotated.path("refresh_token").asText(), RESOURCE, "offline_access", 400);
+        assertThat(grants.findById(approved.grantId()).orElseThrow().getStatus()).isEqualTo(McpGrantStatus.ACTIVE);
+
+        String challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(MessageDigest
+                .getInstance("SHA-256").digest(verifier("offline-only").getBytes(StandardCharsets.US_ASCII)));
+        mvc.perform(get("/oauth2/authorize")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + fixture.webToken())
+                        .queryParam("response_type", "code").queryParam("client_id", fixture.clientId())
+                        .queryParam("redirect_uri", ACTUAL_REDIRECT).queryParam("scope", "offline_access")
+                        .queryParam("code_challenge", challenge)
+                        .queryParam("code_challenge_method", "S256").queryParam("resource", RESOURCE))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_scope"));
+    }
+
+    @Test
+    void tokenAndRefreshWithoutResourceUseTheBoundResource() throws Exception {
+        Fixture fixture = fixture();
+        String verifier = verifier("no-resource");
+        Approved approved = approve(fixture, verifier);
+        JsonNode issued = exchangeCode(fixture, approved.code(), verifier, ACTUAL_REDIRECT, null, 200);
+        assertThat(accessAudience(issued)).containsExactly(RESOURCE);
+        assertThat(jdbc.queryForObject("SELECT resource FROM mcp_oauth_refresh_families WHERE grant_id=?",
+                String.class, approved.grantId())).isEqualTo(RESOURCE);
+
+        JsonNode rotated = refresh(fixture, issued.path("refresh_token").asText(), null, null, 200);
+        assertThat(accessAudience(rotated)).containsExactly(RESOURCE);
+        JsonNode mismatched = refresh(fixture, rotated.path("refresh_token").asText(), RESOURCE + "/other", null, 400);
+        assertThat(mismatched.path("error").asText()).isEqualTo("invalid_grant");
+        JsonNode explicit = refresh(fixture, rotated.path("refresh_token").asText(), RESOURCE, null, 200);
+        assertThat(accessAudience(explicit)).containsExactly(RESOURCE);
+    }
+
+    private static java.util.Set<String> accessAudience(JsonNode tokenResponse) {
+        return Jwts.parser().verifyWith((RSAPublicKey) RSA.getPublic()).build()
+                .parseSignedClaims(tokenResponse.path("access_token").asText()).getPayload().getAudience();
     }
 
     private static String accessScope(JsonNode tokenResponse) {
@@ -779,11 +843,11 @@ class McpOAuthLifecycleIntegrationTest {
 
     private JsonNode exchangeCode(Fixture fixture, String code, String verifier, String redirect,
                                   String resource, int expected) throws Exception {
-        MvcResult result = mvc.perform(post("/oauth2/token").contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                        .param("grant_type", "authorization_code").param("client_id", fixture.clientId())
-                        .param("code", code).param("redirect_uri", redirect).param("code_verifier", verifier)
-                        .param("resource", resource))
-                .andExpect(status().is(expected)).andReturn();
+        var request = post("/oauth2/token").contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .param("grant_type", "authorization_code").param("client_id", fixture.clientId())
+                .param("code", code).param("redirect_uri", redirect).param("code_verifier", verifier);
+        if (resource != null) request.param("resource", resource);
+        MvcResult result = mvc.perform(request).andExpect(status().is(expected)).andReturn();
         JsonNode body = json.readTree(result.getResponse().getContentAsByteArray());
         if (expected == 400) assertThat(body.path("error").asText()).isEqualTo("invalid_grant");
         return body;
@@ -793,7 +857,8 @@ class McpOAuthLifecycleIntegrationTest {
             throws Exception {
         var request = post("/oauth2/token").contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .param("grant_type", "refresh_token").param("client_id", fixture.clientId())
-                .param("refresh_token", refresh).param("resource", resource);
+                .param("refresh_token", refresh);
+        if (resource != null) request.param("resource", resource);
         if (scope != null) request.param("scope", scope);
         MvcResult result = mvc.perform(request).andExpect(status().is(expected)).andReturn();
         return json.readTree(result.getResponse().getContentAsByteArray());
