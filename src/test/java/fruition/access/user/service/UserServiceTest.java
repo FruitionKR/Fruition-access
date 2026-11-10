@@ -156,6 +156,7 @@ class UserServiceTest {
     @Test
     void signup_recordsEmailMethodAndInternalActorOnly() {
         SignupResponse response = userService.signup(new SignupRequest("private@example.test", "password123"));
+        verify(eventPublisher).publishEvent(new fruition.access.beta.UserSignedUp(response.id(), response.email(), response.createdAt()));
         var captured = org.mockito.ArgumentCaptor.forClass(fruition.access.analytics.AnalyticsEvent.class);
         verify(eventPublisher).publishEvent(captured.capture());
         var event = captured.getValue();
