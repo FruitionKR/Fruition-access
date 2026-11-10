@@ -122,6 +122,8 @@ class McpOAuthLifecycleIntegrationTest {
                 .andExpect(jsonPath("$.grant_types_supported[0]").value("authorization_code"))
                 .andExpect(jsonPath("$.grant_types_supported[1]").value("refresh_token"))
                 .andExpect(jsonPath("$.client_id_metadata_document_supported").value(true))
+                .andExpect(jsonPath("$.authorization_response_iss_parameter_supported").value(true))
+                .andExpect(jsonPath("$.tls_client_certificate_bound_access_tokens").doesNotExist())
                 .andExpect(jsonPath("$.registration_endpoint").doesNotExist())
                 .andExpect(jsonPath("$.revocation_endpoint").doesNotExist())
                 .andExpect(jsonPath("$.introspection_endpoint").doesNotExist());
@@ -496,6 +498,7 @@ class McpOAuthLifecycleIntegrationTest {
         URI redirect = URI.create(json.readTree(denial.getResponse().getContentAsByteArray())
                 .path("redirect_uri").asText());
         assertThat(query(redirect, "error")).isEqualTo("access_denied");
+        assertThat(query(redirect, "iss")).isEqualTo("https://access.test.example");
         assertThat(grantCount(fixture.userId())).isZero();
     }
 
@@ -547,6 +550,7 @@ class McpOAuthLifecycleIntegrationTest {
         URI redirect = URI.create(body.path("redirect_uri").asText());
         assertThat(redirect.getHost()).isEqualTo("127.0.0.1");
         assertThat(redirect.getPort()).isEqualTo(43123);
+        assertThat(query(redirect, "iss")).isEqualTo("https://access.test.example");
         return new Approved(query(redirect, "code"), UUID.fromString(body.path("grant_id").asText()));
     }
 

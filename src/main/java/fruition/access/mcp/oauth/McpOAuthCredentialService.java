@@ -400,9 +400,11 @@ public class McpOAuthCredentialService {
         return Timestamp.from(value);
     }
 
-    private static String redirectResponse(String redirect, String name, String value, String state) {
+    // RFC 9207: iss on every authorization response lets clients bind the code to this issuer (Codex requires it).
+    private String redirectResponse(String redirect, String name, String value, String state) {
         var builder = org.springframework.web.util.UriComponentsBuilder.fromUriString(redirect).queryParam(name, value);
         if (state != null) builder.queryParam("state", state);
+        builder.queryParam("iss", settings.issuer().toString());
         return builder.build().encode().toUriString();
     }
 
