@@ -34,6 +34,19 @@ class DocumentInternalClientTest {
     }
 
     @Test
+    void betaCreditUsesAuthenticatedContractAndPropagatesFailures() {
+        server.expect(requestTo("http://document.internal/internal/credits/beta-signup"))
+                .andExpect(method(POST)).andExpect(header("X-Internal-Token", "test-internal-callback"))
+                .andExpect(content().json("{\"user_id\":\"user_beta\",\"email_hash\":\"hash\",\"slot\":1}"))
+                .andRespond(withStatus(HttpStatus.OK).contentType(MediaType.APPLICATION_JSON).body("{\"amount_krw_milli\":7000000}"));
+        server.expect(requestTo("http://document.internal/internal/credits/beta-signup")).andRespond(withServerError());
+        org.assertj.core.api.Assertions.assertThat(client.grantBetaCredit("user_beta", "hash", 1)).isEqualTo(7_000_000L);
+        assertThatThrownBy(() -> client.grantBetaCredit("user_beta", "hash", 1))
+                .isInstanceOf(org.springframework.web.client.RestClientException.class);
+        server.verify();
+    }
+
+    @Test
     @DisplayName("초기 노트 생성을 내부 토큰과 snake_case 본문으로 요청한다")
     void createInitialNote_sendsInternalRequest() {
         server.expect(requestTo("http://document.internal/internal/workspaces/ws_aaa11111/initial-note"))

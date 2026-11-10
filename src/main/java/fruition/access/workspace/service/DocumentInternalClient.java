@@ -64,6 +64,18 @@ public class DocumentInternalClient {
                 .build();
     }
 
+    /** 지급 실패는 outbox가 재시도한다. 슬롯 번호를 멱등 키로 사용한다. */
+    public long grantBetaCredit(String userId, String emailHash, int slot) {
+        var response = restClient.post().uri("/internal/credits/beta-signup")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("user_id", userId, "email_hash", emailHash, "slot", slot))
+                .retrieve().body(BetaGrantResponse.class);
+        if (response == null) throw new IllegalStateException("Missing beta grant response");
+        return response.amountKrwMilli();
+    }
+
+    public record BetaGrantResponse(@com.fasterxml.jackson.annotation.JsonProperty("amount_krw_milli") long amountKrwMilli) {}
+
     /** 초기 노트 생성 요청. 실패해도 예외를 전파하지 않는다(best-effort). */
     public void createInitialNote(String workspaceId, String userId) {
         try {

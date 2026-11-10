@@ -126,6 +126,7 @@ public class OAuthUserService {
         User user = createUser(pending.provider(), pending.email(), pending.name());
         oauthAccountRepository.save(new UserOAuthAccount(user.getId(), pending.provider(), pending.providerUserId()));
         userConsentService.record(user.getId(), Boolean.TRUE.equals(request.marketingOptIn()));
+        eventPublisher.publishEvent(new fruition.access.beta.UserSignedUp(user.getId(), user.getEmail(), user.getCreatedAt()));
         eventPublisher.publishEvent(new AnalyticsEvent("user_signed_up", user.getId(), user.getId(), null,
                 Instant.now(), Map.of("method", pending.provider())));
         fruition.shared.logging.CommittedLog.info(log, "[OAuth 계정 연결] operation=oauth_link stage=completed provider={} userId={}", pending.provider(), user.getId());

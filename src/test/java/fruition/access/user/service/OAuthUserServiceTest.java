@@ -152,6 +152,7 @@ class OAuthUserServiceTest {
         verify(workspaceService).createDefault(user.getId(), user.getDisplayName());
         verify(oauthAccountRepository).save(any());
         verify(userConsentService).record(user.getId(), true);
+        verify(eventPublisher).publishEvent(new fruition.access.beta.UserSignedUp(user.getId(), user.getEmail(), user.getCreatedAt()));
         var event = org.mockito.ArgumentCaptor.forClass(fruition.access.analytics.AnalyticsEvent.class);
         verify(eventPublisher).publishEvent(event.capture());
         assertThat(event.getValue().event()).isEqualTo("user_signed_up");

@@ -95,6 +95,7 @@ public class UserService {
         workspaceService.createDefault(user.getId(), user.getDisplayName());
         fruition.shared.logging.CommittedLog.info(log, "[회원가입 성공] operation=signup stage=completed userId={} email={} displayNameSource={}", user.getId(), user.getEmail(), displayNameSource);
 
+        eventPublisher.publishEvent(new fruition.access.beta.UserSignedUp(user.getId(), user.getEmail(), user.getCreatedAt()));
         eventPublisher.publishEvent(new AnalyticsEvent("user_signed_up", user.getId(), user.getId(), null,
                 Instant.now(), Map.of("method", "email")));
         return new SignupResponse(user.getId(), user.getEmail(), user.getDisplayName(), user.getCreatedAt());

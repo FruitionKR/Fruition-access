@@ -372,6 +372,18 @@ paths:
       summary: 프로필 사진 업로드
       tags:
       - Auth
+  /api/auth/me/beta-credit:
+    get:
+      operationId: status
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/Status"
+          description: OK
+      tags:
+      - beta-credit-controller
   /api/auth/me/consents:
     post:
       description: 이용약관이 바뀌어 로그인·내 정보 응답의 consent_required가 true일 때 다시 동의를 받습니다.
@@ -3170,6 +3182,14 @@ components:
           type: string
           description: 생성된 사용자 ID
           example: user_3f1c8a6b52d7411e9c04ab5d2e7f6081
+    Status:
+      type: object
+      properties:
+        amount_krw_milli:
+          type: integer
+          format: int64
+        status:
+          type: string
     TokenContext:
       type: object
       additionalProperties: false
