@@ -5,7 +5,7 @@
 이메일 SHA-256과 지급 기록은 탈퇴 후에도 보존한다. 서로 다른 이메일의 동일인 여부는 판별하지 않는다.
 50명 이후에도 가입은 가능하지만 무료 베타 크레딧은 없다. 일일 토큰 한도와 기존 사용자 잔액 면제는 변경하지 않는다.
 
-가입 커밋 직후 document 내부 API로 $5 상당 크레딧을 지급한다. 외부 장애는 가입 성공을 취소하지 않고
+가입 커밋 직후 document 내부 API로 500원 크레딧을 지급한다. 외부 장애는 가입 성공을 취소하지 않고
 pending으로 남긴다. 30초 주기로 재시도하며, 실패한 항목은 1분 뒤부터 다시 시도한다.
 문서 서비스가 지급한 뒤 응답을 잃어도 동일 슬롯의 재전송은 같은 금액을 반환한다.
 GET /api/auth/me/beta-credit는 pending / granted / exhausted / ineligible와 amount_krw_milli를 반환한다.
@@ -40,4 +40,6 @@ SELECT count(*) AS pending FROM beta_credit_awards WHERE delivered_at IS NULL;
 ```
 
 pending이 오래 유지되면 document 배포 버전, 내부 토큰, 서비스 연결과 지급 오류 로그를 확인한다.
-모든 내부 금액은 milli-KRW이며 최초 지급 시점의 DB 환율로 $5를 환산해 고정한다.
+모든 내부 금액은 milli-KRW이며 신규 지급액은 환율과 무관하게 500원(500,000 milli-KRW)이다.
+기존 지급액은 유지하고 재시도도 document에 저장된 원래 금액을 반환한다.
+아직 document에 지급 기록이 없는 대기 건은 변경 후 최초 지급 시 500원을 받는다.
