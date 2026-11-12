@@ -43,7 +43,7 @@ final class McpOAuthBrowserAuthenticationEntryPoint implements AuthenticationEnt
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response,
                          AuthenticationException authenticationException) throws IOException, ServletException {
-        if (!isAnonymousHtmlAuthorization(request)) {
+        if (!isBrowserNavigation(request)) {
             UNAUTHORIZED.commence(request, response, authenticationException);
             return;
         }
@@ -93,7 +93,11 @@ final class McpOAuthBrowserAuthenticationEntryPoint implements AuthenticationEnt
         return location;
     }
 
-    private static boolean isAnonymousHtmlAuthorization(HttpServletRequest request) {
+    /**
+     * Bearer 없이 HTML을 받는 GET /oauth2/authorize, 즉 MCP 클라이언트가 연 브라우저 이동이다. 이전 동의에서 생긴 세션
+     * 쿠키로 인증돼 있어도 JSON 미리보기 대신 프론트 동의 화면으로 넘겨야 하므로 컨트롤러도 이 판정을 쓴다.
+     */
+    static boolean isBrowserNavigation(HttpServletRequest request) {
         return "GET".equals(request.getMethod())
                 && (request.getContextPath() + "/oauth2/authorize").equals(request.getRequestURI())
                 && request.getHeader(HttpHeaders.AUTHORIZATION) == null

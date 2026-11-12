@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.web.csrf.CsrfToken;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.net.URI;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -27,14 +29,19 @@ public class McpOAuthAuthorizationController {
     private static final Set<String> AUTHORIZATION_PARAMETERS = Set.of("response_type", "client_id",
             "redirect_uri", "scope", "state", "code_challenge", "code_challenge_method", "resource");
     private final McpOAuthCredentialService credentials;
+    private final McpOAuthBrowserAuthenticationEntryPoint browserHandoff;
 
-    public McpOAuthAuthorizationController(McpOAuthCredentialService credentials) {
+    public McpOAuthAuthorizationController(McpOAuthCredentialService credentials,
+                                           McpOAuthBrowserAuthenticationEntryPoint browserHandoff) {
         this.credentials = credentials;
+        this.browserHandoff = browserHandoff;
     }
 
     @GetMapping("/oauth2/authorize")
-    public ResponseEntity<McpOAuthCredentialService.PendingAuthorization> preview(
+    public ResponseEntity<?> preview(
             @AuthenticationPrincipal String userId, HttpServletRequest request, CsrfToken csrf) {
+        // 세션 쿠키만으로 인증된 브라우저 이동도 프론트 동의 화면으로 넘긴다. 그러지 않으면 JSON이 그대로 보인다.
+        if (McpOAuthBrowserAuthenticationEntryPoint.isBrowserNavigation(request)) return handoff(request);
         csrf.getToken();
         for (Map.Entry<String, String[]> entry : request.getParameterMap().entrySet()) {
             if (!AUTHORIZATION_PARAMETERS.contains(entry.getKey()) || entry.getValue().length != 1) {
@@ -48,6 +55,16 @@ public class McpOAuthAuthorizationController {
                 request.getParameter("code_challenge_method"), request.getParameter("resource")));
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header("Pragma", "no-cache")
                 .header(csrf.getHeaderName(), csrf.getToken()).body(pending);
+    }
+
+    private ResponseEntity<Void> handoff(HttpServletRequest request) {
+        try {
+            return ResponseEntity.status(HttpStatus.FOUND).cacheControl(CacheControl.noStore())
+                    .header("Pragma", "no-cache")
+                    .location(URI.create(browserHandoff.handoffLocation(request.getQueryString()))).build();
+        } catch (IllegalArgumentException invalidRequest) {
+            return ResponseEntity.badRequest().cacheControl(CacheControl.noStore()).header("Pragma", "no-cache").build();
+        }
     }
 
     @PostMapping("/oauth2/authorize/{pendingId}")
