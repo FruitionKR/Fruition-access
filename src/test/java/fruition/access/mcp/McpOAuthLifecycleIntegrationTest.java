@@ -169,6 +169,28 @@ class McpOAuthLifecycleIntegrationTest {
     }
 
     @Test
+    void browserNavigationWithAnEarlierAuthenticatedSessionStillHandsOffToFrontend() throws Exception {
+        Fixture fixture = fixture();
+        Preview earlier = preview(fixture, "v".repeat(43));
+        long pendingBefore = jdbc.queryForObject("SELECT count(*) FROM mcp_oauth_pending_authorizations", Long.class);
+
+        MvcResult result = mvc.perform(get("/oauth2/authorize").accept(MediaType.TEXT_HTML).cookie(earlier.session())
+                        .queryParam("response_type", "code").queryParam("client_id", fixture.clientId())
+                        .queryParam("redirect_uri", ACTUAL_REDIRECT).queryParam("scope", "read")
+                        .queryParam("state", "second").queryParam("code_challenge", "A".repeat(43))
+                        .queryParam("code_challenge_method", "S256").queryParam("resource", RESOURCE))
+                .andExpect(status().isFound())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andReturn();
+
+        URI location = URI.create(result.getResponse().getHeader(HttpHeaders.LOCATION));
+        assertThat(location.getPath()).isEqualTo("/mcp/authorize");
+        assertThat(query(location, "state")).isEqualTo("second");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM mcp_oauth_pending_authorizations", Long.class))
+                .isEqualTo(pendingBefore);
+    }
+
+    @Test
     void browserHandoffRejectsHostileShapeAndApiOrBadBearerStillGets401() throws Exception {
         mvc.perform(get("/oauth2/authorize").accept(MediaType.TEXT_HTML)
                         .queryParam("request_uri", "https://evil.test/jar"))
