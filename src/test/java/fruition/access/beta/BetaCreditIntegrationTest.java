@@ -92,7 +92,7 @@ class BetaCreditIntegrationTest {
         assertThat(allocated()).isZero();
     }
     @Test void committedSignupSchedulesImmediateDelivery() {
-        when(document.grantBetaCredit(eq("immediate"), anyString(), eq(1))).thenReturn(7_000_000L);
+        when(document.grantBetaCredit(eq("immediate"), anyString(), eq(1))).thenReturn(1_000_000L);
         tx.executeWithoutResult(s -> {
             events.publishEvent(new UserSignedUp("immediate", "immediate@example.com", Instant.now()));
             verify(scheduler, never()).schedule(any(Runnable.class), any(Instant.class));
@@ -100,7 +100,7 @@ class BetaCreditIntegrationTest {
         var task = org.mockito.ArgumentCaptor.forClass(Runnable.class);
         verify(scheduler).schedule(task.capture(), any(Instant.class));
         task.getValue().run();
-        assertThat(service.status("immediate")).isEqualTo(new BetaCreditService.Status("granted", 7_000_000L));
+        assertThat(service.status("immediate")).isEqualTo(new BetaCreditService.Status("granted", 1_000_000L));
     }
 
     @Test void failedDeliveryIsRetriedWithoutAllocatingAnotherSlot() {
